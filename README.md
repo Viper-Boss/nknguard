@@ -39,7 +39,7 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
 <table>
   <tr>
     <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS dashboard: pairing"><br><sub><b>NAS dashboard · Pairing</b> — one-time QR, compare a six-digit code, approve; revoke any single device later</sub></td>
-    <td width="50%"><img src="docs/images/nas-dashboard-devices.png" alt="NAS dashboard: devices"><br><sub><b>NAS dashboard · Devices</b> — direct or relayed, and the last real WireGuard handshake</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS dashboard: usage counts"><br><sub><b>NAS dashboard · Overview</b> — device paths and NKNGuard users in the last 24 h / 30 d / 90 d</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows client: connected"><br><sub><b>Windows client</b> — one-click connect, path type and both NKN addresses</sub></td>

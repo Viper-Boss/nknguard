@@ -39,7 +39,7 @@
 <table>
   <tr>
     <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS 面板：配对与授权"><br><sub><b>NAS 面板 · 配对与授权</b>：生成一次性二维码，核对六位验证码后批准，随时撤销单台设备</sub></td>
-    <td width="50%"><img src="docs/images/nas-dashboard-devices.png" alt="NAS 面板：设备列表"><br><sub><b>NAS 面板 · 设备</b>：每台设备当前走直连还是中继、最近一次真实握手时间</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS 面板：使用人数"><br><sub><b>NAS 面板 · 总览</b>：设备连接状态，以及最近 24 小时 / 30 天 / 90 天的 NKNGuard 使用人数</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows 客户端：已直连"><br><sub><b>Windows 客户端</b>：一键连接，显示链路类型与双方 NKN 地址</sub></td>
