@@ -29,7 +29,7 @@
 | --- | --- | --- |
 | 🗄️ **NAS / Linux**（ARM64，飞牛 ARM 机型） | `nknguard-linux-arm64` | 需要 root 与 `wireguard-tools`，见[安装 NAS 端](#1-安装-nas-端) |
 | 🗄️ **NAS / Linux**（x86_64） | `nknguard-linux-amd64` | 同上 |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | 需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) 和 Microsoft Edge |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 预览版，尚未完成真机测试；升级前需先卸载旧版 |
 
 每个版本都附带 `SHA256SUMS`，下载后可以核对：`sha256sum -c SHA256SUMS`。预览版没有代码签名。
@@ -38,16 +38,16 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS 面板：配对与授权"><br><sub><b>NAS 面板 · 配对与授权</b>：生成一次性二维码，核对六位验证码后批准，随时撤销单台设备</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS 面板：配对与授权"><br><sub><b>NAS 面板 · 配对与授权</b>：一次性二维码和同内容的配对链接，核对六位码后批准，随时撤销单台设备</sub></td>
     <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS 面板：使用人数"><br><sub><b>NAS 面板 · 总览</b>：设备连接状态，以及最近 24 小时 / 30 天 / 90 天的 NKNGuard 使用人数</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows 客户端：已直连"><br><sub><b>Windows 客户端</b>：一键连接，显示链路类型与双方 NKN 地址</sub></td>
-    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows 客户端：首次配对"><br><sub><b>Windows 客户端 · 首次配对</b>：粘贴配对内容，在 NAS 上核对同一个六位码</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows 客户端：已直连"><br><sub><b>Windows 客户端</b>：原生窗口，一键连接，关闭后缩到托盘保持连接</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows 客户端：首次配对"><br><sub><b>Windows 客户端 · 首次配对</b>：粘贴配对链接，在 NAS 上核对同一个六位码</sub></td>
   </tr>
 </table>
 
-<sub>截图由真实界面代码渲染，设备名、地址等为演示数据。Android 截图将在真机测试完成后补充。</sub>
+<sub>截图由真实界面代码渲染（Windows 客户端截图来自 Wine），设备名、地址、人数等为演示数据。Android 截图将在真机测试完成后补充。</sub>
 
 ## 特点
 
@@ -103,10 +103,10 @@ ssh -L 7878:127.0.0.1:7878 用户名@NAS地址
 
 ### 3. 配对设备
 
-1. 在面板 **配对与授权** 中生成二维码（5 分钟有效）。
+1. 在面板 **配对与授权** 中生成二维码（5 分钟有效）；二维码下方同时显示同内容的**配对链接** `nknguard://pair/v1?...`，可以一键复制。
 2. 在设备上发起申请：
-   - **Android**：打开 App 点“扫码配对”；
-   - **Windows**：复制二维码内容粘贴到客户端，填电脑名称，点“请求 NAS 配对”；
+   - **Android**：打开 App 点“扫码配对”，或复制配对链接后点“粘贴配对内容”；
+   - **Windows**：把配对链接粘贴到客户端，填电脑名称，点“请求 NAS 配对”；
    - **Linux**：`sudo nknguard pair '<二维码内容>' --name laptop`。
 3. 核对设备上和面板上显示的 **六位验证码** 一致，在面板点 **核对后批准**。
 4. 在设备上点 **连接**，之后用 NAS 的虚拟 IP（默认 `10.88.0.1` 一类地址，界面里有显示）访问飞牛服务。
@@ -118,7 +118,7 @@ ssh -L 7878:127.0.0.1:7878 用户名@NAS地址
 | 命令 | 作用 |
 | --- | --- |
 | `nknguard init` | 创建网络并设置面板密码 |
-| `nknguard pair <配对内容>` | Linux 设备申请加入，需 NAS 批准 |
+| `nknguard pair <配对链接>` | Linux 设备申请加入，需 NAS 批准 |
 | `nknguard dashboard-password set` | 在 NAS 本机设置或重设面板密码 |
 | `sudo nknguard up` / `daemon` | 前台运行节点 |
 | `sudo nknguard down` | 停止节点并删除接口 |
@@ -157,7 +157,7 @@ nkn:
 - **中继很慢。** 走 NKN 会话，吞吐远低于直连，只是兜底。
 - **内核 WireGuard 独占 UDP 端口**，公网端口根据探测 socket 推断（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立，见 [NAT 穿透](docs/NAT_TRAVERSAL.md)。
 - **成员证明仍基于共享密钥。** NAS 按批准名单执行单设备撤销；若共享密钥或设备私钥泄露，需要重建网络凭证，自动轮换尚未实现。
-- **客户端是预览版。** 仅 IPv4 覆盖网络、每个节点只能加入一个网络；Android 暂无开机自启和“始终开启的 VPN”。
+- **客户端是预览版。** Windows 版为原生窗口，需先安装 WireGuard for Windows。 仅 IPv4 覆盖网络、每个节点只能加入一个网络；Android 暂无开机自启和“始终开启的 VPN”。
 - **使用人数统计是公开的。** 开启时每台设备每天在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
 - **不匿名。** WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
 - **国内 seed 是社区节点**，地址可能变化，失效时会自动回退官方节点。

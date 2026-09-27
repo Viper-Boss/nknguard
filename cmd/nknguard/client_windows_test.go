@@ -3,37 +3,33 @@
 package main
 
 import (
-	"net/http/httptest"
+	"image/color"
 	"testing"
 )
 
-func TestClientWindowRequiresSessionAndOrigin(t *testing.T) {
-	window := &clientWindow{}
-	handler := window.serve("test-token", make(chan struct{}, 1))
-	req := httptest.NewRequest("GET", "http://127.0.0.1:8888/api/state", nil)
-	out := httptest.NewRecorder()
-	handler.ServeHTTP(out, req)
-	if out.Code != 401 {
-		t.Fatalf("untrusted request: %d", out.Code)
+func TestAppIcon(t *testing.T) {
+	img := appIconImage(64)
+	if b := img.Bounds(); b.Dx() != 64 || b.Dy() != 64 {
+		t.Fatalf("icon size %v", b)
 	}
-	req = httptest.NewRequest("GET", "http://127.0.0.1:8888/?token=test-token", nil)
-	out = httptest.NewRecorder()
-	handler.ServeHTTP(out, req)
-	if out.Code != 303 {
-		t.Fatalf("session creation: %d", out.Code)
+	// Rounded corners are transparent, the diagonal stroke of the N is white.
+	if _, _, _, a := img.At(0, 0).RGBA(); a != 0 {
+		t.Fatal("corner is not transparent")
 	}
-	cookie := out.Result().Cookies()[0]
-	req = httptest.NewRequest("POST", "http://127.0.0.1:8888/api/connect", nil)
-	req.AddCookie(cookie)
-	out = httptest.NewRecorder()
-	handler.ServeHTTP(out, req)
-	if out.Code != 403 {
-		t.Fatalf("cross-origin action: %d", out.Code)
+	if c := color.RGBAModel.Convert(img.At(32, 32)).(color.RGBA); c != (color.RGBA{0xff, 0xff, 0xff, 0xff}) {
+		t.Fatalf("centre pixel %v, want the white stroke", c)
 	}
-	req = httptest.NewRequest("GET", "http://untrusted.example:8888/?token=test-token", nil)
-	out = httptest.NewRecorder()
-	handler.ServeHTTP(out, req)
-	if out.Code != 403 {
-		t.Fatalf("non-loopback host: %d", out.Code)
+}
+
+func TestStateHelpers(t *testing.T) {
+	state := map[string]any{"paired": true, "path": "nkn-relay", "virtual_ip": ""}
+	if !stateFlag(state, "paired") || stateFlag(state, "connected") {
+		t.Fatal("flags")
+	}
+	if pathText(stateText(state, "path")) != "NKN 加密中继" || pathText("") != "正在寻找链路" {
+		t.Fatal("path text")
+	}
+	if orDash(stateText(state, "virtual_ip")) != "—" || orDefault("x", "y") != "x" {
+		t.Fatal("defaults")
 	}
 }

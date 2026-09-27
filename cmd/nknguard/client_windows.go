@@ -32,9 +32,6 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 )
 
-//go:embed clientui/*
-var clientAssets embed.FS
-
 type clientWindow struct {
 	mu           sync.Mutex
 	globals      globals
@@ -243,106 +240,6 @@ func (w *clientWindow) disconnect() error {
 	return err
 }
 
-func (w *clientWindow) routes(done chan<- struct{}) http.Handler {
-	assets, _ := fs.Sub(clientAssets, "clientui")
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/state", func(out http.ResponseWriter, _ *http.Request) {
-		out.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(out).Encode(w.snapshot())
-	})
-	mux.HandleFunc("POST /api/pair", func(out http.ResponseWriter, r *http.Request) {
-		var input map[string]string
-		if err := json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&input); err != nil {
-			http.Error(out, "配对内容无效", http.StatusBadRequest)
-			return
-		}
-		if err := w.pair(input["invitation"], input["name"]); err != nil {
-			http.Error(out, err.Error(), http.StatusBadRequest)
-			return
-		}
-		out.WriteHeader(http.StatusAccepted)
-	})
-	mux.HandleFunc("POST /api/connect", func(out http.ResponseWriter, _ *http.Request) {
-		if err := w.connect(); err != nil {
-			http.Error(out, err.Error(), http.StatusBadRequest)
-			return
-		}
-		out.WriteHeader(http.StatusAccepted)
-	})
-	mux.HandleFunc("POST /api/disconnect", func(out http.ResponseWriter, _ *http.Request) {
-		if err := w.disconnect(); err != nil {
-			http.Error(out, err.Error(), http.StatusBadRequest)
-			return
-		}
-		out.WriteHeader(http.StatusAccepted)
-	})
-	mux.HandleFunc("GET /api/usage", func(out http.ResponseWriter, r *http.Request) {
-		status := usagestats.Status{Counts: usagestats.Counts{Error: usagestats.ErrUnavailable.Error()}}
-		if w.usage != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-			defer cancel()
-			status = w.usage.Status(ctx, r.URL.Query().Get("refresh") == "1")
-		}
-		out.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(out).Encode(status)
-	})
-	mux.HandleFunc("POST /api/usage", func(out http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Enabled *bool `json:"enabled"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 256)).Decode(&input); err != nil || input.Enabled == nil {
-			http.Error(out, "请求无效", http.StatusBadRequest)
-			return
-		}
-		if w.usage == nil {
-			http.Error(out, "统计不可用", http.StatusServiceUnavailable)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		if err := w.usage.SetEnabled(ctx, *input.Enabled); err != nil {
-			http.Error(out, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		out.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(out).Encode(w.usage.Status(ctx, false))
-	})
-	mux.HandleFunc("POST /api/quit", func(out http.ResponseWriter, _ *http.Request) {
-		out.WriteHeader(http.StatusAccepted)
-		go func() { done <- struct{}{} }()
-	})
-	mux.Handle("/", http.FileServer(http.FS(assets)))
-	return mux
-}
-
-func (w *clientWindow) serve(token string, done chan<- struct{}) http.Handler {
-	next := w.routes(done)
-	return http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
-		if host, _, err := net.SplitHostPort(r.Host); err != nil || host != "127.0.0.1" {
-			http.Error(out, "loopback host required", http.StatusForbidden)
-			return
-		}
-		out.Header().Set("Cache-Control", "no-store")
-		out.Header().Set("X-Content-Type-Options", "nosniff")
-		out.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
-		if supplied := r.URL.Query().Get("token"); supplied != "" && subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) == 1 {
-			http.SetCookie(out, &http.Cookie{Name: "nkg-client", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-			http.Redirect(out, r, "/", http.StatusSeeOther)
-			return
-		}
-		cookie, err := r.Cookie("nkg-client")
-		if err != nil || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(token)) != 1 {
-			http.Error(out, "client session required", http.StatusUnauthorized)
-			return
-		}
-		if r.Method == http.MethodPost && (r.Header.Get("X-NKNGuard-Client") != "1" || r.Header.Get("Origin") != "http://"+r.Host) {
-			http.Error(out, "same-origin action required", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(out, r)
-	})
-}
-
 // clientUsageReporter counts this computer in the anonymous usage statistics
 // while the window is open. The background service shares the same state
 // file, so the switch applies to both.
@@ -356,62 +253,4 @@ func clientUsageReporter(g globals) *usagestats.Reporter {
 		return nil
 	}
 	return app.NewUsageReporter(cfg, node.Keystore, nil)
-}
-
-func edgeExecutable() (string, error) {
-	for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles")} {
-		path := filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe")
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-	return exec.LookPath("msedge.exe")
-}
-
-func cmdClient(g globals, _ io.Writer) error {
-	edge, err := edgeExecutable()
-	if err != nil {
-		return errors.New("Windows 客户端需要 Microsoft Edge")
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	defer listener.Close()
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return err
-	}
-	token := base64.RawURLEncoding.EncodeToString(secret)
-	window := &clientWindow{globals: g, usage: clientUsageReporter(g)}
-	usageCtx, stopUsage := context.WithCancel(context.Background())
-	defer stopUsage()
-	if window.usage != nil {
-		go window.usage.Run(usageCtx)
-	}
-	done := make(chan struct{}, 1)
-	server := &http.Server{Handler: window.serve(token, done), ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = server.Serve(listener) }()
-	defer server.Close()
-	profile, err := os.MkdirTemp("", "nknguard-client-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(profile)
-	url := "http://" + listener.Addr().String() + "/?token=" + token
-	edgeProcess := exec.Command(edge, "--app="+url, "--user-data-dir="+profile)
-	if err := edgeProcess.Start(); err != nil {
-		return err
-	}
-	exited := make(chan struct{})
-	go func() { _ = edgeProcess.Wait(); close(exited) }()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	select {
-	case <-done:
-	case <-exited:
-	case <-ctx.Done():
-	}
-	_ = window.disconnect()
-	return nil
 }

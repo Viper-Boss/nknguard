@@ -205,6 +205,8 @@ async function newInvite() {
     const qr = document.createElement('img'); qr.src = result.qr_data_url; qr.alt = 'NKNGuard 一次性配对二维码';
     byId('qr-wrap').replaceChildren(qr);
     byId('copy-invite').disabled = false;
+    setText('invite-link', result.uri);
+    byId('invite-link-box').hidden = false;
     setText('invite-expiry', `有效至 ${new Date(result.expires_at).toLocaleTimeString()} · 需要本机批准`);
     toast('二维码已生成，请现场扫码');
   } catch (error) { toast('生成失败：' + error.message); }
@@ -267,7 +269,18 @@ byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
 byId('usage-enabled').addEventListener('change', setUsage);
 byId('password-form').addEventListener('submit', changePassword);
 byId('new-invite').addEventListener('click', newInvite);
-byId('copy-invite').addEventListener('click', () => navigator.clipboard.writeText(inviteURI).then(() => toast('配对内容已复制')).catch(() => toast('复制失败')));
+byId('copy-invite').addEventListener('click', () => {
+  if (!navigator.clipboard) { selectInviteLink(); toast('已选中配对链接，请按 Ctrl+C 复制'); return; }
+  navigator.clipboard.writeText(inviteURI).then(() => toast('配对链接已复制')).catch(() => { selectInviteLink(); toast('已选中配对链接，请按 Ctrl+C 复制'); });
+});
+byId('invite-link').addEventListener('click', selectInviteLink);
+function selectInviteLink() {
+  const range = document.createRange();
+  range.selectNodeContents(byId('invite-link'));
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
 byId('copy-nkn-address').addEventListener('click', () => {
   const address = currentStatus?.nkn_address;
   if (address) navigator.clipboard.writeText(address).then(() => toast('NKN 地址已复制')).catch(() => toast('复制失败'));
