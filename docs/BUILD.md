@@ -23,13 +23,17 @@ make build    # bin/nknguard
 make release  # dist/nknguard-linux-{amd64,arm64} + SHA256SUMS
 ```
 
-Windows GUI from PowerShell:
+Windows GUI from PowerShell (the resource step adds the icon and the
+common-controls v6 manifest the native window needs):
 
 ```powershell
+cd cmd/nknguard
+go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard
+cd ../..
 go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1" -o NKNGuard-Windows.exe ./cmd/nknguard
 ```
 
-Run `NKNGuard-Windows.exe` to open the desktop client. A console build uses the
+Run `NKNGuard-Windows.exe` to open the native desktop client (walk, no browser). A console build uses the
 same source without the `-ldflags` setting. See [WINDOWS.md](WINDOWS.md).
 
 Pinned versions (the ones NasSimHub already builds against):

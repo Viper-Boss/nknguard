@@ -29,7 +29,7 @@ Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/re
 | --- | --- | --- |
 | 🗄️ **NAS / Linux** (ARM64, incl. ARM fnOS) | `nknguard-linux-arm64` | Needs root and `wireguard-tools`; see [Install the NAS](#1-install-the-nas) |
 | 🗄️ **NAS / Linux** (x86_64) | `nknguard-linux-amd64` | Same as above |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Install [WireGuard for Windows](https://www.wireguard.com/install/) and Microsoft Edge first |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview, not yet tested on real devices; uninstall the previous build before upgrading |
 
 Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview builds are not code-signed.
@@ -38,16 +38,16 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS dashboard: pairing"><br><sub><b>NAS dashboard · Pairing</b> — one-time QR, compare a six-digit code, approve; revoke any single device later</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS dashboard: pairing"><br><sub><b>NAS dashboard · Pairing</b> — one-time QR plus the same pairing link as text, compare a six-digit code, approve; revoke single devices later</sub></td>
     <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS dashboard: usage counts"><br><sub><b>NAS dashboard · Overview</b> — device paths and NKNGuard users in the last 24 h / 30 d / 90 d</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows client: connected"><br><sub><b>Windows client</b> — one-click connect, path type and both NKN addresses</sub></td>
-    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows client: first pairing"><br><sub><b>Windows client · First pairing</b> — paste the invitation, confirm the same code on the NAS</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows client: connected"><br><sub><b>Windows client</b> — native window, one-click connect, keeps the tunnel in the tray</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows client: first pairing"><br><sub><b>Windows client · First pairing</b> — paste the pairing link, confirm the same code on the NAS</sub></td>
   </tr>
 </table>
 
-<sub>Rendered from the real UI code with demo data (names and addresses are made up). The UI is currently in Chinese. Android screenshots will follow on-device testing.</sub>
+<sub>Rendered from the real UI code with demo data (the Windows client under Wine). The UI is currently in Chinese. Android screenshots will follow on-device testing.</sub>
 
 ## Highlights
 
@@ -103,10 +103,10 @@ Forgot it? Run `sudo nknguard dashboard-password set` on the NAS. Five wrong pas
 
 ### 3. Pair a device
 
-1. In **配对与授权 (Pairing)**, generate a QR code (valid 5 minutes).
+1. In **配对与授权 (Pairing)**, generate a QR code (valid 5 minutes); the same **pairing link** `nknguard://pair/v1?...` is shown under it with a copy button.
 2. Request access from the device:
    - **Android** — open the app and tap “扫码配对” (scan to pair);
-   - **Windows** — paste the QR content into the client, enter a name, click “请求 NAS 配对”;
+   - **Windows** — paste the pairing link into the client, enter a name, click “请求 NAS 配对”;
    - **Linux** — `sudo nknguard pair '<QR content>' --name laptop`.
 3. Check that the **six-digit code** matches on both screens, then click **核对后批准** (approve) on the NAS.
 4. Tap **Connect** on the device and reach the NAS on its virtual IP (shown in the client, e.g. `10.88.0.1`).
@@ -118,7 +118,7 @@ More: [Pairing](docs/PAIRING.md) · [Windows client](docs/WINDOWS.md) · [Androi
 | Command | |
 | --- | --- |
 | `nknguard init` | create a network and set the dashboard password |
-| `nknguard pair <QR-content>` | request owner-approved enrollment (Linux) |
+| `nknguard pair <pairing-link>` | request owner-approved enrollment (Linux) |
 | `nknguard dashboard-password set` | set or reset the dashboard password on the NAS |
 | `sudo nknguard up` / `daemon` | run the node |
 | `sudo nknguard down` | stop the node and remove the interface |

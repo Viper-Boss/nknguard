@@ -1,0 +1,43 @@
+name: tidy
+
+# Keeps go.mod / go.sum in step with the imports on working branches. Some
+# development environments cannot reach the Go module proxy; this job runs
+# `go mod tidy` for them and commits the result to the same branch.
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "android/core/go.mod"
+      - "android/core/go.sum"
+
+permissions:
+  contents: write
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          (cd android/core && go mod tidy)
+      - name: commit changes
+        run: |
+          if git diff --quiet; then
+            echo "go.mod and go.sum are tidy"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: go mod tidy"
+          git push

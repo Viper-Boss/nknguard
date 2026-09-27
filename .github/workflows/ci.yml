@@ -40,6 +40,9 @@ jobs:
           go-version: "1.25.7"
       - name: test Windows adapters and client
         run: go test -tags "nknsdk libp2pdht" ./...
+      - name: Windows resources (manifest for native controls, icon)
+        working-directory: cmd/nknguard
+        run: go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard --file-description "NKNGuard Windows client" --original-filename NKNGuard-Windows.exe
       - name: build Windows app
         run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1" -o NKNGuard-Windows.exe ./cmd/nknguard
 
