@@ -69,6 +69,9 @@ type Controller struct {
 	Logger      *slog.Logger
 	// Nudge asks WireGuard to handshake now. See UDPNudge.
 	Nudge func(ctx context.Context, virtualIP netip.Addr)
+	// OnPeerError observes a verified ERROR message from an admitted peer.
+	// A client uses it to learn that its NAS has revoked it.
+	OnPeerError func(deviceID string, report protocol.Error)
 
 	mu        sync.RWMutex
 	peers     map[string]*Peer
@@ -83,6 +86,9 @@ type Controller struct {
 	// record, so a static list or a topic listing does not turn into a
 	// message per address per tick.
 	introduced map[string]time.Time
+	// refused remembers when each unapproved device was last told so, so a
+	// revoked device that keeps introducing itself costs one reply a minute.
+	refused map[string]time.Time
 
 	wg sync.WaitGroup
 }
@@ -162,6 +168,7 @@ func New() *Controller {
 		admitted:   make(map[string]struct{}),
 		bridges:    make(map[string]*relay.Bridge),
 		introduced: make(map[string]time.Time),
+		refused:    make(map[string]time.Time),
 		Policy:     acl.DefaultPolicy(),
 	}
 }
@@ -544,6 +551,12 @@ func (c *Controller) gatherCandidates(ctx context.Context) {
 	c.mu.Unlock()
 }
 
+// RefreshCandidates gathers this node's candidates now instead of at the next
+// republish. A phone calls it after switching between Wi-Fi and mobile data.
+func (c *Controller) RefreshCandidates(ctx context.Context) {
+	c.gatherCandidates(ctx)
+}
+
 func (c *Controller) ownCandidates() []nat.EndpointCandidate {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -760,7 +773,11 @@ func (c *Controller) onPeerInfo(ctx context.Context, envelope protocol.Envelope)
 		return errors.New("mesh: PEER_INFO carries someone else's record")
 	}
 	c.ingestRecord(ctx, record)
-	if !c.Authorized(record.DeviceID) || !info.WantReply {
+	if !c.Authorized(record.DeviceID) {
+		c.refuseUnapproved(ctx, record)
+		return nil
+	}
+	if !info.WantReply {
 		return nil
 	}
 	own, err := c.buildRecord(ctx)
@@ -772,6 +789,62 @@ func (c *Controller) onPeerInfo(ctx context.Context, envelope protocol.Envelope)
 		return err
 	}
 	return c.send(ctx, record.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw})
+}
+
+// refuseInterval bounds NOT_AUTHORIZED replies to one device.
+const refuseInterval = time.Minute
+
+// refuseUnapproved tells a device that holds the network's join secret but is
+// not on the owner's approval list — in practice, a device the owner revoked —
+// that it will not be admitted. Without the reply such a client can only show
+// "NAS not answering", which is indistinguishable from the NAS being offline.
+//
+// The reply goes only to a record that is correctly signed, fresh, carries a
+// valid membership proof and arrived from the NKN address the record names, so
+// a stranger learns nothing and cannot aim the reply at a third party. It is
+// sent only by an owner that requires approval, the one node whose approval
+// list is authoritative.
+func (c *Controller) refuseUnapproved(ctx context.Context, record discovery.PeerRecord) {
+	if !c.Config.OwnerDevice || !c.Config.RequireApproval || c.Membership == nil {
+		return
+	}
+	source := signaling.Source(ctx)
+	if source == "" || source != record.NKNAddress {
+		return
+	}
+	if record.Verify(c.Config.NetworkID, time.Now()) != nil ||
+		c.Membership.Verify(record.DeviceID, record.RootPublicKey, record.MembershipProof) != nil {
+		return
+	}
+	now := time.Now()
+	c.mu.Lock()
+	if last, ok := c.refused[record.DeviceID]; ok && now.Sub(last) < refuseInterval {
+		c.mu.Unlock()
+		return
+	}
+	if len(c.refused) >= maxIntroduced {
+		for id, at := range c.refused {
+			if now.Sub(at) >= refuseInterval {
+				delete(c.refused, id)
+			}
+		}
+		if len(c.refused) >= maxIntroduced {
+			c.mu.Unlock()
+			return
+		}
+	}
+	c.refused[record.DeviceID] = now
+	c.mu.Unlock()
+	envelope, err := protocol.Seal(c.Device, c.Config.NetworkID, record.DeviceID, protocol.TypeError, protocol.Error{
+		Code:    protocol.ErrorNotAuthorized,
+		Message: "this device is not approved by the network owner",
+	})
+	if err != nil {
+		return
+	}
+	if err := c.Signaling.SendAddress(ctx, source, envelope); err == nil {
+		c.logger().Info("told unapproved device it is not admitted", "component", "mesh", "peer", record.DeviceID)
+	}
 }
 
 func (c *Controller) pollDiscovery(ctx context.Context) {
@@ -1053,6 +1126,9 @@ func (c *Controller) onError(_ context.Context, envelope protocol.Envelope) erro
 		return err
 	}
 	c.logger().Warn("peer reported an error", "component", "signaling", "peer", envelope.FromDeviceID, "code", report.Code, "message", report.Message)
+	if c.OnPeerError != nil {
+		c.OnPeerError(envelope.FromDeviceID, report)
+	}
 	return nil
 }
 
