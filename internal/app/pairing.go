@@ -206,14 +206,24 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	if err != nil {
 		return err
 	}
-	if err := p.transport.SendAddress(ctx, entry.NKNAddress, envelope); err != nil {
-		return err
-	}
+	// Persist and admit before the secret leaves: a device must never hold
+	// the join secret while this NAS does not list it, or its first
+	// introduction would be refused as unapproved.
+	previous := append([]string(nil), current.Members...)
 	current.Members = append(current.Members, deviceID)
 	if err := p.node.State.SaveMembership(current); err != nil {
 		return err
 	}
 	p.mesh.ApproveDevice(deviceID)
+	if err := p.transport.SendAddress(ctx, entry.NKNAddress, envelope); err != nil {
+		// Undo, and keep the request pending so the owner can retry.
+		current.Members = previous
+		if saveErr := p.node.State.SaveMembership(current); saveErr != nil {
+			return fmt.Errorf("pairing: approval not delivered (%v) and rollback failed: %w", err, saveErr)
+		}
+		p.mesh.RevokeDevice(ctx, deviceID)
+		return fmt.Errorf("pairing: approval not delivered, try again: %w", err)
+	}
 	delete(p.pending, deviceID)
 	p.invite = PairInvite{}
 	return nil
