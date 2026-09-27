@@ -149,6 +149,49 @@ async function changePassword(event) {
   } catch (error) { message.textContent = `修改失败：${error.message}`; }
 }
 
+const countText = value => (typeof value === 'number' ? value.toLocaleString('zh-CN') : '—');
+
+function renderUsage(status) {
+  const counts = status.counts || {};
+  setText('usage-day', countText(counts.day));
+  setText('usage-month', countText(counts.month));
+  setText('usage-quarter', countText(counts.quarter));
+  const toggle = byId('usage-enabled');
+  toggle.checked = !!status.enabled;
+  toggle.disabled = false;
+  let note;
+  if (!status.enabled) note = '本机未参与统计。人数仍可查看。';
+  else if (status.last_check_in) note = `本机已参与统计 · 上次签到 ${new Date(status.last_check_in).toLocaleString()}`;
+  else note = '本机已参与统计 · 等待首次签到（写入区块约需 1 分钟）';
+  if (counts.error) note += ` · 部分数据读取失败：${counts.error}`;
+  else if (status.last_error) note += ` · 签到失败，稍后重试：${status.last_error}`;
+  setText('usage-note', note);
+}
+
+async function refreshUsage(force) {
+  try {
+    const response = await fetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderUsage(await response.json());
+  } catch (error) { setText('usage-note', '读取使用人数失败'); }
+}
+
+async function setUsage(event) {
+  const enabled = event.target.checked;
+  event.target.disabled = true;
+  setText('usage-message', enabled ? '正在开启…' : '正在关闭并退订…');
+  try {
+    const response = await fetch('/api/usage', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({enabled})});
+    if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
+    renderUsage(await response.json());
+    setText('usage-message', enabled ? '已开启匿名统计' : '已关闭，本机不再发送统计交易');
+  } catch (error) {
+    event.target.checked = !enabled;
+    event.target.disabled = false;
+    setText('usage-message', `操作失败：${error.message}`);
+  }
+}
+
 async function postAction(route) {
   const response = await fetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
   if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
@@ -220,6 +263,8 @@ document.querySelectorAll('.nav-item').forEach(button => button.addEventListener
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => changeView(button.dataset.go)));
 byId('refresh').addEventListener('click', refresh);
 byId('refresh-logs').addEventListener('click', refreshLogs);
+byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
+byId('usage-enabled').addEventListener('change', setUsage);
 byId('password-form').addEventListener('submit', changePassword);
 byId('new-invite').addEventListener('click', newInvite);
 byId('copy-invite').addEventListener('click', () => navigator.clipboard.writeText(inviteURI).then(() => toast('配对内容已复制')).catch(() => toast('复制失败')));
@@ -229,6 +274,8 @@ byId('copy-nkn-address').addEventListener('click', () => {
 });
 refresh();
 refreshPairState();
+refreshUsage(false);
 setInterval(refresh, 3000);
+setInterval(() => refreshUsage(false), 60000);
 setInterval(refreshPairState, 3000);
 setInterval(() => { if (lastUpdate) setText('updated', `${Math.round((Date.now()-lastUpdate)/1000)} 秒前更新`); }, 1000);

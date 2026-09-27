@@ -22,6 +22,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/internal/mobile"
+	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 )
 
 func main() {
@@ -76,6 +77,9 @@ func run(stateDir, fdSocket, level string) error {
 		Secrets:  mobile.NewSecretStore(),
 		Logger:   logger,
 		Logs:     ring,
+		// Anonymous active-installation count; the app shows it and its
+		// switch (see pkg/usagestats).
+		UsageChain: usagestats.NewNKNChain,
 		OpenTUN: func(ctx context.Context, token string) (tun.Device, error) {
 			fd, err := receiver.Receive(ctx, token)
 			if err != nil {

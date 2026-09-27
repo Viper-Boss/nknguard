@@ -29,6 +29,7 @@ import (
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
+	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 )
 
 //go:embed clientui/*
@@ -44,6 +45,8 @@ type clientWindow struct {
 	pairCode     string
 	nasAddress   string
 	errorMessage string
+	// usage is the anonymous usage-statistics reporter; nil if unavailable.
+	usage *usagestats.Reporter
 }
 
 func (w *clientWindow) update(fn func()) {
@@ -273,6 +276,37 @@ func (w *clientWindow) routes(done chan<- struct{}) http.Handler {
 		}
 		out.WriteHeader(http.StatusAccepted)
 	})
+	mux.HandleFunc("GET /api/usage", func(out http.ResponseWriter, r *http.Request) {
+		status := usagestats.Status{Counts: usagestats.Counts{Error: usagestats.ErrUnavailable.Error()}}
+		if w.usage != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+			defer cancel()
+			status = w.usage.Status(ctx, r.URL.Query().Get("refresh") == "1")
+		}
+		out.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(out).Encode(status)
+	})
+	mux.HandleFunc("POST /api/usage", func(out http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 256)).Decode(&input); err != nil || input.Enabled == nil {
+			http.Error(out, "请求无效", http.StatusBadRequest)
+			return
+		}
+		if w.usage == nil {
+			http.Error(out, "统计不可用", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		if err := w.usage.SetEnabled(ctx, *input.Enabled); err != nil {
+			http.Error(out, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		out.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(out).Encode(w.usage.Status(ctx, false))
+	})
 	mux.HandleFunc("POST /api/quit", func(out http.ResponseWriter, _ *http.Request) {
 		out.WriteHeader(http.StatusAccepted)
 		go func() { done <- struct{}{} }()
@@ -309,6 +343,21 @@ func (w *clientWindow) serve(token string, done chan<- struct{}) http.Handler {
 	})
 }
 
+// clientUsageReporter counts this computer in the anonymous usage statistics
+// while the window is open. The background service shares the same state
+// file, so the switch applies to both.
+func clientUsageReporter(g globals) *usagestats.Reporter {
+	cfg, _, err := loadConfig(g)
+	if err != nil {
+		return nil
+	}
+	node, err := app.OpenNode(cfg)
+	if err != nil {
+		return nil
+	}
+	return app.NewUsageReporter(cfg, node.Keystore, nil)
+}
+
 func edgeExecutable() (string, error) {
 	for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles")} {
 		path := filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe")
@@ -334,7 +383,12 @@ func cmdClient(g globals, _ io.Writer) error {
 		return err
 	}
 	token := base64.RawURLEncoding.EncodeToString(secret)
-	window := &clientWindow{globals: g}
+	window := &clientWindow{globals: g, usage: clientUsageReporter(g)}
+	usageCtx, stopUsage := context.WithCancel(context.Background())
+	defer stopUsage()
+	if window.usage != nil {
+		go window.usage.Run(usageCtx)
+	}
 	done := make(chan struct{}, 1)
 	server := &http.Server{Handler: window.serve(token, done), ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = server.Serve(listener) }()

@@ -1,4 +1,4 @@
-开发预览版。**首次包含 Android 客户端。** / Development preview. **First release with the Android client.**
+开发预览版。/ Development preview.
 
 ## 下载 / Downloads
 
@@ -12,26 +12,19 @@
 
 ## 更新内容 / What's new
 
-- **Android 客户端**：扫码配对、六位码核对、一键连接，优先 WireGuard 直连，失败走 NKN 中继。
-  Android client: scan-to-pair, six-digit code check, one-tap connect, direct WireGuard first with NKN relay fallback.
-- **内置国内 NKN seed**：国内网络更容易连上 NKN；顺序为 `nkn.seed_rpc` → 国内 seed → 官方 seed。
-  Built-in China NKN seed tried before the official seeds.
-- **撤销通知**：NAS 撤销设备后，该设备收到签名通知并立即断开（需要 NAS 使用本版本）。
-  Revoked devices receive a signed notice and disconnect (requires this NAS version).
-- **配对批准更可靠**：先写入批准名单，再发送入网密钥。
-  Pairing approval now persists before the join secret is sent.
-- **面板**：错误密码限速；网页修改密码后删除旧版 `first-run.txt`。
-  Dashboard: wrong-password back-off; web password change removes the legacy `first-run.txt`.
-- v1 线协议未改变，与 v0.1.0-preview.1 的 NAS 和 Windows 客户端兼容。
-  The v1 wire protocol is unchanged and compatible with preview.1.
+- **匿名使用人数**：NAS 面板、Windows 客户端和 Android App 显示最近 24 小时 / 30 天 / 90 天运行过 NKNGuard 的设备数。数据来自 NKN 链上的零手续费订阅（`nknguard.usage.*`），不经过任何服务器；链上只出现一个由本机密钥单向派生的匿名公钥。默认开启，三端都可关闭，详见 [docs/USAGE_STATS.md](https://github.com/Viper-Boss/nknguard/blob/main/docs/USAGE_STATS.md)。
+  Anonymous 24 h / 30 d / 90 d user counts from zero-fee NKN subscriptions, shown on all platforms; on by default, can be switched off.
+- 包含 preview.2 的全部内容：Android 客户端、内置国内 NKN seed、撤销通知、配对批准修复、面板改进。
+  Includes everything from preview.2.
+- v1 线协议未改变。/ The v1 wire protocol is unchanged.
 
 ## 注意 / Caveats
 
-- **Android 客户端尚未完成真机测试**，请在非关键设备上试用，问题请附上 App 内“复制诊断信息”的内容。
-  The Android client has **not yet been tested on real devices**; please attach the in-app diagnostics when reporting problems.
+- **Android 客户端尚未完成真机测试**；问题请附上 App 内“复制诊断信息”的内容。
+  The Android client has **not yet been tested on real devices**.
 - APK 使用 CI 临时 debug 密钥签名，**升级前需先卸载旧版**。
-  The APK is signed with a throwaway CI debug key; **uninstall the previous build before installing**.
-- 所有程序均未进行代码签名，安全软件可能提示；请勿为此关闭系统防护。
+  **Uninstall the previous APK before installing** (throwaway CI signing key).
+- 程序均未进行代码签名；请勿为此关闭系统防护。
   Binaries are not code-signed; do not disable security software to run them.
 - 升级 NAS 只需替换程序文件，身份、配对数据和面板密码不受影响。
   Upgrading the NAS only replaces the binary; identity, pairings and the dashboard password are kept.

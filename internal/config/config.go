@@ -103,6 +103,11 @@ type Config struct {
 	Pairing struct {
 		ApprovalRequired bool `json:"approval_required"`
 	} `json:"pairing"`
+	// UsageStats is the default for the anonymous active-installation count
+	// (see pkg/usagestats). The dashboard switch, once used, overrides it.
+	UsageStats struct {
+		Enabled bool `json:"enabled"`
+	} `json:"usage_stats"`
 
 	Paths struct {
 		StateDir string `json:"state_dir"`
@@ -138,6 +143,7 @@ func Default() Config {
 	config.Logging.Level = "info"
 	config.Dashboard.Listen = "127.0.0.1:7878"
 	config.Pairing.ApprovalRequired = true
+	config.UsageStats.Enabled = true
 	config.Paths.StateDir = DefaultStateDir
 	config.Paths.Socket = DefaultSocketPath
 	if runtime.GOOS == "windows" {
@@ -214,6 +220,7 @@ func Parse(source string) (Config, error) {
 	config.Logging.Level = root.stringOr(config.Logging.Level, "logging", "level")
 	config.Dashboard.Listen = root.stringOr(config.Dashboard.Listen, "dashboard", "listen")
 	config.Pairing.ApprovalRequired = root.boolOr(config.Pairing.ApprovalRequired, "pairing", "approval_required")
+	config.UsageStats.Enabled = root.boolOr(config.UsageStats.Enabled, "usage_stats", "enabled")
 	config.Paths.StateDir = root.stringOr(config.Paths.StateDir, "paths", "state_dir")
 	config.Paths.Socket = root.stringOr(config.Paths.Socket, "paths", "socket")
 
@@ -341,6 +348,7 @@ func (c Config) Render() string {
 	fmt.Fprintf(&out, "\nlogging:\n  level: %s\n", c.Logging.Level)
 	fmt.Fprintf(&out, "\ndashboard:\n  listen: %s\n", c.Dashboard.Listen)
 	fmt.Fprintf(&out, "\npairing:\n  approval_required: %t\n", c.Pairing.ApprovalRequired)
+	fmt.Fprintf(&out, "\nusage_stats:\n  enabled: %t\n", c.UsageStats.Enabled)
 	fmt.Fprintf(&out, "\npaths:\n  state_dir: %s\n  socket: %s\n", c.Paths.StateDir, c.Paths.Socket)
 	return out.String()
 }

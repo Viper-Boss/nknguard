@@ -18,6 +18,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
+	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
 
@@ -37,6 +38,8 @@ type Daemon struct {
 	Logger     *slog.Logger
 	Logs       *LogRing
 	Started    time.Time
+	// Usage counts active installations anonymously; see pkg/usagestats.
+	Usage *usagestats.Reporter
 
 	down     context.CancelFunc
 	downOnce sync.Once
@@ -179,6 +182,8 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		closeNKN()
 	}()
 	daemon := &Daemon{Config: cfg, Node: node, Controller: controller, WireGuard: wg, Pairing: pairing, Logger: logger, Logs: ring, Started: time.Now(), down: cancel}
+	daemon.Usage = NewUsageReporter(cfg, node.Keystore, logger)
+	go daemon.Usage.Run(runCtx)
 
 	api, err := daemon.ServeAPI(runCtx)
 	if err != nil {
