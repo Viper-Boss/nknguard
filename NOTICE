@@ -1,0 +1,24 @@
+NKNGuard
+Copyright 2026 The NKNGuard Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Portions of this software were extracted from, and remain derived from, the
+networking components of NasSimHub (modemdeck), by the same authors:
+  - pkg/wireguard     from agent/internal/wireguard
+  - pkg/discovery/dht from agent/internal/dht
+  - pkg/nknclient, pkg/signaling/nknsignal
+                      from internal/httpapi/homesim_*_nkn.go and cmd/nknpeer
+
+Optional build-tagged components link against third-party modules that are
+not vendored in this repository and are fetched by the Go toolchain:
+  - github.com/nknorg/nkn-sdk-go      (Apache-2.0)   build tag: nknsdk
+  - github.com/libp2p/go-libp2p       (MIT)          build tag: libp2pdht
+  - github.com/libp2p/go-libp2p-kad-dht (MIT)        build tag: libp2pdht
+  - github.com/multiformats/go-multiaddr, go-multihash (MIT)
+  - github.com/ipfs/go-cid            (MIT)
+  - github.com/skip2/go-qrcode        (MIT)          local dashboard QR
+Their licenses apply to those modules. Check each dependency's LICENSE at
+the version you build against before distributing binaries.
+
+The default (untagged) build also uses go-qrcode for the local dashboard.

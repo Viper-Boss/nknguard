@@ -1,0 +1,50 @@
+version: 1
+
+device:
+  name: nas-home
+
+network:
+  id: ""
+  cidr: 10.88.0.0/16
+
+nkn:
+  enabled: true
+  multiclient: true
+
+discovery:
+  dht: true
+  lan_discovery: true
+  nkn_topic: true
+
+nat:
+  stun:
+    enabled: true
+    servers:
+      - stun.cloudflare.com:3478
+      - stun.l.google.com:19302
+
+wireguard:
+  interface: nkg0
+  listen_port: 0
+  persistent_keepalive: 25
+
+relay:
+  nkn:
+    enabled: true
+
+acl:
+  default: deny
+
+logging:
+  level: info
+
+# 本机管理面板；需远程访问时使用 SSH 端口转发。
+dashboard:
+  listen: 127.0.0.1:7878
+
+pairing:
+  approval_required: true
+
+paths:
+  state_dir: /var/lib/nknguard
+  socket: /run/nknguard/nknguard.sock

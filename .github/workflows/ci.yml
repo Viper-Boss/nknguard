@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: gofmt
+        run: make fmt-check
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./...
+      - name: race
+        run: go test -race ./...
+      - name: build linux-amd64 / linux-arm64 (core)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/nknguard
+          GOOS=linux GOARCH=arm64 go build -o /dev/null ./cmd/nknguard
+
+  windows:
+    name: windows client
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: test Windows adapters and client
+        run: go test -tags "nknsdk libp2pdht" ./...
+      - name: build Windows app
+        run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1" -o NKNGuard-Windows.exe ./cmd/nknguard
+
+  full:
+    name: full (nknsdk + libp2pdht)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: fetch optional modules
+        run: make deps
+      - name: vet with tags
+        run: go vet -tags "nknsdk libp2pdht" ./...
+      - name: test with tags
+        run: go test -tags "nknsdk libp2pdht" ./...
+      - name: build linux-amd64 / linux-arm64
+        run: |
+          GOOS=linux GOARCH=amd64 go build -tags "nknsdk libp2pdht" -o /dev/null ./cmd/nknguard
+          GOOS=linux GOARCH=arm64 go build -tags "nknsdk libp2pdht" -o /dev/null ./cmd/nknguard

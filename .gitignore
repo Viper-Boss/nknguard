@@ -1,0 +1,13 @@
+/bin/
+/dist/
+/_setup/
+/.gh-config/
+*.test
+*.out
+coverage.*
+nknguard-diagnostics-*.tar.gz
+# Local runtime state — never commit keys
+/state/
+*.key
+*.seed
+join.secret

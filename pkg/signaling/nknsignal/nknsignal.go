@@ -1,0 +1,155 @@
+//go:build nknsdk
+
+// Package nknsignal is the NKN transport for control messages.
+//
+// NKN carries the envelope; it does not authenticate it. MultiClient messages
+// are end-to-end encrypted to the destination's NKN key, which keeps relay
+// nodes from reading them, but the envelope's own Ed25519 signature is what
+// the dispatcher trusts. An unencrypted message is dropped here anyway,
+// because nothing in this protocol has a reason to be sent in the clear.
+package nknsignal
+
+import (
+	"context"
+	"sync"
+
+	nkn "github.com/nknorg/nkn-sdk-go"
+
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
+	"github.com/Viper-Boss/nknguard/pkg/protocol"
+	"github.com/Viper-Boss/nknguard/pkg/signaling"
+)
+
+// MaxHoldingSeconds is how long NKN nodes may store a message for an offline
+// recipient. Control messages are time-sensitive — a punch request for a
+// rendezvous that has passed is useless — so this is short.
+const MaxHoldingSeconds = 30
+
+// Transport implements signaling.Transport over an NKN MultiClient.
+type Transport struct {
+	client *nkn.MultiClient
+
+	mu        sync.RWMutex
+	addresses map[string]string // device id -> NKN address
+	devices   map[string]string // NKN address -> device id
+
+	inbox     chan signaling.Inbound
+	done      chan struct{}
+	closeOnce sync.Once
+	wg        sync.WaitGroup
+}
+
+// New wraps a connected client and starts the receive pump.
+func New(client *nkn.MultiClient) *Transport {
+	transport := &Transport{
+		client:    client,
+		addresses: make(map[string]string),
+		devices:   make(map[string]string),
+		inbox:     make(chan signaling.Inbound, 256),
+		done:      make(chan struct{}),
+	}
+	transport.wg.Add(1)
+	go transport.pump()
+	return transport
+}
+
+// LocalAddress is this node's NKN address.
+func (t *Transport) LocalAddress() string { return nknclient.NormaliseAddress(t.client.Address()) }
+
+// SetPeerAddress records where a verified device lives.
+func (t *Transport) SetPeerAddress(deviceID, address string) {
+	address = nknclient.NormaliseAddress(address)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if previous, ok := t.addresses[deviceID]; ok && previous != address {
+		delete(t.devices, previous)
+	}
+	t.addresses[deviceID] = address
+	t.devices[address] = deviceID
+}
+
+// DeviceFor maps an NKN address back to a device, for the relay's inbound
+// sessions. The answer is only as good as the verified records behind it.
+func (t *Transport) DeviceFor(address string) (string, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	device, ok := t.devices[nknclient.NormaliseAddress(address)]
+	return device, ok
+}
+
+// AddressOf returns a device's NKN address.
+func (t *Transport) AddressOf(deviceID string) (string, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	address, ok := t.addresses[deviceID]
+	return address, ok
+}
+
+// Send delivers to a known device.
+func (t *Transport) Send(ctx context.Context, deviceID string, envelope protocol.Envelope) error {
+	address, ok := t.AddressOf(deviceID)
+	if !ok {
+		return signaling.ErrUnknownPeer
+	}
+	return t.SendAddress(ctx, address, envelope)
+}
+
+// SendAddress delivers to a raw NKN address.
+func (t *Transport) SendAddress(ctx context.Context, address string, envelope protocol.Envelope) error {
+	select {
+	case <-t.done:
+		return signaling.ErrClosed
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	raw, err := envelope.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = t.client.Send(nkn.NewStringArray(address), raw, &nkn.MessageConfig{NoReply: true, MaxHoldingSeconds: MaxHoldingSeconds})
+	return err
+}
+
+// Receive returns the inbound stream.
+func (t *Transport) Receive() <-chan signaling.Inbound { return t.inbox }
+
+func (t *Transport) pump() {
+	defer t.wg.Done()
+	defer close(t.inbox)
+	for {
+		select {
+		case <-t.done:
+			return
+		case message, ok := <-t.client.OnMessage.C:
+			if !ok {
+				return
+			}
+			if message == nil || !message.Encrypted || len(message.Data) > protocol.MaxEnvelopeBytes {
+				continue
+			}
+			envelope, err := protocol.Unmarshal(message.Data)
+			if err != nil {
+				continue
+			}
+			select {
+			case t.inbox <- signaling.Inbound{Envelope: envelope, Source: nknclient.NormaliseAddress(message.Src)}:
+			default:
+				// A full inbox drops rather than blocks: the NKN client's
+				// own buffers must keep draining, and the sender retries.
+			}
+		}
+	}
+}
+
+// Close stops the pump and closes the client.
+func (t *Transport) Close() error {
+	var err error
+	t.closeOnce.Do(func() {
+		close(t.done)
+		err = t.client.Close()
+		t.wg.Wait()
+	})
+	return err
+}
