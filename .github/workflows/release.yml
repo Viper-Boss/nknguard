@@ -1,12 +1,14 @@
 name: release
 
-# Pushing a tag v* builds every platform and publishes a GitHub pre-release
-# with the NAS/Linux daemons, the Windows client, the Android APK and
-# SHA256SUMS. Release notes come from .github/RELEASE_NOTES.md.
+# Pushing a tag v* (or a branch release/v*, which becomes tag v*) builds
+# every platform and publishes a GitHub pre-release with the NAS/Linux
+# daemons, the Windows client, the Android APK and SHA256SUMS. Release notes
+# come from .github/RELEASE_NOTES.md.
 
 on:
   push:
     tags: ["v*"]
+    branches: ["release/v*"]
 
 permissions:
   contents: read
@@ -19,13 +21,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: release tag
+        shell: bash
+        # v0.1.0-preview.2 from tag v0.1.0-preview.2 or branch release/v0.1.0-preview.2
+        run: echo "TAG=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.7"
       - name: test
         run: go test -race ./... && go test -tags "nknsdk libp2pdht" ./...
       - name: build
-        run: make release
+        run: make release VERSION="$TAG"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -39,6 +45,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: release tag
+        shell: bash
+        # v0.1.0-preview.2 from tag v0.1.0-preview.2 or branch release/v0.1.0-preview.2
+        run: echo "TAG=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.7"
@@ -47,7 +57,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          version=$(git describe --tags --always)
+          version="$TAG"
           go build -tags "nknsdk libp2pdht" -trimpath \
             -ldflags "-s -w -H=windowsgui -X main.guiBuild=1 -X github.com/Viper-Boss/nknguard/internal/app.Version=$version" \
             -o NKNGuard-Windows.exe ./cmd/nknguard
@@ -67,6 +77,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: release tag
+        shell: bash
+        # v0.1.0-preview.2 from tag v0.1.0-preview.2 or branch release/v0.1.0-preview.2
+        run: echo "TAG=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.7"
@@ -75,7 +89,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: build core (all ABIs)
-        run: NKG_VERSION=$(git describe --tags --always) android/core/build.sh
+        run: NKG_VERSION="$TAG" android/core/build.sh
       - name: build APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug -PskipGoCore=true
@@ -95,6 +109,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: release tag
+        shell: bash
+        # v0.1.0-preview.2 from tag v0.1.0-preview.2 or branch release/v0.1.0-preview.2
+        run: echo "TAG=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: out
@@ -105,7 +123,6 @@ jobs:
       - name: create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" out/* \
             --prerelease \
