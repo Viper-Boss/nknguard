@@ -30,7 +30,7 @@ Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/re
 | 🗄️ **NAS / Linux** (ARM64, incl. ARM fnOS) | `nknguard-linux-arm64` | Needs root and `wireguard-tools`; see [Install the NAS](#1-install-the-nas) |
 | 🗄️ **NAS / Linux** (x86_64) | `nknguard-linux-amd64` | Same as above |
 | 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Install [WireGuard for Windows](https://www.wireguard.com/install/) and Microsoft Edge first |
-| 🤖 **Android 8.0+** | `app-debug.apk` | In device testing, not on Releases yet. Test builds: the `NKNGuard-android-debug` artifact of the latest successful [Actions → android](https://github.com/Viper-Boss/nknguard/actions/workflows/android.yml) run (GitHub sign-in required) |
+| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview, not yet tested on real devices; uninstall the previous build before upgrading |
 
 Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview builds are not code-signed.
 
