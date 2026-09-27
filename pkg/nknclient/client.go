@@ -39,8 +39,8 @@ const SeedName = "nkn.seed"
 // Options configures the client.
 type Options struct {
 	Seed []byte
-	// SeedRPC overrides the NKN seed RPC servers, e.g. a self-hosted node or
-	// the China community seed NasSimHub prefers. Empty uses the SDK default.
+	// SeedRPC lists extra NKN seed RPC servers (e.g. a self-hosted node),
+	// tried before the built-in China and official seeds; see SeedRPCList.
 	SeedRPC []string
 }
 
@@ -50,10 +50,7 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("nknclient: account: %w", err)
 	}
-	var config *nkn.ClientConfig
-	if seeds := clean(options.SeedRPC); len(seeds) > 0 {
-		config = &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(seeds...)}
-	}
+	config := &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(SeedRPCList(options.SeedRPC)...)}
 	client, err := nkn.NewMultiClient(account, Identifier, SubClients, false, config)
 	if err != nil {
 		return nil, fmt.Errorf("nknclient: create: %w", err)
@@ -70,16 +67,6 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 		_ = client.Close()
 		return nil, ctx.Err()
 	}
-}
-
-func clean(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 // NormaliseAddress strips a MultiClient sub-client prefix ("__0__.") so the

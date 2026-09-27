@@ -48,7 +48,7 @@ func openNKN(ctx context.Context, cfg config.Config, keystore *identity.Keystore
 	transport := nknsignal.New(client)
 	sources := rendezvous.Multi{rendezvous.Static(cfg.Discovery.StaticPeers)}
 	if cfg.Discovery.NKNTopic {
-		sources = append(sources, nkntopic.New(client, key.Rendezvous(), cfg.NKN.SeedRPC))
+		sources = append(sources, nkntopic.New(client, key.Rendezvous(), nknclient.SeedRPCList(cfg.NKN.SeedRPC)))
 	}
 	plane := &ControlPlane{
 		Signaling:  transport,

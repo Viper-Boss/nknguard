@@ -35,6 +35,9 @@
   在手机上无效，已改用 `userspace.Manager.Nudge` 直接触发握手。
 - NKN 连接走核心自己的 DNS 解析器（`internal/mobile/dns.go`，应用上报的 DNS + 223.5.5.5 等兜底）。
 - 通知栏“断开”用 `PendingIntent.getService`；如在某些 ROM 上后台启动被拦，改为广播接收器。
+- NKN seed：此前默认只用 SDK 的海外官方 seed，国内网络常连不上 NKN。现已内置国内社区 seed
+  `183.53.109.45:30003`（来自 NasSimHub，2026-09-08 验证）排在官方 seed 之前，NAS、Windows、
+  手机核心共用（`pkg/nknclient/seeds.go`）。该地址是社区节点，失效后会回退到官方 seed。
 - 开发环境无法连到 NKN 网络，**真实 NKN 配对/中继从未跑过**，只在进程内环回传输上测过。
 
 ## 设计要点（改动前请读）
