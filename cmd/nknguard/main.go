@@ -175,6 +175,7 @@ func loadConfig(g globals) (config.Config, bool, error) {
 	if g.socket != "" {
 		cfg.Paths.Socket = g.socket
 	}
+	cfg.Paths.LegacySetupNote = filepath.Join(filepath.Dir(g.configPath), "first-run.txt")
 	return cfg, exists, nil
 }
 
@@ -279,13 +280,10 @@ func cmdDashboardPassword(g globals, args []string, stdout, stderr io.Writer) er
 	if err != nil {
 		return err
 	}
+	// SetDashboardPassword also removes the legacy first-run.txt that older
+	// installers wrote with the generated password.
 	if err := node.SetDashboardPassword(password); err != nil {
 		return err
-	}
-	// Older installers wrote the generated password to this setup file.
-	// It is obsolete once the owner has chosen a new password.
-	if err := os.Remove(filepath.Join(filepath.Dir(g.configPath), "first-run.txt")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove legacy setup password: %w", err)
 	}
 	fmt.Fprintln(stdout, "Dashboard password updated. Sign in with the new password; no service restart is needed.")
 	return nil

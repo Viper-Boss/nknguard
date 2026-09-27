@@ -55,8 +55,11 @@
 - `go mod tidy` 把 `golang.org/x/crypto`、`x/term`（被直接使用）从 indirect 移为直接依赖。
 - 检查无问题：面板与 Windows 客户端 UI 均用 `textContent`，配对申请中的设备名不会造成 XSS；
   面板仅限回环 Host、动作需同源头；Windows 客户端本地接口有会话 token + Origin 校验。
-- 未修、建议后续：面板 Basic 认证每个请求都做 bcrypt 且无失败限速（仅本机监听，风险低）；
-  网页修改密码不会删除旧版 `first-run.txt`（其中是已失效的旧密码）；
+- 已修（后续提交）：面板登录与网页改密的错误密码加了全局限速（连续 5 次错误后每次
+  等待 1 秒起、翻倍、最长 60 秒，正确密码清零；面板只听回环，所有客户端同一地址，
+  所以按全局计数），限速期间直接返回 429 不做 bcrypt；网页修改密码现在同命令行一样删除
+  旧版 `first-run.txt`（`Node.SetDashboardPassword` 统一处理）。
+- 未修、建议后续：面板 Basic 认证每个成功请求仍做一次 bcrypt（仅本机监听，影响小）；
   Windows 客户端把会话 token 放在 Edge 命令行参数中（本机其他进程可见）；
   `deploy/systemd/nknguard-fnos-disk.service` 文档中以 `nknguard.service` 名称安装，建议统一命名。
 

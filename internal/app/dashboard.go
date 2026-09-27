@@ -10,7 +10,9 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -34,6 +36,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 		_ = listener.Close()
 		return nil, err
 	}
+	logins := newLoginThrottle()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, d.Status(r.Context()))
@@ -41,7 +44,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	mux.HandleFunc("GET /api/logs", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, d.Logs.Lines())
 	})
-	mux.HandleFunc("POST /api/admin/password", dashboardPasswordChangeHandler(d.Node))
+	mux.HandleFunc("POST /api/admin/password", dashboardPasswordChangeHandler(d.Node, logins))
 	mux.HandleFunc("GET /api/pair/state", func(w http.ResponseWriter, r *http.Request) {
 		current, err := d.Node.State.LoadMembership()
 		if err != nil {
@@ -131,7 +134,11 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
-			if !dashboardAuthenticated(r, d.Node) {
+			switch ok, retry := dashboardAuthenticated(r, d.Node, logins); {
+			case retry > 0:
+				tooManyAttempts(w, retry)
+				return
+			case !ok:
 				w.Header().Set("WWW-Authenticate", `Basic realm="NKNGuard NAS"`)
 				http.Error(w, "administrator password required", http.StatusUnauthorized)
 				return
@@ -150,12 +157,72 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	return closerFunc(server.Close), nil
 }
 
-func dashboardAuthenticated(r *http.Request, node *Node) bool {
+// dashboardAuthenticated checks the Basic credentials. While too many wrong
+// passwords have been tried it returns how long to wait instead, without
+// checking the password. A request without credentials (a browser's first
+// request, before it prompts) is not counted as a failure.
+func dashboardAuthenticated(r *http.Request, node *Node, logins *loginThrottle) (bool, time.Duration) {
 	user, supplied, ok := r.BasicAuth()
-	return ok && user == "admin" && node.VerifyDashboardPassword(supplied)
+	if !ok {
+		return false, 0
+	}
+	return logins.verify(func() bool {
+		return user == "admin" && node.VerifyDashboardPassword(supplied)
+	})
 }
 
-func dashboardPasswordChangeHandler(node *Node) http.HandlerFunc {
+func tooManyAttempts(w http.ResponseWriter, retry time.Duration) {
+	seconds := int((retry + time.Second - 1) / time.Second)
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	http.Error(w, "too many wrong passwords; try again in "+strconv.Itoa(seconds)+" s", http.StatusTooManyRequests)
+}
+
+// Wrong-password throttling. The panel only listens on loopback, so every
+// client (SSH forward, fnOS reverse proxy) shares one address and the limit is
+// global: after loginFreeFailures consecutive wrong passwords each further
+// attempt is refused for a delay that doubles up to loginMaxDelay. A correct
+// password resets the count. Checks are serialized so parallel guesses cannot
+// slip past the count.
+const (
+	loginFreeFailures = 5
+	loginBaseDelay    = time.Second
+	loginMaxDelay     = time.Minute
+)
+
+type loginThrottle struct {
+	verifyMu sync.Mutex
+	now      func() time.Time
+	failures int
+	until    time.Time
+}
+
+func newLoginThrottle() *loginThrottle { return &loginThrottle{now: time.Now} }
+
+// verify runs check unless attempts are currently blocked, and records the
+// outcome. It returns the remaining wait when blocked.
+func (t *loginThrottle) verify(check func() bool) (bool, time.Duration) {
+	t.verifyMu.Lock()
+	defer t.verifyMu.Unlock()
+	if wait := t.until.Sub(t.now()); wait > 0 {
+		return false, wait
+	}
+	if check() {
+		t.failures = 0
+		t.until = time.Time{}
+		return true, 0
+	}
+	t.failures++
+	if extra := t.failures - loginFreeFailures; extra >= 0 {
+		delay := loginMaxDelay
+		if extra < 6 {
+			delay = min(loginBaseDelay<<extra, loginMaxDelay)
+		}
+		t.until = t.now().Add(delay)
+	}
+	return false, 0
+}
+
+func dashboardPasswordChangeHandler(node *Node, logins *loginThrottle) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !dashboardActionAllowed(r) {
 			http.Error(w, "same-origin action required", http.StatusForbidden)
@@ -170,7 +237,12 @@ func dashboardPasswordChangeHandler(node *Node) http.HandlerFunc {
 			http.Error(w, "invalid password request", http.StatusBadRequest)
 			return
 		}
-		if !node.VerifyDashboardPassword(request.Current) {
+		ok, retry := logins.verify(func() bool { return node.VerifyDashboardPassword(request.Current) })
+		if retry > 0 {
+			tooManyAttempts(w, retry)
+			return
+		}
+		if !ok {
 			http.Error(w, "current password is incorrect", http.StatusForbidden)
 			return
 		}

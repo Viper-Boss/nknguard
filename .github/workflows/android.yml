@@ -6,6 +6,8 @@ on:
       - "android/**"
       - "internal/**"
       - "pkg/**"
+      - "cmd/**"
+      - "Makefile"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/android.yml"
@@ -14,6 +16,8 @@ on:
       - "android/**"
       - "internal/**"
       - "pkg/**"
+      - "cmd/**"
+      - "Makefile"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/android.yml"
@@ -58,4 +62,33 @@ jobs:
         with:
           name: NKNGuard-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # The NAS must run a build from this branch for the phone to receive the
+  # signed revocation notice. This job runs the whole repository's checks and
+  # uploads the Linux daemon so it can be copied to the NAS for device tests.
+  nas:
+    name: NAS daemon (linux amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: gofmt
+        run: make fmt-check
+      - name: vet
+        run: go vet ./... && go vet -tags "nknsdk libp2pdht" ./...
+      - name: race tests
+        run: go test -race ./...
+      - name: tests with tags
+        run: go test -tags "nknsdk libp2pdht" ./...
+      - name: build release binaries
+        run: make release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nknguard-nas-linux
+          path: dist/
           if-no-files-found: error
