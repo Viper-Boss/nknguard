@@ -57,7 +57,7 @@ sudo systemctl enable --now nknguard
 # Or: ssh -L 7878:127.0.0.1:7878 user@nas
 ```
 
-The browser requests administrator user `admin` and the password printed at initialization (`sudo nknguard dashboard-key` retrieves it). The dashboard displays the NAS's full NKN address for visual comparison. The first visit displays a five-minute QR invitation. On another Linux device, use `sudo nknguard pair '<QR content>' --name laptop`; on Windows, paste the QR content into the [client](docs/WINDOWS.md). Compare the six-digit code and approve on the NAS. The QR has the NAS public identity and a one-time request token, never the shared membership secret. See [pairing](docs/PAIRING.md).
+The browser requests administrator user `admin` and the password chosen during installation. An NAS administrator can reset it locally with `sudo nknguard dashboard-password set`. The dashboard displays the NAS's full NKN address for visual comparison. The first visit displays a five-minute QR invitation. On another Linux device, use `sudo nknguard pair '<QR content>' --name laptop`; on Windows, paste the QR content into the [client](docs/WINDOWS.md). Compare the six-digit code and approve on the NAS. The QR has the NAS public identity and a one-time request token, never the shared membership secret. See [pairing](docs/PAIRING.md).
 
 Legacy `join --secret` and `invite` commands work only with `pairing.approval_required: false`. The dashboard binds only to `127.0.0.1:7878`; do not publish its admin port directly.
 
@@ -92,7 +92,7 @@ vps-eu    10.88.3.200  nkn-relay   RELAY   127.0.0.1:41822      4s ago
 |---|---|
 | `nknguard init` | create a network and join it |
 | `nknguard pair <QR-content>` | request owner-approved enrollment (Linux CLI) |
-| `nknguard dashboard-key` | show the NAS dashboard password locally |
+| `nknguard dashboard-password set` | privately set or reset the NAS dashboard password |
 | `nknguard join <id> --secret <s>` | legacy enrollment, only with approval disabled |
 | `nknguard invite` | legacy join command, only with approval disabled |
 | `nknguard leave` | forget the network (device identity is kept) |

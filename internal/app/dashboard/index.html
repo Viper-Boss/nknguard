@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/pairing.css">
   <link rel="stylesheet" href="/identity.css">
+  <link rel="stylesheet" href="/security.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -21,6 +22,7 @@
         <button class="nav-item" data-view="pairing"><span>◎</span> 配对与授权</button>
         <button class="nav-item" data-view="paths"><span>⌁</span> 链路</button>
         <button class="nav-item" data-view="logs"><span>≡</span> 日志</button>
+        <button class="nav-item" data-view="security"><span>⚿</span> 安全设置</button>
       </nav>
       <div class="side-bottom"><span class="live-dot"></span><span>NAS 服务常驻运行</span><small id="side-version">—</small></div>
     </aside>
@@ -46,6 +48,8 @@
       <section id="paths" class="view"><div class="section-head"><div><h2>链路状态</h2><p>依据真实握手和端点判断，不把“已配置”当作“已连接”</p></div></div><div class="content-grid path-grid"><section class="panel"><h3>本机信息</h3><dl class="detail-list"><div><dt>设备名称</dt><dd id="detail-name">—</dd></div><div><dt>设备 ID</dt><dd id="detail-id">—</dd></div><div><dt>虚拟 IP</dt><dd id="detail-ip">—</dd></div><div><dt>NKN 地址</dt><dd id="detail-nkn">—</dd></div><div><dt>运行时间</dt><dd id="detail-uptime">—</dd></div></dl></section><section class="panel"><h3>传输层</h3><dl class="detail-list"><div><dt>WireGuard</dt><dd id="detail-wg">—</dd></div><div><dt>监听端口</dt><dd id="detail-port">—</dd></div><div><dt>NAT 类型</dt><dd id="detail-nat">—</dd></div><div><dt>直连成功</dt><dd id="detail-punch">—</dd></div><div><dt>回退次数</dt><dd id="detail-fallback">—</dd></div></dl></section></div><section class="panel path-explain"><h3>连接过程</h3><div class="steps"><div><span>01</span><strong>读取上次链路</strong><p>客户端先尝试缓存的对端端点。</p></div><div><span>02</span><strong>同步获取信标</strong><p>通过 NKN 请求最新候选地址与身份记录。</p></div><div><span>03</span><strong>WireGuard 握手</strong><p>直连成功后，数据不经过 NKN。</p></div><div><span>04</span><strong>必要时中继</strong><p>受限 NAT 下以 NKN 会话承载 WireGuard 密文。</p></div></div></section></section>
 
       <section id="logs" class="view"><div class="section-head"><div><h2>运行日志</h2><p>仅显示最近日志，敏感信息已在服务端脱敏</p></div><button class="secondary-button" id="refresh-logs">刷新日志</button></div><section class="panel log-panel"><pre id="log-lines">正在读取日志…</pre></section></section>
+
+      <section id="security" class="view"><div class="section-head"><div><h2>安全设置</h2><p>管理密码由你设置，服务端只保存加盐后的哈希</p></div></div><section class="panel password-panel"><h3>修改管理密码</h3><p>输入当前密码和新密码。新密码至少 12 个字符，修改后请用新密码重新登录。</p><form id="password-form" autocomplete="off"><label>当前密码<input id="current-password" type="password" autocomplete="current-password" required></label><label>新密码<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>确认新密码<input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required></label><button class="primary-button" type="submit">保存新密码</button><span id="password-message" role="status"></span></form></section></section>
       <footer class="license-footer">© 2026 NKNGuard Authors · AGPL-3.0-only · 无担保，可依许可再发布。<a href="https://github.com/Viper-Boss/nknguard" target="_blank" rel="noopener noreferrer">查看许可证与完整源码</a></footer>
     </main>
   </div>

@@ -9,9 +9,9 @@ The service definition is
 [`deploy/systemd/nknguard-fnos-disk.service`](../deploy/systemd/nknguard-fnos-disk.service).
 It requires `/mnt/docker-data` to be mounted before the daemon can start.
 The binary, configuration, identity keys, socket, and persistent state all
-reside under `/mnt/docker-data/nknguard`. The identity and dashboard password
-are generated on first initialization. The dashboard password is in
-`/mnt/docker-data/nknguard/etc/first-run.txt`, readable only by root.
+reside under `/mnt/docker-data/nknguard`. The device identity is generated on
+first initialization. The owner sets the dashboard password interactively;
+only a salted hash is stored in the private state directory.
 
 ## Operate
 
@@ -30,13 +30,18 @@ same network, forward it over SSH:
 ssh -L 7878:127.0.0.1:7878 NAS_USER@NAS_ADDRESS
 ```
 
-Then open `http://127.0.0.1:7878/` on that computer. Log in as `admin`; an
-NAS administrator can read the generated password with:
+Then open `http://127.0.0.1:7878/` on that computer. Log in as `admin` with
+the password chosen during setup. To set or reset it privately from the NAS:
 
 ```sh
-sudo sed -n 's/^Dashboard password: //p' \
-  /mnt/docker-data/nknguard/etc/first-run.txt
+sudo /mnt/docker-data/nknguard/bin/nknguard \
+  --config /mnt/docker-data/nknguard/etc/config.yaml dashboard-password set
 ```
+
+The existing NAS installation predates this setup flow. Run this command once
+to replace its generated password; it does not require entering the old one.
+The command removes the old password and legacy first-run note after saving
+the new hash. The service does not need to restart.
 
 ## Full removal
 

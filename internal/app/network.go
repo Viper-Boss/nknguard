@@ -1,8 +1,7 @@
 package app
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Viper-Boss/nknguard/internal/config"
 	"github.com/Viper-Boss/nknguard/internal/state"
@@ -22,26 +24,65 @@ import (
 const JoinSecretName = "join.secret"
 
 const dashboardKeyName = "dashboard.key"
+const dashboardPasswordName = "dashboard.password"
 
-// DashboardKey is an independent local administrator password. Only the NAS
-// operator can read it from the owner-only keystore.
+// DashboardKey reads a legacy generated password for existing installations.
+// New installations require the owner to set a password instead.
 func (n *Node) DashboardKey() (string, error) {
 	stored, err := n.Keystore.ReadSecret(dashboardKeyName)
+	return string(stored), err
+}
+
+// SetDashboardPassword stores only a salted bcrypt hash. The legacy plaintext
+// key is removed after the new hash has been safely persisted.
+func (n *Node) SetDashboardPassword(password string) error {
+	if err := ValidateDashboardPassword(password); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	if err := n.Keystore.WriteSecret(dashboardPasswordName, hash); err != nil {
+		return err
+	}
+	err = os.Remove(filepath.Join(n.Keystore.Dir(), dashboardKeyName))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove old dashboard key: %w", err)
+	}
+	return nil
+}
+
+func ValidateDashboardPassword(password string) error {
+	if utf8.RuneCountInString(password) < 12 {
+		return errors.New("dashboard password must have at least 12 characters")
+	}
+	if len([]byte(password)) > 72 {
+		return errors.New("dashboard password must have at most 72 bytes")
+	}
+	if strings.ContainsAny(password, "\r\n") {
+		return errors.New("dashboard password cannot contain a newline")
+	}
+	return nil
+}
+
+// VerifyDashboardPassword supports old installations until their owner sets a
+// new password. A configured hash always takes precedence over the old key.
+func (n *Node) VerifyDashboardPassword(password string) bool {
+	hash, err := n.Keystore.ReadSecret(dashboardPasswordName)
 	if err == nil {
-		return string(stored), nil
+		return bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return "", err
+		return false
 	}
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return "", err
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(key)
-	if err := n.Keystore.WriteSecret(dashboardKeyName, []byte(encoded)); err != nil {
-		return "", err
-	}
-	return encoded, nil
+	legacy, err := n.Keystore.ReadSecret(dashboardKeyName)
+	return err == nil && subtle.ConstantTimeCompare(legacy, []byte(password)) == 1
+
+}
+
+func (n *Node) DashboardPasswordReady() bool {
+	return n.Keystore.Has(dashboardPasswordName) || n.Keystore.Has(dashboardKeyName)
 }
 
 // Node is the on-disk identity of this machine: keystore, root identity, state.

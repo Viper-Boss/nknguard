@@ -44,7 +44,7 @@ sudo systemctl enable --now nknguard
 # 或从电脑安全地转发：ssh -L 7878:127.0.0.1:7878 user@nas
 ```
 
-浏览器需要输入管理员账号 `admin` 和安装时打印的口令；丢失时在 NAS 上执行 `sudo nknguard dashboard-key` 查看。面板首页显示 NAS 的完整 NKN 地址并提供复制按钮，方便与客户端核对。首次打开面板自动显示五分钟有效的二维码。二维码只包含 NAS 身份公钥、NKN 地址和一次性申请令牌。另一台 Linux 设备可执行 `sudo nknguard pair '<二维码内容>' --name laptop`；Windows 客户端可粘贴二维码内容，在 NAS 面板核对六位码并批准。Windows 安装方式见 [docs/WINDOWS.md](docs/WINDOWS.md)。
+浏览器使用管理员账号 `admin` 和首次安装时自己设置的密码登录；忘记密码时，NAS 管理员可运行 `sudo nknguard dashboard-password set` 重设。面板首页显示 NAS 的完整 NKN 地址并提供复制按钮，方便与客户端核对。首次打开面板自动显示五分钟有效的二维码。二维码只包含 NAS 身份公钥、NKN 地址和一次性申请令牌。另一台 Linux 设备可执行 `sudo nknguard pair '<二维码内容>' --name laptop`；Windows 客户端可粘贴二维码内容，在 NAS 面板核对六位码并批准。Windows 安装方式见 [docs/WINDOWS.md](docs/WINDOWS.md)。
 
 默认开启设备级批准。NAS 可以在面板撤销单台设备。旧式 `join --secret` 和 `invite` 只在显式设置 `pairing.approval_required: false` 时可用。
 

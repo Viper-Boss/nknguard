@@ -18,7 +18,7 @@ function toast(message) {
 function changeView(name) {
   document.querySelectorAll('.view').forEach(element => element.classList.toggle('active', element.id === name));
   document.querySelectorAll('.nav-item').forEach(element => element.classList.toggle('active', element.dataset.view === name));
-  setText('page-title', ({overview:'连接总览',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志'})[name]);
+  setText('page-title', ({overview:'连接总览',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志',security:'安全设置'})[name]);
   if (name === 'logs') refreshLogs();
   if (name === 'pairing') refreshPairState();
 }
@@ -132,6 +132,23 @@ async function reconnect(id) {
   } catch (error) { toast('重试失败，请查看日志'); }
 }
 
+async function changePassword(event) {
+  event.preventDefault();
+  const current = byId('current-password').value;
+  const next = byId('new-password').value;
+  const confirmation = byId('confirm-password').value;
+  const message = byId('password-message');
+  if ([...next].length < 12) { message.textContent = '新密码至少需要 12 个字符。'; return; }
+  if (next !== confirmation) { message.textContent = '两次输入的新密码不一致。'; return; }
+  try {
+    const response = await fetch('/api/admin/password', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({current,new:next})});
+    if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
+    byId('password-form').reset();
+    message.textContent = '密码已更新。请刷新页面并使用新密码登录。';
+    toast('管理密码已更新');
+  } catch (error) { message.textContent = `修改失败：${error.message}`; }
+}
+
 async function postAction(route) {
   const response = await fetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
   if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
@@ -203,6 +220,7 @@ document.querySelectorAll('.nav-item').forEach(button => button.addEventListener
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => changeView(button.dataset.go)));
 byId('refresh').addEventListener('click', refresh);
 byId('refresh-logs').addEventListener('click', refreshLogs);
+byId('password-form').addEventListener('submit', changePassword);
 byId('new-invite').addEventListener('click', newInvite);
 byId('copy-invite').addEventListener('click', () => navigator.clipboard.writeText(inviteURI).then(() => toast('配对内容已复制')).catch(() => toast('复制失败')));
 byId('copy-nkn-address').addEventListener('click', () => {

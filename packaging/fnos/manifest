@@ -1,5 +1,5 @@
 appname       = nknguard
-version       = 0.1.0
+version       = 0.1.1
 display_name  = NKNGuard
 desc          = NKN 信标与 WireGuard 私有连接服务
 platform      = arm

@@ -13,6 +13,7 @@ import (
 // in a temporary directory without root or a network.
 func TestInitInviteJoinLeave(t *testing.T) {
 	dir := t.TempDir()
+	passwordFile := testPasswordFile(t, dir)
 	flagsA := []string{"--config", filepath.Join(dir, "a.yaml"), "--state-dir", filepath.Join(dir, "a")}
 	flagsB := []string{"--config", filepath.Join(dir, "b.yaml"), "--state-dir", filepath.Join(dir, "b")}
 	for _, path := range []string{flagsA[1], flagsB[1]} {
@@ -22,7 +23,7 @@ func TestInitInviteJoinLeave(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if code := run(append(flagsA, "init", "--name", "laptop"), &out, &errOut); code != 0 {
+	if code := run(append(flagsA, "init", "--name", "laptop", "--dashboard-password-file", passwordFile), &out, &errOut); code != 0 {
 		t.Fatalf("init: %d %s", code, errOut.String())
 	}
 	join := regexp.MustCompile(`nknguard join (\S+) --secret (\S+)`).FindStringSubmatch(out.String())
@@ -61,12 +62,13 @@ func TestInitInviteJoinLeave(t *testing.T) {
 
 func TestConfigFileHoldsNoSecret(t *testing.T) {
 	dir := t.TempDir()
+	passwordFile := testPasswordFile(t, dir)
 	path := filepath.Join(dir, "c.yaml")
 	if err := os.WriteFile(path, []byte("pairing:\n  approval_required: false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	if code := run([]string{"--config", path, "--state-dir", filepath.Join(dir, "s"), "init"}, &out, &errOut); code != 0 {
+	if code := run([]string{"--config", path, "--state-dir", filepath.Join(dir, "s"), "init", "--dashboard-password-file", passwordFile}, &out, &errOut); code != 0 {
 		t.Fatal(errOut.String())
 	}
 	secret := regexp.MustCompile(`--secret (\S+)`).FindStringSubmatch(out.String())[1]
@@ -79,9 +81,10 @@ func TestConfigFileHoldsNoSecret(t *testing.T) {
 
 func TestApprovalRequiredByDefault(t *testing.T) {
 	dir := t.TempDir()
+	passwordFile := testPasswordFile(t, dir)
 	flags := []string{"--config", filepath.Join(dir, "nas.yaml"), "--state-dir", filepath.Join(dir, "state")}
 	var out, errOut bytes.Buffer
-	if code := run(append(flags, "init"), &out, &errOut); code != 0 {
+	if code := run(append(flags, "init", "--dashboard-password-file", passwordFile), &out, &errOut); code != 0 {
 		t.Fatalf("init: %s", errOut.String())
 	}
 	if strings.Contains(out.String(), "--secret") || !strings.Contains(out.String(), "dashboard") {
@@ -95,6 +98,15 @@ func TestApprovalRequiredByDefault(t *testing.T) {
 	if code := run(append(flags, "join", "invalid", "--secret", "invalid"), &out, &errOut); code == 0 || !strings.Contains(errOut.String(), "pairing approval") {
 		t.Fatalf("legacy join accepted: %d %s", code, errOut.String())
 	}
+}
+
+func testPasswordFile(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "dashboard-password.txt")
+	if err := os.WriteFile(path, []byte("correct horse battery staple\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestDaemonCommandsWithoutDaemon(t *testing.T) {

@@ -21,7 +21,7 @@ root so that it can create the `nkg0` WireGuard interface.
    ```
 
    The result is `nknguard.fpk`. The `chmod` step is needed when the source
-   was archived on Windows. Do not copy `first-run.txt`, state, or private
+   was archived on Windows. Do not copy `setup.txt`, state, or private
    keys into this build directory.
 
 3. Install the package from the App Center, or run
@@ -29,10 +29,11 @@ root so that it can create the `nkg0` WireGuard interface.
    `INDEX` identifies an available App Center volume. The volume must be
    configured in fnOS first; `0` means that no default volume is selected.
 
-After installation, the one-time dashboard password is stored in the app's
-private configuration directory as `first-run.txt` (mode `0600`). The
-dashboard binds to `127.0.0.1:7878`. Use an SSH port forward to access it
+The installation wizard asks the owner to enter and confirm a dashboard
+password. NKNGuard stores a salted password hash, not the plaintext password.
+The dashboard binds to `127.0.0.1:7878`. Use an SSH port forward to access it
 from another machine; the dashboard must not be exposed on a public address.
+An installed owner can change the password on the dashboard's Security page.
 
 The package's start, stop, and uninstall callbacks manage the NKNGuard daemon
 and `nkg0`. fnOS removes the app's target, configuration, and data directories

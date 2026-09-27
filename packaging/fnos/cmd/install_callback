@@ -13,8 +13,13 @@ data="${TRIM_PKGVAR:?}"
 [ -x "$bin" ] || fail '应用包内缺少 ARM64 NKNGuard 可执行文件。'
 install -d -m 0700 "$TRIM_PKGETC" "$data" "$data/state" "$data/run"
 if [ ! -e "$cfg" ]; then
+  [ -n "${wizard_dashboard_password:-}" ] || fail '请在安装向导中设置管理密码。'
+  [ "$wizard_dashboard_password" = "${wizard_dashboard_password_confirm:-}" ] || fail '两次输入的管理密码不一致。'
+  password="$wizard_dashboard_password"
+  unset wizard_dashboard_password wizard_dashboard_password_confirm
   umask 077
-  "$bin" --config "$cfg" --state-dir "$data/state" --socket "$data/run/nknguard.sock" init --name nas-home > "$TRIM_PKGETC/first-run.txt" || fail '初始网络创建失败。'
-  chmod 0600 "$TRIM_PKGETC/first-run.txt"
+  printf '%s\n' "$password" | "$bin" --config "$cfg" --state-dir "$data/state" --socket "$data/run/nknguard.sock" init --name nas-home --dashboard-password-stdin > "$TRIM_PKGETC/setup.txt" || fail '初始网络创建失败，请检查密码长度（12 个字符以上，72 字节以内）。'
+  unset password
+  chmod 0600 "$TRIM_PKGETC/setup.txt"
 fi
 exit 0

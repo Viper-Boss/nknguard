@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -26,6 +27,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/internal/config"
 	"github.com/Viper-Boss/nknguard/pkg/diagnostics"
@@ -34,14 +37,15 @@ import (
 const usage = `nknguard — serverless WireGuard mesh over NKN
 
 Usage:
-  nknguard init [--name <device-name>]          create a new network and join it
+  nknguard init [--name <device-name>]          create a network and set the dashboard password
   nknguard join <network-id> --secret <secret>  join an existing network
   nknguard invite                               print the command that joins another device
   nknguard pair <QR-content> [--name name]       request owner-approved enrollment
   nknguard client                               open the Windows connect/disconnect app
   nknguard leave                                forget the network (keeps the device identity)
   nknguard identity                             show this device's id
-  nknguard dashboard-key                        show the local dashboard admin password
+  nknguard dashboard-password set               set or change the dashboard password privately
+  nknguard dashboard-key                        show a legacy generated password, if present
   sudo nknguard up                              run the daemon in the foreground
   sudo nknguard daemon                          same as up (what the systemd unit runs)
   sudo nknguard down                            stop the daemon and remove the interface
@@ -105,7 +109,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var err error
 	switch command {
 	case "init":
-		err = cmdInit(g, rest, stdout)
+		err = cmdInit(g, rest, stdout, stderr)
 	case "join":
 		err = cmdJoin(g, rest, stdout)
 	case "invite":
@@ -120,6 +124,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdIdentity(g, stdout)
 	case "dashboard-key":
 		err = cmdDashboardKey(g, stdout)
+	case "dashboard-password":
+		err = cmdDashboardPassword(g, rest, stdout, stderr)
 	case "up", "daemon":
 		err = cmdUp(g, stderr)
 	case "down":
@@ -182,25 +188,33 @@ func writeConfig(g globals, cfg config.Config, networkID string) error {
 	return os.WriteFile(g.configPath, []byte(cfg.Render()), 0o644)
 }
 
-func cmdInit(g globals, args []string, stdout io.Writer) error {
+func cmdInit(g globals, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	name := flags.String("name", "", "device name")
+	passwordStdin := flags.Bool("dashboard-password-stdin", false, "read password from standard input")
+	passwordFile := flags.String("dashboard-password-file", "", "read password from an owner-only file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	cfg, _, err := loadConfig(g)
+	cfg, exists, err := loadConfig(g)
 	if err != nil {
 		return err
 	}
+	if exists && cfg.Network.ID != "" {
+		return errors.New("network already initialized; use `nknguard dashboard-password set` to change the password")
+	}
 	if *name != "" {
 		cfg.Device.Name = *name
+	}
+	password, err := readDashboardPassword(*passwordStdin, *passwordFile, stderr)
+	if err != nil {
+		return err
 	}
 	node, err := app.OpenNode(cfg)
 	if err != nil {
 		return err
 	}
-	adminKey, err := node.DashboardKey()
-	if err != nil {
+	if err := node.SetDashboardPassword(password); err != nil {
 		return err
 	}
 	networkID, secret, err := node.CreateNetwork()
@@ -212,7 +226,7 @@ func cmdInit(g globals, args []string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "Network created.\n\nNetwork ID:\n  %s\n\n", networkID)
 	if cfg.Pairing.ApprovalRequired {
-		fmt.Fprintf(stdout, "Start the NAS with: sudo nknguard up\nOpen the local dashboard at http://%s/ to scan and approve new devices.\nDashboard user: admin\nDashboard password: %s\n", cfg.Dashboard.Listen, adminKey)
+		fmt.Fprintf(stdout, "Start the NAS with: sudo nknguard up\nOpen the local dashboard at http://%s/ to scan and approve new devices.\nDashboard user: admin\nDashboard password: chosen during setup\n", cfg.Dashboard.Listen)
 	} else {
 		fmt.Fprintf(stdout, "Legacy join secret (keep private):\n  %s\n\nOn another device:\n  nknguard join %s --secret %s\n", secret, networkID, secret)
 	}
@@ -229,11 +243,104 @@ func cmdDashboardKey(g globals, stdout io.Writer) error {
 		return err
 	}
 	key, err := node.DashboardKey()
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("dashboard password cannot be displayed; use `nknguard dashboard-password set` to change it")
+	}
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "Dashboard user: admin\nDashboard password: %s\n", key)
 	return nil
+}
+
+func cmdDashboardPassword(g globals, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 || args[0] != "set" {
+		return errors.New("usage: nknguard dashboard-password set [--stdin | --file PATH]")
+	}
+	flags := flag.NewFlagSet("dashboard-password set", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	fromStdin := flags.Bool("stdin", false, "read password from standard input")
+	file := flags.String("file", "", "read password from an owner-only file")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected dashboard-password argument")
+	}
+	password, err := readDashboardPassword(*fromStdin, *file, stderr)
+	if err != nil {
+		return err
+	}
+	cfg, _, err := loadConfig(g)
+	if err != nil {
+		return err
+	}
+	node, err := app.OpenNode(cfg)
+	if err != nil {
+		return err
+	}
+	if err := node.SetDashboardPassword(password); err != nil {
+		return err
+	}
+	// Older installers wrote the generated password to this setup file.
+	// It is obsolete once the owner has chosen a new password.
+	if err := os.Remove(filepath.Join(filepath.Dir(g.configPath), "first-run.txt")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove legacy setup password: %w", err)
+	}
+	fmt.Fprintln(stdout, "Dashboard password updated. Sign in with the new password; no service restart is needed.")
+	return nil
+}
+
+func readDashboardPassword(fromStdin bool, file string, stderr io.Writer) (string, error) {
+	if fromStdin && file != "" {
+		return "", errors.New("choose either --stdin or --file")
+	}
+	var password string
+	switch {
+	case file != "":
+		info, err := os.Stat(file)
+		if err != nil {
+			return "", err
+		}
+		if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+			return "", errors.New("dashboard password file must be readable only by its owner")
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", err
+		}
+		password = strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+	case fromStdin:
+		line, err := bufio.NewReader(io.LimitReader(os.Stdin, 1024)).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		password = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+	default:
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return "", errors.New("interactive terminal required; use --stdin or --file for automated setup")
+		}
+		fmt.Fprint(stderr, "Set dashboard password (at least 12 characters): ")
+		first, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(stderr)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprint(stderr, "Confirm dashboard password: ")
+		second, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(stderr)
+		if err != nil {
+			return "", err
+		}
+		if !bytes.Equal(first, second) {
+			return "", errors.New("dashboard passwords do not match")
+		}
+		password = string(first)
+	}
+	if err := app.ValidateDashboardPassword(password); err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 func cmdJoin(g globals, args []string, stdout io.Writer) error {

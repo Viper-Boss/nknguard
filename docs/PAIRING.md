@@ -4,7 +4,7 @@
 
 在 fnOS 的 Linux 环境中准备 `wg`、`ip`、WireGuard 内核模块和系统服务，然后执行 `sudo nknguard init --name nas-home` 与 `systemctl enable --now nknguard`。NAS 守护进程持续运行，管理面板监听 `127.0.0.1:7878`。在 NAS 本机打开页面，或在电脑执行 `ssh -L 7878:127.0.0.1:7878 user@nas` 后打开该地址。不要把管理端口直接暴露到互联网。
 
-浏览器需要输入管理员账号 `admin` 和 `nknguard init` 打印的口令；可以在 NAS 上用 `sudo nknguard dashboard-key` 再次查看。首次打开面板会自动生成二维码；以后可以在“配对与授权”中重新生成。每个二维码有效五分钟，重新生成会令旧二维码及待处理申请失效。
+首次安装时由 NAS 主人设置管理密码；浏览器使用管理员账号 `admin` 和自己设置的密码登录。忘记密码时，NAS 管理员可在本机运行 `sudo nknguard dashboard-password set` 重新设置，密码不会被打印。首次打开面板会自动生成二维码；以后可以在“配对与授权”中重新生成。每个二维码有效五分钟，重新生成会令旧二维码及待处理申请失效。
 
 ## 添加设备
 

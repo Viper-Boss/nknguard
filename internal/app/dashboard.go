@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
-	"crypto/subtle"
 	"embed"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net"
@@ -21,9 +22,8 @@ var dashboardAssets embed.FS
 // ServeDashboard exposes a local-only fnOS control panel. A remote browser can
 // reach it through an authenticated fnOS reverse proxy or an SSH port forward.
 func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
-	adminKey, err := d.Node.DashboardKey()
-	if err != nil {
-		return nil, err
+	if !d.Node.DashboardPasswordReady() {
+		return nil, errors.New("dashboard password is not configured")
 	}
 	listener, err := net.Listen("tcp", d.Config.Dashboard.Listen)
 	if err != nil {
@@ -41,6 +41,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	mux.HandleFunc("GET /api/logs", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, d.Logs.Lines())
 	})
+	mux.HandleFunc("POST /api/admin/password", dashboardPasswordChangeHandler(d.Node))
 	mux.HandleFunc("GET /api/pair/state", func(w http.ResponseWriter, r *http.Request) {
 		current, err := d.Node.State.LoadMembership()
 		if err != nil {
@@ -130,7 +131,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
-			if !dashboardAuthenticated(r, adminKey) {
+			if !dashboardAuthenticated(r, d.Node) {
 				w.Header().Set("WWW-Authenticate", `Basic realm="NKNGuard NAS"`)
 				http.Error(w, "administrator password required", http.StatusUnauthorized)
 				return
@@ -149,9 +150,36 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	return closerFunc(server.Close), nil
 }
 
-func dashboardAuthenticated(r *http.Request, adminKey string) bool {
+func dashboardAuthenticated(r *http.Request, node *Node) bool {
 	user, supplied, ok := r.BasicAuth()
-	return ok && user == "admin" && subtle.ConstantTimeCompare([]byte(supplied), []byte(adminKey)) == 1
+	return ok && user == "admin" && node.VerifyDashboardPassword(supplied)
+}
+
+func dashboardPasswordChangeHandler(node *Node) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !dashboardActionAllowed(r) {
+			http.Error(w, "same-origin action required", http.StatusForbidden)
+			return
+		}
+		var request struct {
+			Current string `json:"current"`
+			New     string `json:"new"`
+		}
+		decoder := json.NewDecoder(io.LimitReader(r.Body, 4096))
+		if err := decoder.Decode(&request); err != nil {
+			http.Error(w, "invalid password request", http.StatusBadRequest)
+			return
+		}
+		if !node.VerifyDashboardPassword(request.Current) {
+			http.Error(w, "current password is incorrect", http.StatusForbidden)
+			return
+		}
+		if err := node.SetDashboardPassword(request.New); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func dashboardActionAllowed(r *http.Request) bool {
