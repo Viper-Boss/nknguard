@@ -1,0 +1,21 @@
+[Unit]
+Description=NKNGuard on the fnOS data disk
+Documentation=https://github.com/Viper-Boss/nknguard
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/docker-data
+ConditionPathIsMountPoint=/mnt/docker-data
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/mnt/docker-data/nknguard
+ExecStart=/mnt/docker-data/nknguard/bin/nknguard --config /mnt/docker-data/nknguard/etc/config.yaml up
+ExecStop=-/usr/bin/timeout 8s /mnt/docker-data/nknguard/bin/nknguard --config /mnt/docker-data/nknguard/etc/config.yaml down
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=25s
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
