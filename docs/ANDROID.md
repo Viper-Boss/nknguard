@@ -99,7 +99,7 @@ debug APK，并上传为构件 `NKNGuard-android-debug`。debug APK 由 CI 临�
 
 | 项目 | 结果 | 说明 |
 | --- | --- | --- |
-| 编译通过 | **Go 核心：通过**（android/arm64、linux/arm、linux/amd64）；**Kotlin：通过**（本地以 API 34 android.jar 类型检查）；**APK：见 CI** | 开发环境无法访问 Google Maven，完整 APK 由 GitHub Actions 用官方 SDK 构建 |
+| 编译通过 | **Go 核心：通过**（android/arm64、linux/arm、linux/amd64）；**Kotlin：通过**（本地以 API 34 android.jar 类型检查）；**APK：通过**（GitHub Actions run 36318344992） | 开发环境无法访问 Google Maven，APK 由 CI 用官方 SDK 构建 |
 | 自动化测试通过 | **通过** | 见下 |
 | 真机配对通过 | **未测** | 开发环境没有 Android 设备，也无法连到 NKN 网络 |
 | 真机直连通过 | **未测** | 同上 |

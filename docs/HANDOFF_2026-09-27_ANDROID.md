@@ -14,15 +14,11 @@
 | NAS 撤销通知 `ERROR NOT_AUTHORIZED` | `pkg/mesh/controller.go` `refuseUnapproved` | 测试通过 |
 | v1 线协议固定向量 | `internal/vectors/testdata/v1.json` | 测试通过 |
 | 配对批准顺序修复（先落盘再发送，失败回滚） | `internal/app/pairing.go` `Approve` | 测试通过 |
-| Android CI（构建核心 + debug APK 并上传构件） | `.github/workflows/android.yml` | **首次运行结果待确认**（run 36318344992） |
+| Android CI（构建核心 + debug APK 并上传构件） | `.github/workflows/android.yml` | **通过**：run 36318344992 用官方 SDK 构建出 APK，构件 `NKNGuard-android-debug`（18 MB，含 3 个 ABI 的核心） |
 
 ## 接手第一件事
 
-1. 打开 GitHub Actions 的 `android` 工作流，确认 `build debug APK` 通过。
-   开发环境访问不了 Google Maven，**AGP/Gradle 构建从未在本地跑过**，第一次运行可能
-   需要修：AGP 8.7.3 + Kotlin 2.0.21 + Gradle 8.14.3 + compileSdk 35 的版本组合、
-   `app/build.gradle.kts` 的 `buildGoCore` 任务（CI 里用 `-PskipGoCore=true` 跳过）、
-   资源/清单合并问题。APK 构件名 `NKNGuard-android-debug`。
+1. 从 GitHub Actions `android` 工作流最新一次运行下载构件 `NKNGuard-android-debug`（首次运行已成功），解压得到 `app-debug.apk` 安装。
 2. 真机验收（交接文档第 2–5 步全部**未测**）：NAS 面板生成二维码 → 手机扫码 → 核对六位码
    → 批准 → 连接 → 用 NAS 虚拟 IP 访问飞牛；限制 UDP 测中继；撤销后应显示“授权已失效”。
    注意：撤销通知需要 NAS 运行**本分支**构建的 nknguard，旧 NAS 只会不回应。
