@@ -121,3 +121,55 @@ func TestDashboardHostRestriction(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalIsRolledBackWhenUndelivered(t *testing.T) {
+	cfg := config.Default()
+	cfg.Paths.StateDir = t.TempDir()
+	node, err := OpenNode(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	networkID, _, err := node.CreateNetwork()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, _ := identity.Generate()
+	switcher := signaling.NewSwitch()
+	nasWire := switcher.Attach(node.Device.DeviceID())
+	controller := mesh.New()
+	controller.Config.NetworkID = networkID
+	controller.Config.RequireApproval = true
+	pairing := NewPairing(node, controller, nasWire)
+	invite, _ := pairing.NewInvite()
+	wgKey := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	// The client's address is not attached to the switch, so delivery fails.
+	request := protocol.PairRequest{Token: invite.Token, Name: "phone", NKNAddress: client.DeviceID(), WireGuardPublicKey: wgKey}
+	envelope, _ := protocol.Seal(client, networkID, node.Device.DeviceID(), protocol.TypePairRequest, request)
+	ctx := context.Background()
+	dispatcher := &signaling.Dispatcher{Acceptor: &protocol.Acceptor{NetworkID: networkID, LocalDeviceID: node.Device.DeviceID()}, Open: map[protocol.MessageType]bool{protocol.TypePairRequest: true}}
+	dispatcher.Handle(protocol.TypePairRequest, pairing.HandleRequest)
+	if err := dispatcher.Dispatch(ctx, signaling.Inbound{Envelope: envelope, Source: client.DeviceID()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pairing.Approve(ctx, client.DeviceID()); err == nil {
+		t.Fatal("undelivered approval reported success")
+	}
+	if controller.Authorized(client.DeviceID()) {
+		t.Fatal("device stayed authorized after an undelivered approval")
+	}
+	stored, _ := node.State.LoadMembership()
+	if len(stored.Members) != 0 {
+		t.Fatalf("members after rollback: %v", stored.Members)
+	}
+	if len(pairing.Pending()) != 1 {
+		t.Fatal("request should stay pending so the owner can retry")
+	}
+	// Once the client is reachable, approval goes through.
+	switcher.Attach(client.DeviceID())
+	if err := pairing.Approve(ctx, client.DeviceID()); err != nil {
+		t.Fatal(err)
+	}
+	if !controller.Authorized(client.DeviceID()) {
+		t.Fatal("retry did not approve")
+	}
+}

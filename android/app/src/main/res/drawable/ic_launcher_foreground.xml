@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A shield with a link: NKNGuard's private tunnel. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,26 L78,35 L78,53 C78,68 67.5,79.5 54,84 C40.5,79.5 30,68 30,53 L30,35 Z" />
+    <path
+        android:fillColor="#1F6FEB"
+        android:pathData="M45,57 a7,7 0 1,1 0,-14 h6 v4 h-6 a3,3 0 1,0 0,6 h6 v4 Z M63,43 a7,7 0 1,1 0,14 h-6 v-4 h6 a3,3 0 1,0 0,-6 h-6 v-4 Z M47,48 h14 v4 h-14 Z" />
+</vector>

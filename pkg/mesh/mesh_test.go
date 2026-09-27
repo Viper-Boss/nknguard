@@ -18,6 +18,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/identity"
 	"github.com/Viper-Boss/nknguard/pkg/membership"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/protocol"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
@@ -540,5 +541,60 @@ func TestRunRefusesWithoutMembership(t *testing.T) {
 	}
 	if err := New().Run(context.Background()); !errors.Is(err, ErrNotJoined) {
 		t.Fatalf("unjoined controller: %v", err)
+	}
+}
+
+// A member that holds the join secret but is not on the owner's approval list
+// (a revoked device) is told so by the owner; a stranger without a valid
+// membership proof hears nothing.
+func TestOwnerTellsUnapprovedMemberItIsRevoked(t *testing.T) {
+	e := newEnv(t)
+	owner := e.startWith(t, "owner", "203.0.113.1:51820", e.key, func(ctrl *Controller) {
+		ctrl.Discovery = nil
+		ctrl.Config.OwnerDevice = true
+		ctrl.Config.RequireApproval = true
+	})
+	ownerID := owner.ctrl.Device.DeviceID()
+	var mu sync.Mutex
+	reports := map[string][]protocol.Error{}
+	record := func(name string) func(string, protocol.Error) {
+		return func(from string, report protocol.Error) {
+			if from != ownerID {
+				return
+			}
+			mu.Lock()
+			reports[name] = append(reports[name], report)
+			mu.Unlock()
+		}
+	}
+	otherSecret, _ := membership.NewJoinSecret()
+	otherKey, _ := membership.Derive(e.networkID, otherSecret)
+	e.startWith(t, "revoked", "203.0.113.2:51820", e.key, func(ctrl *Controller) {
+		ctrl.Discovery = nil
+		ctrl.Config.Members = []string{ownerID}
+		ctrl.OnPeerError = record("revoked")
+	})
+	e.startWith(t, "stranger", "203.0.113.3:51820", otherKey, func(ctrl *Controller) {
+		ctrl.Discovery = nil
+		ctrl.Config.Members = []string{ownerID}
+		ctrl.OnPeerError = record("stranger")
+	})
+	waitFor(t, 5*time.Second, "revoked member told", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(reports["revoked"]) > 0
+	})
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if reports["revoked"][0].Code != protocol.ErrorNotAuthorized {
+		t.Fatalf("report = %+v", reports["revoked"][0])
+	}
+	if len(reports["stranger"]) != 0 {
+		t.Fatal("a stranger was answered")
+	}
+	// Repeated introductions within a minute get one reply.
+	if len(reports["revoked"]) != 1 {
+		t.Fatalf("replies were not rate limited: %d", len(reports["revoked"]))
 	}
 }

@@ -34,7 +34,8 @@ func (n *Node) DashboardKey() (string, error) {
 }
 
 // SetDashboardPassword stores only a salted bcrypt hash. The legacy plaintext
-// key is removed after the new hash has been safely persisted.
+// key and first-run note are removed after the new hash has been safely
+// persisted.
 func (n *Node) SetDashboardPassword(password string) error {
 	if err := ValidateDashboardPassword(password); err != nil {
 		return err
@@ -49,6 +50,14 @@ func (n *Node) SetDashboardPassword(password string) error {
 	err = os.Remove(filepath.Join(n.Keystore.Dir(), dashboardKeyName))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("remove old dashboard key: %w", err)
+	}
+	// Older installers wrote the generated password to first-run.txt. It is
+	// obsolete once the owner has chosen a new password, whether from the
+	// command line or the dashboard.
+	if note := n.Config.Paths.LegacySetupNote; note != "" {
+		if err := os.Remove(note); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove legacy setup password: %w", err)
+		}
 	}
 	return nil
 }

@@ -107,6 +107,11 @@ type Config struct {
 	Paths struct {
 		StateDir string `json:"state_dir"`
 		Socket   string `json:"socket"`
+		// LegacySetupNote is the first-run.txt that older installers wrote
+		// next to the configuration file with a generated dashboard password.
+		// It is derived from the configuration path, never read from the
+		// file, and removed once the owner sets a new dashboard password.
+		LegacySetupNote string `json:"-"`
 	} `json:"paths"`
 }
 

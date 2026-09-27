@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NKNGuard" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#58A6FF</item>
+        <item name="android:colorPrimary">#58A6FF</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

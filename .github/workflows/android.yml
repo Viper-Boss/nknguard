@@ -1,0 +1,94 @@
+name: android
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "internal/**"
+      - "pkg/**"
+      - "cmd/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "internal/**"
+      - "pkg/**"
+      - "cmd/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: protocol core tests
+        run: go test -race ./internal/mobile/... ./internal/vectors/... ./pkg/wireguard/... ./pkg/mesh/...
+      - name: vet Android core
+        working-directory: android/core
+        run: |
+          go vet -tags nknsdk .
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go vet -tags nknsdk .
+      - name: build Android core (all ABIs)
+        run: android/core/build.sh
+        env:
+          NKG_VERSION: ${{ github.sha }}
+      - name: build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug -PskipGoCore=true
+      - name: check packaged core
+        run: |
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$apk" | grep -E 'lib/(arm64-v8a|armeabi-v7a|x86_64)/libnkgcore.so'
+          sha256sum "$apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NKNGuard-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # The NAS must run a build from this branch for the phone to receive the
+  # signed revocation notice. This job runs the whole repository's checks and
+  # uploads the Linux daemon so it can be copied to the NAS for device tests.
+  nas:
+    name: NAS daemon (linux amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+      - name: gofmt
+        run: make fmt-check
+      - name: vet
+        run: go vet ./... && go vet -tags "nknsdk libp2pdht" ./...
+      - name: race tests
+        run: go test -race ./...
+      - name: tests with tags
+        run: go test -tags "nknsdk libp2pdht" ./...
+      - name: build release binaries
+        run: make release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nknguard-nas-linux
+          path: dist/
+          if-no-files-found: error

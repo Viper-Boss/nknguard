@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+# Built by core/build.sh during the Gradle build.
+app/src/main/jniLibs/
+# Never commit signing material.
+*.jks
+*.keystore

@@ -109,5 +109,6 @@
 - 规范 §38 的测试基线（见 §0）。
 - `peerGate` 式的 libp2p 连接白名单尚未移植到 `pkg/discovery/dht`：目前任何 NKNGuard 节点都能连入 DHT，
   但只能拿到签名记录，无法冒充或授权。是否需要按成员资格限制 DHT 连接，待真实部署评估。
-- NasSimHub 的"中国社区 seed 优先"策略：NKNGuard 通过 `nkn.seed_rpc` 配置实现，但默认值为空（使用 SDK 默认 seed）。
-  在国内部署时建议把 NasSimHub 已验证的 seed 填入配置。
+- NasSimHub 的"中国社区 seed 优先"策略：已内置（`pkg/nknclient/seeds.go`）。NAS、Windows 与 Android 核心
+  都按“`nkn.seed_rpc` 配置 → 内置国内 seed → 官方 seed”的顺序依次尝试（SDK 逐个尝试、每个 10 秒超时）。
+  国内 seed 地址会漂移，更新前用 NasSimHub 的 `dev/collect_nkn_cn_nodes.py` 重新采集。

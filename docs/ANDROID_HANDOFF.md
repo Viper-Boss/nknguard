@@ -27,7 +27,7 @@ NKN 会话及相关后台任务。界面显示 NAS NKN 地址、虚拟 IP、真�
 | fnOS NAS | ARM64 独立 systemd 服务运行在已有数据盘 `/mnt/docker-data/nknguard`；不是应用中心 FPK 安装。服务和 `nkg0` 已验证运行。|
 | NAS 控制面板 | 仅监听 NAS 的 `127.0.0.1:7878`；管理员密码由用户设置，密码哈希已验证保存，旧随机密码文件已清除。|
 | Windows 客户端 | 有 GUI 预览版和 ZIP；编译、单元测试通过，尚未完成与该 NAS 的真实端到端配对、直连、中继测试。|
-| Android 客户端 | 尚无 Android 工程、APK 或实机测试。|
+| Android 客户端 | 已实现（`android/`、`internal/mobile`），自动化互通测试通过，APK 由 CI 构建；尚未真机测试。见 [ANDROID.md](ANDROID.md)。|
 | FPK | 0.1.1 ARM64 包已构建并隔离测试；此 NAS 没有可用的应用中心安装卷，所以未在应用中心实装。|
 
 不要将现有 Windows 预览版的功能描述直接当作 Android 已可互通的证据。
