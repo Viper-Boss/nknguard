@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Re-license NKNGuard contributions from this revision onward under AGPL-3.0-only, preserving the original Apache-2.0 attribution and license text for incorporated material.
+
 ## v0.1.0-dev (unreleased)
 
 First extraction from NasSimHub's networking code.

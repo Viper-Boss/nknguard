@@ -91,4 +91,4 @@ nknguard doctor
 
 ## 许可证
 
-Apache-2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+AGPL-3.0-only，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。此前已经发布的预览版二进制和历史提交仍按当时的 Apache-2.0 条款提供；本次修订及之后的版本采用 AGPL-3.0-only。

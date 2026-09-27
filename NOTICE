@@ -1,7 +1,8 @@
 NKNGuard
 Copyright 2026 The NKNGuard Authors
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The NKNGuard project is licensed under the GNU Affero General Public License,
+version 3 only (AGPL-3.0-only; see LICENSE).
 
 Portions of this software were extracted from, and remain derived from, the
 networking components of NasSimHub (modemdeck), by the same authors:
@@ -9,6 +10,12 @@ networking components of NasSimHub (modemdeck), by the same authors:
   - pkg/discovery/dht from agent/internal/dht
   - pkg/nknclient, pkg/signaling/nknsignal
                       from internal/httpapi/homesim_*_nkn.go and cmd/nknpeer
+
+Those original components were distributed under Apache-2.0. Their source
+attribution and original license text are preserved in this NOTICE and
+LICENSES/Apache-2.0.txt. The combined NKNGuard work is distributed under
+AGPL-3.0-only; the original components and third-party modules retain their
+own license notices.
 
 Optional build-tagged components link against third-party modules that are
 not vendored in this repository and are fetched by the Go toolchain:

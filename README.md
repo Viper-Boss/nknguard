@@ -162,4 +162,6 @@ useless:
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+AGPL-3.0-only. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Earlier published
+preview binaries and commits remain under their original Apache-2.0 terms;
+this change applies to this revision and subsequent releases.

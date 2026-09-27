@@ -49,4 +49,4 @@ Small and focused, conventional prefixes (`feat(nat):`, `fix(mesh):`,
 
 ## License
 
-By contributing you agree your contribution is licensed under Apache-2.0.
+By contributing you agree your contribution is licensed under AGPL-3.0-only.
