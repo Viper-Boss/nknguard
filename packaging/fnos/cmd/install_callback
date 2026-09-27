@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+fail() {
+  printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+  exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || fail '安装回调没有 root 权限，无法初始化 WireGuard 服务。'
+bin="${TRIM_APPDEST:?}/bin/nknguard"
+cfg="${TRIM_PKGETC:?}/config.yaml"
+data="${TRIM_PKGVAR:?}"
+[ -x "$bin" ] || fail '应用包内缺少 ARM64 NKNGuard 可执行文件。'
+install -d -m 0700 "$TRIM_PKGETC" "$data" "$data/state" "$data/run"
+if [ ! -e "$cfg" ]; then
+  umask 077
+  "$bin" --config "$cfg" --state-dir "$data/state" --socket "$data/run/nknguard.sock" init --name nas-home > "$TRIM_PKGETC/first-run.txt" || fail '初始网络创建失败。'
+  chmod 0600 "$TRIM_PKGETC/first-run.txt"
+fi
+exit 0

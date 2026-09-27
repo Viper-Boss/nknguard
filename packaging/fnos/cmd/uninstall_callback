@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+# fnOS removes the application target, configuration, and data directories.
+# NKNGuard writes no systemd unit, binary, or state outside those directories.
+exit 0

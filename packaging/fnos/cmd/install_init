@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+fail() {
+  printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+  exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || fail 'NKNGuard 需要 root 权限管理 WireGuard；此 fnOS 不允许特权应用。'
+[ "$(uname -m)" = aarch64 ] || fail '此安装包只支持 ARM64/aarch64 飞牛设备。'
+command -v wg >/dev/null 2>&1 || fail '缺少 wireguard-tools (wg)。'
+command -v ip >/dev/null 2>&1 || fail '缺少 iproute2 (ip)。'
+if ip link show nkg0 >/dev/null 2>&1; then
+  fail '系统已存在 nkg0 接口，请先检查已有服务，避免覆盖。'
+fi
+exit 0

@@ -1,0 +1,10 @@
+appname       = nknguard
+version       = 0.1.0
+display_name  = NKNGuard
+desc          = NKN 信标与 WireGuard 私有连接服务
+platform      = arm
+source        = thirdparty
+maintainer    = Viper-Boss
+maintainer_url = https://github.com/Viper-Boss/nknguard
+distributor   = Viper-Boss
+ctl_stop      = true

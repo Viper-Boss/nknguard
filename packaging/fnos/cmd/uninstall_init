@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+"$(dirname "$0")/main" stop
+if ip link show nkg0 >/dev/null 2>&1; then
+  ip link delete nkg0 || true
+  if ip link show nkg0 >/dev/null 2>&1; then
+    printf '%s\n' 'NKNGuard 的 nkg0 接口仍在运行；为避免残留，卸载已中止。' > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+  fi
+fi
+exit 0
