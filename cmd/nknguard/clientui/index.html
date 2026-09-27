@@ -38,6 +38,12 @@
           <div class="mini-grid"><div><small>虚拟 IP</small><strong id="virtual-ip">—</strong></div><div><small>NAS 虚拟 IP</small><strong id="nas-ip">—</strong></div></div>
         </section>
       </div>
+      <section class="card usage-card">
+        <div class="card-title"><div><h3>NKNGuard 使用人数</h3><p>最近运行过 NKNGuard 的设备数，来自 NKN 链上的匿名订阅</p></div><button class="copy" id="refresh-usage">刷新</button></div>
+        <div class="mini-grid usage-grid"><div><small>24 小时</small><strong id="usage-day">—</strong></div><div><small>30 天</small><strong id="usage-month">—</strong></div><div><small>90 天</small><strong id="usage-quarter">—</strong></div></div>
+        <label class="usage-switch"><input type="checkbox" id="usage-enabled"><span>参与匿名统计：每天最多 3 个零手续费链上订阅，只公开一个与本机 NKN 地址无关的匿名公钥。关闭后退订。</span></label>
+        <p class="usage-note" id="usage-note">正在读取…</p>
+      </section>
       <section class="card pair-card" id="pair-card">
         <div class="card-title"><div><h3>首次配对</h3><p>在 NAS 面板生成二维码，用手机扫码后可将内容传到这里，或直接复制配对内容</p></div><span class="signal">◈</span></div>
         <div class="pair-fields"><label>这台电脑的名称<input id="device-name" maxlength="80" placeholder="例如：我的工作电脑"></label><label>二维码中的配对内容<textarea id="invitation" rows="3" placeholder="nknguard://pair/v1?data=…"></textarea></label></div>

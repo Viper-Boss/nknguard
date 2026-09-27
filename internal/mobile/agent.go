@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
+	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
 
@@ -70,6 +72,13 @@ type Agent struct {
 	// PairWait bounds how long a pairing request waits for approval beyond
 	// the invitation's own expiry. Zero means until the invitation expires.
 	PairWait time.Duration
+	// UsageChain opens the NKN chain client for the anonymous usage
+	// statistics (usagestats.NewNKNChain in production). Nil disables them,
+	// which is what tests use so they never touch the real network.
+	UsageChain func(nknSeed []byte, seedRPC []string) (usagestats.Chain, error)
+
+	usageOnce sync.Once
+	usage     *usagestats.Reporter
 
 	writeMu sync.Mutex
 	out     *json.Encoder
@@ -199,7 +208,7 @@ func decode[T any](raw json.RawMessage) (T, error) {
 }
 
 // concurrentCommands never wait behind a state-changing command.
-var concurrentCommands = map[string]bool{"status": true, "diagnostics": true, "pair_cancel": true, "parse_invite": true}
+var concurrentCommands = map[string]bool{"status": true, "diagnostics": true, "pair_cancel": true, "parse_invite": true, "usage": true}
 
 func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 	switch request.Cmd {
@@ -208,7 +217,7 @@ func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.init(args)
+		return a.init(ctx, args)
 	case "network":
 		args, err := decode[networkArgs](request.Args)
 		if err != nil {
@@ -251,6 +260,40 @@ func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 		return a.forget()
 	case "diagnostics":
 		return map[string]string{"text": a.diagnostics()}, nil
+	case "usage":
+		args, err := decode[struct {
+			Refresh bool `json:"refresh"`
+		}](request.Args)
+		if err != nil {
+			return nil, err
+		}
+		reporter, err := a.usageReporter()
+		if err != nil {
+			return nil, err
+		}
+		queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		return reporter.Status(queryCtx, args.Refresh), nil
+	case "usage_set":
+		args, err := decode[struct {
+			Enabled *bool `json:"enabled"`
+		}](request.Args)
+		if err != nil {
+			return nil, err
+		}
+		if args.Enabled == nil {
+			return nil, errors.New("enabled is required")
+		}
+		reporter, err := a.usageReporter()
+		if err != nil {
+			return nil, err
+		}
+		setCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := reporter.SetEnabled(setCtx, *args.Enabled); err != nil {
+			return nil, err
+		}
+		return reporter.Status(setCtx, false), nil
 	default:
 		return nil, fmt.Errorf("unknown command %q", request.Cmd)
 	}
@@ -282,7 +325,7 @@ type InitResult struct {
 	Profile         *Profile `json:"profile,omitempty"`
 }
 
-func (a *Agent) init(args initArgs) (any, error) {
+func (a *Agent) init(ctx context.Context, args initArgs) (any, error) {
 	if args.Secrets != nil {
 		if err := a.Secrets.Load(args.Secrets); err != nil {
 			return nil, err
@@ -296,9 +339,11 @@ func (a *Agent) init(args initArgs) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := a.nknSeed(); err != nil {
+	nknSeed, err := a.nknSeed()
+	if err != nil {
 		return nil, err
 	}
+	a.startUsage(ctx, nknSeed, args.SeedRPC)
 	a.mu.Lock()
 	a.device = device
 	if name := cleanName(args.DeviceName); name != "" {
@@ -318,6 +363,41 @@ func (a *Agent) init(args initArgs) (any, error) {
 		result.Profile = &profile
 	}
 	return result, nil
+}
+
+// UsageStatsFile holds the statistics switch and last check-ins (no secrets).
+const UsageStatsFile = "usage-stats.json"
+
+// startUsage starts the anonymous usage statistics once per core process. The
+// key is derived from the NKN seed, so it needs no secret of its own.
+func (a *Agent) startUsage(ctx context.Context, nknSeed []byte, seedRPC []string) {
+	a.usageOnce.Do(func() {
+		reporter := &usagestats.Reporter{DefaultEnabled: true, Logger: a.Logger}
+		if a.StateDir != "" {
+			reporter.Path = filepath.Join(a.StateDir, UsageStatsFile)
+		}
+		if a.UsageChain != nil {
+			chain, err := a.UsageChain(nknSeed, seedRPC)
+			if err != nil {
+				a.Logger.Warn("usage statistics unavailable", "component", "usage", "error", err)
+			} else {
+				reporter.Chain = chain
+			}
+		}
+		a.mu.Lock()
+		a.usage = reporter
+		a.mu.Unlock()
+		go reporter.Run(ctx)
+	})
+}
+
+func (a *Agent) usageReporter() (*usagestats.Reporter, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.usage == nil {
+		return nil, errors.New("core not initialized")
+	}
+	return a.usage, nil
 }
 
 func cleanName(name string) string {

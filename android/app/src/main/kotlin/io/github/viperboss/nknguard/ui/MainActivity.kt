@@ -25,6 +25,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import io.github.viperboss.nknguard.NkgApp
@@ -51,6 +52,10 @@ class MainActivity : Activity(), NkgApp.Listener {
     private lateinit var scanButton: Button
     private lateinit var pasteButton: Button
     private lateinit var forgetButton: Button
+    private lateinit var usageCounts: TextView
+    private lateinit var usageNote: TextView
+    private lateinit var usageSwitch: Switch
+    private var usageUpdating = false
 
     private var status = JSONObject()
     private var pairing: JSONObject? = null
@@ -87,6 +92,7 @@ class MainActivity : Activity(), NkgApp.Listener {
             app.ensureCore()
             app.refreshStatus()
         }
+        refreshUsage(force = false)
         main.post(ticker)
     }
 
@@ -263,6 +269,71 @@ class MainActivity : Activity(), NkgApp.Listener {
                 getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("NKNGuard 诊断信息", text))
                 toast("诊断信息已复制（地址和密钥已脱敏）")
             }
+        }
+    }
+
+    // ---- anonymous usage statistics ---------------------------------------------------
+
+    /** Reads the counts on a thread of its own: a slow NKN node must not hold up the worker. */
+    private fun refreshUsage(force: Boolean) {
+        Thread {
+            try {
+                app.ensureCore()
+                val result = app.core.call("usage", JSONObject().put("refresh", force), timeoutMillis = 25_000)
+                main.post { renderUsage(result) }
+            } catch (error: Exception) {
+                main.post { if (::usageNote.isInitialized) usageNote.text = "读取使用人数失败：${error.message ?: error}" }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private fun onUsageSwitched(enabled: Boolean) {
+        if (usageUpdating) return
+        usageSwitch.isEnabled = false
+        usageNote.text = if (enabled) "正在开启…" else "正在关闭并退订…"
+        Thread {
+            try {
+                app.ensureCore()
+                val result = app.core.call("usage_set", JSONObject().put("enabled", enabled), timeoutMillis = 35_000)
+                main.post {
+                    renderUsage(result)
+                    toast(if (enabled) "已开启匿名统计" else "已关闭，本机不再发送统计交易")
+                }
+            } catch (error: Exception) {
+                main.post {
+                    setUsageSwitch(!enabled)
+                    usageSwitch.isEnabled = true
+                    toast(error.message ?: error.toString())
+                }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private fun setUsageSwitch(checked: Boolean) {
+        usageUpdating = true
+        usageSwitch.isChecked = checked
+        usageUpdating = false
+    }
+
+    private fun renderUsage(result: JSONObject) {
+        if (!::usageCounts.isInitialized) return
+        val counts = result.optJSONObject("counts") ?: JSONObject()
+        fun count(key: String) = if (!counts.has(key) || counts.isNull(key)) "—" else counts.optLong(key).toString()
+        usageCounts.text = "24 小时  ${count("day")}     30 天  ${count("month")}     90 天  ${count("quarter")}"
+        val enabled = result.optBoolean("enabled")
+        setUsageSwitch(enabled)
+        usageSwitch.isEnabled = true
+        val lastCheckIn = result.optString("last_check_in")
+        usageNote.text = buildString {
+            append(
+                when {
+                    !enabled -> "本机未参与统计，人数仍可查看。"
+                    lastCheckIn.isNotEmpty() && !lastCheckIn.startsWith("0001-") -> "本机已参与统计 · 上次签到 " + lastCheckIn.take(16).replace('T', ' ')
+                    else -> "本机已参与统计 · 等待首次签到"
+                },
+            )
+            val error = counts.optString("error")
+            if (error.isNotEmpty()) append("\n部分数据读取失败：").append(error)
         }
     }
 
@@ -470,6 +541,50 @@ class MainActivity : Activity(), NkgApp.Listener {
 
         rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         column.addView(rows, spaced())
+
+        val usageCard = card()
+        usageCard.addView(TextView(this).apply {
+            text = "NKNGuard 使用人数"
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.text)
+        })
+        usageCard.addView(TextView(this).apply {
+            text = "最近运行过 NKNGuard 的设备数，来自 NKN 链上的匿名订阅"
+            textSize = 12f
+            setTextColor(palette.muted)
+        })
+        usageCounts = TextView(this).apply {
+            text = "24 小时  —     30 天  —     90 天  —"
+            textSize = 17f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.text)
+            setPadding(0, dp(10), 0, dp(4))
+            setOnClickListener { refreshUsage(force = true) }
+        }
+        usageCard.addView(usageCounts)
+        usageNote = TextView(this).apply {
+            text = "正在读取…"
+            textSize = 12f
+            setTextColor(palette.muted)
+        }
+        usageCard.addView(usageNote)
+        usageSwitch = Switch(this).apply {
+            text = "参与匿名使用人数统计"
+            textSize = 14f
+            setTextColor(palette.text)
+            isEnabled = false
+            setPadding(0, dp(10), 0, 0)
+            setOnCheckedChangeListener { _, checked -> onUsageSwitched(checked) }
+        }
+        usageCard.addView(usageSwitch)
+        usageCard.addView(TextView(this).apply {
+            text = "开启后每天最多提交 3 个零手续费 NKN 链上订阅，只公开一个与本机 NKN 地址无关的匿名公钥，不含设备名、配对或流量信息。关闭后退订。点按人数可刷新。"
+            textSize = 11f
+            setTextColor(palette.muted)
+            setPadding(0, dp(6), 0, 0)
+        })
+        column.addView(usageCard, spaced())
 
         column.addView(button("复制诊断信息") { onCopyDiagnostics() }.also { style(it, primary = false) }, spaced())
         forgetButton = button("解除配对") { onForgetClicked() }.also { style(it, primary = false, danger = true) }

@@ -57,6 +57,7 @@
 - 📱 **扫码配对，主人批准。** 二维码只含 NAS 公钥和一次性申请令牌，不含入网密钥。新设备必须在 NAS 面板核对六位码并批准；可以随时撤销单台设备，被撤销的手机会立即收到签名通知并断开。
 - 🇨🇳 **内置国内 NKN 节点。** 国内网络优先使用国内社区 seed，连不上再回退官方节点；也可以在配置里加自建节点。
 - 🧱 **隧道比控制面活得久。** NKN 暂时掉线时，已建立的 WireGuard 隧道照常工作。
+- 📊 **匿名使用人数。** NAS 面板和客户端显示最近 24 小时 / 30 天 / 90 天的活跃设备数，数据来自 NKN 链上的零手续费订阅，不经过任何服务器；默认开启，可随时关闭，见 [使用人数统计](docs/USAGE_STATS.md)。
 - 🧭 **只路由到覆盖网络。** 客户端只添加 `10.88.0.0/16` 路由，不改默认路由，普通上网不受影响。
 
 ## 工作原理
@@ -157,12 +158,13 @@ nkn:
 - **内核 WireGuard 独占 UDP 端口**，公网端口根据探测 socket 推断（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立，见 [NAT 穿透](docs/NAT_TRAVERSAL.md)。
 - **成员证明仍基于共享密钥。** NAS 按批准名单执行单设备撤销；若共享密钥或设备私钥泄露，需要重建网络凭证，自动轮换尚未实现。
 - **客户端是预览版。** 仅 IPv4 覆盖网络、每个节点只能加入一个网络；Android 暂无开机自启和“始终开启的 VPN”。
+- **使用人数统计是公开的。** 开启时每台设备每天在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
 - **不匿名。** WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
 - **国内 seed 是社区节点**，地址可能变化，失效时会自动回退官方节点。
 
 ## 文档
 
-[架构](docs/ARCHITECTURE.md) · [协议](docs/PROTOCOL.md) · [NAT 穿透](docs/NAT_TRAVERSAL.md) · [配对](docs/PAIRING.md) · [安全模型](docs/SECURITY.md) · [构建](docs/BUILD.md) · [Windows](docs/WINDOWS.md) · [Android](docs/ANDROID.md) · [飞牛部署](docs/FNOS_DISK_DEPLOY.md) · [贡献](CONTRIBUTING.md) · [报告漏洞](SECURITY.md)
+[架构](docs/ARCHITECTURE.md) · [协议](docs/PROTOCOL.md) · [NAT 穿透](docs/NAT_TRAVERSAL.md) · [配对](docs/PAIRING.md) · [安全模型](docs/SECURITY.md) · [构建](docs/BUILD.md) · [Windows](docs/WINDOWS.md) · [Android](docs/ANDROID.md) · [飞牛部署](docs/FNOS_DISK_DEPLOY.md) · [使用人数统计](docs/USAGE_STATS.md) · [贡献](CONTRIBUTING.md) · [报告漏洞](SECURITY.md)
 
 ## 从源码构建
 

@@ -45,6 +45,35 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 		writeJSON(w, d.Logs.Lines())
 	})
 	mux.HandleFunc("POST /api/admin/password", dashboardPasswordChangeHandler(d.Node, logins))
+	mux.HandleFunc("GET /api/usage", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		writeJSON(w, d.usageStatus(ctx, r.URL.Query().Get("refresh") == "1"))
+	})
+	mux.HandleFunc("POST /api/usage", func(w http.ResponseWriter, r *http.Request) {
+		if !dashboardActionAllowed(r) {
+			http.Error(w, "same-origin action required", http.StatusForbidden)
+			return
+		}
+		var request struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 256)).Decode(&request); err != nil || request.Enabled == nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		if d.Usage == nil {
+			http.Error(w, "usage statistics unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		if err := d.Usage.SetEnabled(ctx, *request.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, d.usageStatus(ctx, false))
+	})
 	mux.HandleFunc("GET /api/pair/state", func(w http.ResponseWriter, r *http.Request) {
 		current, err := d.Node.State.LoadMembership()
 		if err != nil {

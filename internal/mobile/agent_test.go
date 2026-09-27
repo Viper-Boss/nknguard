@@ -23,6 +23,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
+	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard/userspace"
 )
@@ -119,8 +120,16 @@ type phone struct {
 
 func startPhone(t *testing.T, ctx context.Context, wire *signaling.Switch, hub *relay.Hub) *phone {
 	t.Helper()
+	return startPhoneWith(t, ctx, wire, hub, nil)
+}
+
+func startPhoneWith(t *testing.T, ctx context.Context, wire *signaling.Switch, hub *relay.Hub, configure func(*Agent)) *phone {
+	t.Helper()
 	channel := tuntest.NewChannelTUN()
 	agent := &Agent{StateDir: t.TempDir(), Timing: fastTiming(), Candidates: mesh.StaticCandidates{}}
+	if configure != nil {
+		configure(agent)
+	}
 	agent.OpenPlane = func(ctx context.Context, seed []byte, _ []string) (*Plane, error) {
 		device, _, err := agent.identity()
 		if err != nil {
@@ -455,5 +464,87 @@ func TestInterfaceAddressesExcludeOverlay(t *testing.T) {
 	_ = gatherer
 	if len(addrs) != 2 || !strings.HasPrefix(addrs[0].String(), "192.168.1.20") {
 		t.Fatalf("addresses = %v", addrs)
+	}
+}
+
+type usageChain struct {
+	mu     sync.Mutex
+	topics map[string]bool
+}
+
+func (c *usageChain) Subscribe(_ context.Context, topic string, _ int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.topics[topic] = true
+	return nil
+}
+
+func (c *usageChain) Unsubscribe(_ context.Context, topic string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.topics, topic)
+	return nil
+}
+
+func (c *usageChain) Count(_ context.Context, topic string) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.topics[topic] {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func (c *usageChain) Address() string { return "usage-key" }
+
+func TestUsageStatistics(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	chain := &usageChain{topics: map[string]bool{}}
+	var seenSeed []byte
+	p := startPhoneWith(t, ctx, signaling.NewSwitch(), relay.NewHub(), func(agent *Agent) {
+		agent.UsageChain = func(seed []byte, _ []string) (usagestats.Chain, error) {
+			seenSeed = append([]byte(nil), seed...)
+			return chain, nil
+		}
+	})
+	if _, errText := p.call("usage", nil); errText == "" {
+		t.Fatal("usage answered before init")
+	}
+	p.must("init", map[string]any{"device_name": "Pixel"}, nil)
+	if len(seenSeed) != 32 {
+		t.Fatalf("usage chain got seed of %d bytes", len(seenSeed))
+	}
+	// On by default: the reporter checks in by itself.
+	deadline := time.Now().Add(5 * time.Second)
+	var status usagestats.Status
+	for {
+		p.must("usage", map[string]bool{"refresh": true}, &status)
+		if status.Counts.Day != nil && *status.Counts.Day == 1 && status.Counts.Quarter != nil && *status.Counts.Quarter == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no check-in: %+v", status)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !status.Enabled || status.Address != "usage-key" {
+		t.Fatalf("status = %+v", status)
+	}
+	p.must("usage_set", map[string]bool{"enabled": false}, &status)
+	if status.Enabled {
+		t.Fatal("still enabled")
+	}
+	chain.mu.Lock()
+	left := len(chain.topics)
+	chain.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("not unsubscribed: %d topics", left)
+	}
+	// A second init (after pairing) does not start a second reporter.
+	p.must("init", map[string]any{}, nil)
+	p.must("usage", nil, &status)
+	if status.Enabled {
+		t.Fatal("choice lost")
 	}
 }

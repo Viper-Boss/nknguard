@@ -19,7 +19,10 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/signaling/nknsignal"
 )
 
-func init() { controlPlaneFactory = openNKN }
+func init() {
+	controlPlaneFactory = openNKN
+	usageSeed = nknSeed
+}
 
 func nknSeed(keystore *identity.Keystore) ([]byte, error) {
 	seed, err := keystore.ReadSecret(nknclient.SeedName)

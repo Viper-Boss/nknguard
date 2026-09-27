@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Anonymous active-installation counts (24 h / 30 d / 90 d) from zero-fee NKN subscriptions to `nknguard.usage.*`, shown in the NAS dashboard, Windows client and Android app, on by default with a switch (`pkg/usagestats`, docs/USAGE_STATS.md).
+- Built-in China NKN seed tried before the official seeds; dashboard wrong-password back-off; web password change removes the legacy `first-run.txt`.
 - Android client (`android/`): QR/paste/link pairing with six-digit code, VpnService routing only the overlay, WireGuard (wireguard-go) direct path with NKN relay fallback, Keystore-wrapped keys, revocation display. The protocol core is the shared Go code (`internal/mobile`).
 - Owners answer revoked devices with a signed `ERROR NOT_AUTHORIZED` so clients can show that their approval is gone.
 - Pairing approval is persisted before the join secret is sent and rolled back if it cannot be delivered.

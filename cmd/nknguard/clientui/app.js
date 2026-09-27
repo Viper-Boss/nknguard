@@ -67,5 +67,45 @@ function copy(value) {
 }
 byId('copy-nas').addEventListener('click', () => copy(latest.nas_address));
 byId('copy-local').addEventListener('click', () => copy(latest.local_nkn_address));
+const countText = value => (typeof value === 'number' ? value.toLocaleString('zh-CN') : '—');
+
+function drawUsage(status) {
+  const counts = status.counts || {};
+  byId('usage-day').textContent = countText(counts.day);
+  byId('usage-month').textContent = countText(counts.month);
+  byId('usage-quarter').textContent = countText(counts.quarter);
+  const toggle = byId('usage-enabled');
+  toggle.checked = !!status.enabled;
+  toggle.disabled = false;
+  let note = status.enabled ? (status.last_check_in ? `本机已参与统计 · 上次签到 ${new Date(status.last_check_in).toLocaleString()}` : '本机已参与统计 · 等待首次签到') : '本机未参与统计。';
+  if (counts.error) note += ` · 读取失败：${counts.error}`;
+  byId('usage-note').textContent = note;
+}
+
+async function refreshUsage(force) {
+  try {
+    const response = await fetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
+    if (!response.ok) throw new Error('统计不可用');
+    drawUsage(await response.json());
+  } catch (error) { byId('usage-note').textContent = error.message; }
+}
+
+byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
+byId('usage-enabled').addEventListener('change', async event => {
+  const enabled = event.target.checked;
+  event.target.disabled = true;
+  try {
+    const response = await fetch('/api/usage', {method:'POST', headers:{'X-NKNGuard-Client':'1','Content-Type':'application/json'}, body: JSON.stringify({enabled})});
+    if (!response.ok) throw new Error((await response.text()).trim() || '操作失败');
+    drawUsage(await response.json());
+  } catch (error) {
+    event.target.checked = !enabled;
+    event.target.disabled = false;
+    byId('usage-note').textContent = error.message;
+  }
+});
+
 refresh();
+refreshUsage(false);
 setInterval(refresh, 2200);
+setInterval(() => refreshUsage(false), 60000);
