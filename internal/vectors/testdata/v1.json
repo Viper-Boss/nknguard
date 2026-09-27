@@ -1,0 +1,83 @@
+{
+  "note": "NKNGuard protocol v1 test vectors; see internal/vectors/vectors_test.go and docs/PROTOCOL.md",
+  "identity": [
+    {
+      "root_seed_hex": "6d5c2f25361c4b98ea7b33ae2cca721bd4f146a429fa72f259374301ab3f3829",
+      "public_key_base64": "PFHrNviMVGnKJzmoS2k/s36fRjZrdgGy6LqvvptA4cs=",
+      "device_id": "nkg_b5w5tcek4r6v7bfq",
+      "public_key_sha256_hex": "0f6dd9888ae47d5f84b05ea862ef1f0c530dc7ec7cc36bf865ea3b1c5eba3017",
+      "device_id_rule": "nkg_ + lowercase unpadded RFC 4648 base32 of sha256[:10]"
+    },
+    {
+      "root_seed_hex": "19e624bc2931ab88bb2f950c8f9af5170f37c5e27e0c5e506ba0b3e306c2aa3c",
+      "public_key_base64": "LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=",
+      "device_id": "nkg_oi7ildbgfb5eh4lq",
+      "public_key_sha256_hex": "723e858c26287a43f170a165b9303623d658bfe174995be4c1ffb1f34316eaaa",
+      "device_id_rule": "nkg_ + lowercase unpadded RFC 4648 base32 of sha256[:10]"
+    }
+  ],
+  "pair_code": [
+    {
+      "token": "GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk",
+      "device_id": "nkg_oi7ildbgfb5eh4lq",
+      "wireguard_public_key": "SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=",
+      "input_json": "{\"Token\":\"GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk\",\"DeviceID\":\"nkg_oi7ildbgfb5eh4lq\",\"WGKey\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\"}",
+      "input_sha256_hex": "11e70c611a62e54e340687d74582367ef576d5c93392e442b0df18f699b947ee",
+      "first_four_bytes_be": 300354657,
+      "code": "354657",
+      "rule": "%06d of first_four_bytes_be mod 1000000"
+    },
+    {
+      "token": "short-but-valid-for-the-code-only-000000000",
+      "device_id": "nkg_oi7ildbgfb5eh4lq",
+      "wireguard_public_key": "SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=",
+      "input_json": "{\"Token\":\"short-but-valid-for-the-code-only-000000000\",\"DeviceID\":\"nkg_oi7ildbgfb5eh4lq\",\"WGKey\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\"}",
+      "input_sha256_hex": "7aefe41387a9184c3d07ed0091d386a9649a854bffd3d44f475ac80b26bc832d",
+      "first_four_bytes_be": 2062541843,
+      "code": "541843",
+      "rule": "%06d of first_four_bytes_be mod 1000000"
+    }
+  ],
+  "invite": {
+    "json": "{\"version\":1,\"network_id\":\"nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"nas_id\":\"nkg_b5w5tcek4r6v7bfq\",\"nas_public_key\":\"PFHrNviMVGnKJzmoS2k/s36fRjZrdgGy6LqvvptA4cs=\",\"nas_address\":\"nknguard.92d06251fbc2699f2fc103274eaff486cadde11ea456f394d99bb9957c320275\",\"token\":\"GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk\",\"expires_at\":\"2026-09-27T12:00:00Z\"}",
+    "uri": "nknguard://pair/v1?data=eyJ2ZXJzaW9uIjoxLCJuZXR3b3JrX2lkIjoibmtnbmV0X2FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwibmFzX2lkIjoibmtnX2I1dzV0Y2VrNHI2djdiZnEiLCJuYXNfcHVibGljX2tleSI6IlBGSHJOdmlNVkduS0p6bW9TMmsvczM2ZlJqWnJkZ0d5NkxxdnZwdEE0Y3M9IiwibmFzX2FkZHJlc3MiOiJua25ndWFyZC45MmQwNjI1MWZiYzI2OTlmMmZjMTAzMjc0ZWFmZjQ4NmNhZGRlMTFlYTQ1NmYzOTRkOTliYjk5NTdjMzIwMjc1IiwidG9rZW4iOiJHTlVjenl2dWRTZzFab0lGOURiWWwxa05Bb3lreHJXSDhPcnJHR0pIUWdrIiwiZXhwaXJlc19hdCI6IjIwMjYtMDktMjdUMTI6MDA6MDBaIn0"
+  },
+  "envelope": {
+    "sender_seed_hex": "19e624bc2931ab88bb2f950c8f9af5170f37c5e27e0c5e506ba0b3e306c2aa3c",
+    "nonce_hex": "a8612ef97eb135c82e13a251dfc68f12",
+    "timestamp_unix_milli": 1790000000000,
+    "payload_json": "{\"token\":\"GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk\",\"name\":\"Pixel\",\"nkn_address\":\"nknguard.3436a7911f5cd388d1b2a75627d878b8f602aecf42d73a37ad1b3abf35e96101\",\"wireguard_public_key\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\"}",
+    "signing_json": "{\"protocol_version\":1,\"message_id\":\"vmdAWk_DtmxSucZQ\",\"network_id\":\"nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from_device_id\":\"nkg_oi7ildbgfb5eh4lq\",\"from_public_key\":\"LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=\",\"to_device_id\":\"nkg_b5w5tcek4r6v7bfq\",\"type\":\"PAIR_REQUEST\",\"timestamp_unix_milli\":1790000000000,\"nonce\":\"qGEu+X6xNcguE6JR38aPEg==\",\"payload\":{\"token\":\"GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk\",\"name\":\"Pixel\",\"nkn_address\":\"nknguard.3436a7911f5cd388d1b2a75627d878b8f602aecf42d73a37ad1b3abf35e96101\",\"wireguard_public_key\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\"}}",
+    "signature_base64": "WPkB7vFOnb0diQYmhvP3U1Y9JTYMsv79hrLR0P7rZwXZxktSrANOTlx775xxI2Gx8UOHLc8IuU3MV+RyTc0KBw==",
+    "wire_json": "{\"protocol_version\":1,\"message_id\":\"vmdAWk_DtmxSucZQ\",\"network_id\":\"nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from_device_id\":\"nkg_oi7ildbgfb5eh4lq\",\"from_public_key\":\"LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=\",\"to_device_id\":\"nkg_b5w5tcek4r6v7bfq\",\"type\":\"PAIR_REQUEST\",\"timestamp_unix_milli\":1790000000000,\"nonce\":\"qGEu+X6xNcguE6JR38aPEg==\",\"payload\":{\"token\":\"GNUczyvudSg1ZoIF9DbYl1kNAoykxrWH8OrrGGJHQgk\",\"name\":\"Pixel\",\"nkn_address\":\"nknguard.3436a7911f5cd388d1b2a75627d878b8f602aecf42d73a37ad1b3abf35e96101\",\"wireguard_public_key\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\"},\"signature\":\"WPkB7vFOnb0diQYmhvP3U1Y9JTYMsv79hrLR0P7rZwXZxktSrANOTlx775xxI2Gx8UOHLc8IuU3MV+RyTc0KBw==\"}"
+  },
+  "membership": {
+    "network_id": "nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "join_secret": "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrst",
+    "device_id": "nkg_oi7ildbgfb5eh4lq",
+    "root_public_key_base64": "LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=",
+    "proof_base64": "IJrOUdObBDBTYqO4e74LMMzjar3oLpKQaT+BIMYXKYo=",
+    "rendezvous_topic": "nknguard-rv-jo5qngb56vbnzziz753v4rpbynbekxl3"
+  },
+  "peer_record": {
+    "signed_at_unix": 1790000000,
+    "signing_json": "{\"version\":1,\"network_id\":\"nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device_id\":\"nkg_oi7ildbgfb5eh4lq\",\"name\":\"Pixel\",\"root_public_key\":\"LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=\",\"nkn_address\":\"nknguard.3436a7911f5cd388d1b2a75627d878b8f602aecf42d73a37ad1b3abf35e96101\",\"wireguard_public_key\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\",\"virtual_ips\":[\"10.88.1.2\"],\"candidates\":[{\"type\":\"srflx\",\"ip\":\"203.0.113.5\",\"port\":51820,\"priority\":500,\"protocol\":\"udp\",\"observed_at\":1790000000,\"expires_at\":1790000300}],\"capabilities\":[\"wireguard-direct\",\"nkn-relay\",\"udp-punch-v1\",\"dht-record-v1\",\"acl-v1\"],\"membership_proof\":\"IJrOUdObBDBTYqO4e74LMMzjar3oLpKQaT+BIMYXKYo=\",\"sequence\":42,\"issued_at\":1790000000,\"expires_at\":1790000120}",
+    "wire_json": "{\"version\":1,\"network_id\":\"nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device_id\":\"nkg_oi7ildbgfb5eh4lq\",\"name\":\"Pixel\",\"root_public_key\":\"LfH/RaBFocPIFMLv3ypBIwbsr/SNZoJiBp2XCIXVVB4=\",\"nkn_address\":\"nknguard.3436a7911f5cd388d1b2a75627d878b8f602aecf42d73a37ad1b3abf35e96101\",\"wireguard_public_key\":\"SZynHfwGd/33Rx3TbY5zYsHxm3uaCK/DHJmtlXeU+6I=\",\"virtual_ips\":[\"10.88.1.2\"],\"candidates\":[{\"type\":\"srflx\",\"ip\":\"203.0.113.5\",\"port\":51820,\"priority\":500,\"protocol\":\"udp\",\"observed_at\":1790000000,\"expires_at\":1790000300}],\"capabilities\":[\"wireguard-direct\",\"nkn-relay\",\"udp-punch-v1\",\"dht-record-v1\",\"acl-v1\"],\"membership_proof\":\"IJrOUdObBDBTYqO4e74LMMzjar3oLpKQaT+BIMYXKYo=\",\"sequence\":42,\"issued_at\":1790000000,\"expires_at\":1790000120,\"signature\":\"u05/01NQueFr4AkVcKbXs7L9IlAfj4MzGtwhsSxsXysHQG3u1sGbKIB/6RnqRMEgiuW8ycv4nRbvJfZj06srDA==\"}"
+  },
+  "relay_frame": [
+    {
+      "datagram_hex": "01",
+      "frame_hex": "000101"
+    },
+    {
+      "datagram_hex": "d4f5853bdbe77fc3761a5f538da22f5071c3b7ba811e2c23f73b14fbe615ede7",
+      "frame_hex": "0020d4f5853bdbe77fc3761a5f538da22f5071c3b7ba811e2c23f73b14fbe615ede7"
+    }
+  ],
+  "virtual_ip": {
+    "overlay_cidr": "10.88.0.0/16",
+    "network_id": "nkgnet_aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "device_id": "nkg_oi7ildbgfb5eh4lq",
+    "address": "10.88.111.138"
+  }
+}
