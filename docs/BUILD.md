@@ -8,6 +8,7 @@
 | full | `go build -tags "nknsdk libp2pdht" ./cmd/nknguard` | the modules below | everything |
 
 The Windows GUI uses the full build and the official WireGuard for Windows installation.
+The Android app and its Go core are built from `android/`; see [ANDROID.md](ANDROID.md).
 
 The core build omits the NKN and DHT adapters but still resolves the modules
 in `go.mod` on a fresh machine. Once dependencies are cached, tests can run

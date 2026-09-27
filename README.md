@@ -30,7 +30,7 @@ NKNGuard:   node ── NKN signalling / DHT ── node     (+ NKN relay)
   established WireGuard tunnel keeps running, and if the daemon crashes the
   interface and its peers stay up until it is restarted.
 
-> **Status: development preview.** The NAS/Linux daemon, local dashboard, QR approval, Windows one-click client, and NKN/WireGuard paths have automated tests. Real fnOS, Windows tunnel, and cross-NAT tests remain outstanding. The Android client is pending.
+> **Status: development preview.** The NAS/Linux daemon, local dashboard, QR approval, Windows one-click client, and NKN/WireGuard paths have automated tests. Real fnOS, Windows tunnel, and cross-NAT tests remain outstanding. The Android client has automated interop tests; on-device testing is outstanding (see [Android](docs/ANDROID.md)).
 
 ## Quick start
 
@@ -144,7 +144,7 @@ useless:
   probe socket assuming port-preserving NAT. This is right for most home
   routers and wrong for some; see [docs/NAT_TRAVERSAL.md](docs/NAT_TRAVERSAL.md).
 - **Membership proofs still use a shared secret.** The NAS enforces an approved device identity list and can revoke one device. Rotate or recreate network credentials if the shared secret or a device identity key is compromised; automated rotation is not implemented.
-- **Windows is a preview client.** It requires official WireGuard for Windows and Microsoft Edge; see [Windows setup](docs/WINDOWS.md). Android remains pending. IPv4 overlay and one network per node.
+- **Windows is a preview client.** It requires official WireGuard for Windows and Microsoft Edge; see [Windows setup](docs/WINDOWS.md). The Android client is a preview; see [Android client](docs/ANDROID.md). IPv4 overlay and one network per node.
 - **Not anonymous.** WireGuard endpoints reveal IP addresses to your peers, NKN
   addresses are linkable over time, and STUN servers see your public address.
 - **Real-network validation is outstanding.** The two-node, cross-NAT test
@@ -158,6 +158,7 @@ useless:
 - [Security model](docs/SECURITY.md) · [Reporting vulnerabilities](SECURITY.md)
 - [Build](docs/BUILD.md) · [Contributing](CONTRIBUTING.md)
 - [Windows client](docs/WINDOWS.md)
+- [Android client](docs/ANDROID.md)
 - [中文说明](README.zh-CN.md)
 
 ## License

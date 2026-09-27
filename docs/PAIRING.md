@@ -13,11 +13,11 @@
 3. 现场核对设备名和验证码，在 NAS 本地面板批准。NAS 通过 NKN 加密消息发送入网材料，并把客户端身份加入本地批准名单。
 4. 客户端保存 NAS 的身份及地址。后续连接必须通过身份签名、成员证明和 NAS 批准名单的验证。
 
-Linux 命令行客户端可执行 `sudo nknguard pair '<二维码内容>' --name laptop`。Windows 图形客户端可粘贴二维码内容，显示验证码，经 NAS 批准后通过按钮连接或断开；首次连接需要 Windows 管理员授权并安装官方 WireGuard。见 [WINDOWS.md](WINDOWS.md)。目前没有摄像头扫码功能；Android 客户端仍待实现。
+Linux 命令行客户端可执行 `sudo nknguard pair '<二维码内容>' --name laptop`。Windows 图形客户端可粘贴二维码内容，显示验证码，经 NAS 批准后通过按钮连接或断开；首次连接需要 Windows 管理员授权并安装官方 WireGuard。见 [WINDOWS.md](WINDOWS.md)。Android 客户端可用相机扫码、粘贴二维码内容，或用系统相机扫码后由 `nknguard://pair` 链接打开，见 [ANDROID.md](ANDROID.md)。
 
 ## 撤销与恢复
 
-在“配对与授权”中撤销设备会删除 NAS 上的批准身份，停止对应中继并移除该设备的 WireGuard 对端。客户端已有的入网材料不会自动擦除，重连会被 NAS 拒绝。若身份私钥或共享入网材料可能外泄，需要重新建立网络并重新配对合法设备；当前没有自动轮换协议。
+在“配对与授权”中撤销设备会删除 NAS 上的批准身份，停止对应中继并移除该设备的 WireGuard 对端。客户端已有的入网材料不会自动擦除，重连会被 NAS 拒绝；NAS 会用自己的身份签名回复 `NOT_AUTHORIZED`，Android 客户端据此停止连接并显示“授权已失效”。若身份私钥或共享入网材料可能外泄，需要重新建立网络并重新配对合法设备；当前没有自动轮换协议。
 
 ## 链路选择
 
@@ -25,4 +25,4 @@ Linux 命令行客户端可执行 `sudo nknguard pair '<二维码内容>' --name
 
 ## 当前验证范围
 
-Go 自动测试覆盖协议、配对申请、二维码内容不含密钥、批准与撤销、直连/中继状态机及 Windows 主机适配。尚需在真实 fnOS 机器、家庭 NAT 组合和 Windows 上进行端到端联调。Android 客户端尚未开发。
+Go 自动测试覆盖协议、配对申请、二维码内容不含密钥、批准与撤销、直连/中继状态机及 Windows 主机适配。尚需在真实 fnOS 机器、家庭 NAT 组合和 Windows 上进行端到端联调。Android 客户端的自动化测试覆盖配对、中继连通与撤销，真机测试记录见 [ANDROID.md](ANDROID.md)。

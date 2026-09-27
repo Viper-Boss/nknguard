@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android client (`android/`): QR/paste/link pairing with six-digit code, VpnService routing only the overlay, WireGuard (wireguard-go) direct path with NKN relay fallback, Keystore-wrapped keys, revocation display. The protocol core is the shared Go code (`internal/mobile`).
+- Owners answer revoked devices with a signed `ERROR NOT_AUTHORIZED` so clients can show that their approval is gone.
+- Pairing approval is persisted before the join secret is sent and rolled back if it cannot be delivered.
+- Userspace WireGuard data plane (`pkg/wireguard/userspace`) and v1 wire-format test vectors (`internal/vectors`).
+
 - Re-license NKNGuard contributions from this revision onward under AGPL-3.0-only, preserving the original Apache-2.0 attribution and license text for incorporated material.
 
 ## v0.1.0-dev (unreleased)

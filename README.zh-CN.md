@@ -19,7 +19,7 @@ NKNGuard:   节点 ── NKN 信令 / DHT ── 节点        （+ NKN 中继�
 - **先直连、后中继**：中继只保证"连得上"。走中继期间持续重试直连，一旦成功自动切回。
 - **隧道比控制面活得久**：NKN 或 DHT 掉线时，已建立的 WireGuard 隧道继续工作；守护进程崩溃时接口和对端保持不变，直到它被重新拉起。
 
-> **状态：开发预览版。** NAS/Linux 守护进程、浏览器控制面板、二维码授权、Windows 一键连接客户端和 NKN/WireGuard 通道已有实现及自动测试；尚未完成真实 fnOS、Windows 与跨 NAT 联调。Android 客户端尚未开发。
+> **状态：开发预览版。** NAS/Linux 守护进程、浏览器控制面板、二维码授权、Windows 一键连接客户端和 NKN/WireGuard 通道已有实现及自动测试；尚未完成真实 fnOS、Windows 与跨 NAT 联调。Android 客户端已实现并通过自动化互通测试，尚未完成真机测试（见 [docs/ANDROID.md](docs/ANDROID.md)）。
 
 ## 快速开始
 
@@ -85,7 +85,7 @@ nknguard doctor
 - **中继很慢**。走 NKN 会话，吞吐远低于直连，只是兜底。
 - **内核 WireGuard 独占 UDP 端口**，公网端口是根据探测 socket 推断的（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立。
 - **成员证明仍基于共享密钥**。NAS 以批准的设备公钥身份名单执行单设备撤销；若共享密钥泄露或客户端身份私钥丢失，应重建/轮换网络凭证。密钥轮换自动化尚未实现。
-- **Windows 客户端目前是预览版**，需要安装官方 WireGuard for Windows 与 Microsoft Edge；Android 客户端仍需开发。当前仅 IPv4 覆盖网络，每个节点只能加入一个网络。
+- **Windows 客户端目前是预览版**，需要安装官方 WireGuard for Windows 与 Microsoft Edge；Android 客户端为预览版，见 [docs/ANDROID.md](docs/ANDROID.md)。当前仅 IPv4 覆盖网络，每个节点只能加入一个网络。
 - **不匿名**。WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
 - **尚未完成真实网络验证**。
 

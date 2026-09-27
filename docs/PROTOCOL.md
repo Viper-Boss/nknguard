@@ -21,8 +21,17 @@ device id it cannot sign for fails verification.
 Envelopes, peer records and key bindings are signed the same way: Ed25519 over
 the JSON encoding of the object with `signature` absent (Go `encoding/json`,
 fields in declared order, `[]byte` as standard base64, `omitempty` as
-declared). A future non-Go implementation must reproduce these bytes exactly;
-v2 may move to a canonical binary encoding, negotiated by version.
+declared, no insignificant whitespace, and Go's escaping of `<`, `>`, `&`,
+U+2028 and U+2029 as `\u003c`-style sequences). A future non-Go implementation
+must reproduce these bytes exactly; v2 may move to a canonical binary
+encoding, negotiated by version.
+
+Fixed test vectors for every signed or derived value — device id, pairing
+code, QR URI, envelope signing bytes and signature, membership proof,
+rendezvous topic, peer record, relay frame and virtual IP — are in
+[`internal/vectors/testdata/v1.json`](../internal/vectors/testdata/v1.json).
+The test in that package fails on any byte change, so the wire format cannot
+change without a deliberate regeneration.
 
 ## Envelope
 
@@ -67,7 +76,7 @@ A receiver drops the envelope, with no reply, unless **all** hold:
 | `DISCONNECT` | `{reason}` | courtesy |
 | `PAIR_REQUEST` | `{token,name,nkn_address,wireguard_public_key}` | signed request using a short-lived QR invitation; requires local NAS approval |
 | `PAIR_APPROVAL` | `{join_secret,nas_id,nas_address,invite_token}` | encrypted NKN reply from the pinned NAS identity |
-| `ERROR` | `{code, message}` | e.g. `VERSION_UNSUPPORTED` |
+| `ERROR` | `{code, message}` | e.g. `VERSION_UNSUPPORTED`; `NOT_AUTHORIZED` from an owner to a revoked device (below) |
 
 Unknown types from a newer peer are dropped quietly.
 
@@ -79,6 +88,27 @@ Capabilities (v1): `wireguard-direct`, `nkn-relay`, `udp-punch-v1`,
 `dht-record-v1`, `acl-v1`, plus `tag:<name>` for ACL tags. Unknown capabilities
 are ignored.
 
+## Pairing
+
+The six-digit code both sides show is
+`SHA-256(JSON({"Token":token,"DeviceID":device_id,"WGKey":wireguard_public_key}))`,
+first four bytes big-endian, modulo 1 000 000, zero-padded to six digits. The
+JSON keys are capitalised (a Go anonymous struct). The client accepts a
+`PAIR_APPROVAL` only if it verifies, comes from the NAS device id and root
+key pinned in the QR code, and echoes the invitation token, NAS id and NAS
+address. The owner persists the approval before sending it and rolls it back
+if the message cannot be sent.
+
+## Revocation notice
+
+An owner that requires approval answers a `PEER_INFO` whose record is
+correctly signed, fresh, carries a valid membership proof and arrived from the
+NKN address the record names, but whose device is not on the approval list,
+with a signed `ERROR {code: NOT_AUTHORIZED}` addressed to that device — at most
+once a minute per device. A client that receives it from the NAS it pinned at
+pairing treats its pairing as revoked. A sender without a valid membership
+proof gets no reply. Older clients log the error and otherwise ignore it.
+
 ## Peer record
 
 ```json
@@ -86,6 +116,7 @@ are ignored.
   "version": 1,
   "network_id": "nkgnet_...", "device_id": "nkg_...", "name": "nas-home",
   "root_public_key": "...", "nkn_public_key": "...", "nkn_address": "nknguard.<hex>",
+  "dht_addresses": ["/ip4/..."],
   "wireguard_public_key": "...", "virtual_ips": ["10.88.41.7"],
   "candidates": [{"type":"srflx","ip":"203.0.113.5","port":51820,"priority":500,
                   "protocol":"udp","observed_at":0,"expires_at":0}],
