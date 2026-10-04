@@ -784,3 +784,17 @@ func TestWatchNetworkReportsChanges(t *testing.T) {
 		return nudges == 1
 	})
 }
+
+func TestQuietPeerIsProbedAtIntervals(t *testing.T) {
+	peer := &Peer{}
+	now := time.Unix(1_800_000_000, 0)
+	if !peer.dueProbe(now, probeInterval) {
+		t.Fatal("first probe refused")
+	}
+	if peer.dueProbe(now.Add(probeInterval-time.Second), probeInterval) {
+		t.Fatal("probed again inside the interval")
+	}
+	if !peer.dueProbe(now.Add(probeInterval), probeInterval) {
+		t.Fatal("no probe after the interval")
+	}
+}

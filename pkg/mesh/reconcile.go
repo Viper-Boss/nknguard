@@ -118,7 +118,15 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		// A fresh handshake only says the path worked within the last three
 		// minutes. Keepalives arrive every few seconds on a live path, so
 		// their absence shows a dead one much sooner.
-		if silent := peer.NoteReceive(seen.rxBytes, now); fresh && receiveTimeout > 0 && silent >= receiveTimeout {
+		silent := peer.NoteReceive(seen.rxBytes, now)
+		if fresh && receiveTimeout > 0 && silent >= receiveTimeout/2 && silent < receiveTimeout && peer.dueProbe(now, probeInterval) {
+			// Quiet for a while: ask for a packet before concluding anything.
+			// WireGuard answers received data with a keepalive within ten
+			// seconds when it has nothing else to send, so a live path
+			// replies even if the other side has persistent keepalive off.
+			c.spawn(func() { c.nudgePeer(ctx, peer) })
+		}
+		if fresh && receiveTimeout > 0 && silent >= receiveTimeout {
 			fresh = false
 			if viaBridge && bridge != nil {
 				// The relayed stream stopped delivering. Drop it so the
@@ -481,6 +489,9 @@ func (c *Controller) dropBridge(deviceID, reason string) {
 		c.logger().Info("relay dropped", "component", "relay", "peer", deviceID, "reason", reason)
 	}
 }
+
+// probeInterval spaces the packets sent to a quiet peer.
+const probeInterval = 10 * time.Second
 
 // resumeGap is the tick delay that is taken as the host having been
 // suspended: several missed ticks, and never less than ten seconds.

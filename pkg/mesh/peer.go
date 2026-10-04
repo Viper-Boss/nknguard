@@ -41,6 +41,7 @@ type Peer struct {
 	// and rxAt is when it last moved; see NoteReceive.
 	rxBytes      int64
 	rxAt         time.Time
+	lastProbe    time.Time
 	observedAt   string
 	installedKey string
 	attempting   bool
@@ -250,6 +251,18 @@ func (p *Peer) NoteReceive(bytes int64, now time.Time) time.Duration {
 		p.rxAt = now
 	}
 	return now.Sub(p.rxAt)
+}
+
+// dueProbe reports whether a quiet peer should be sent a packet now, at most
+// once per interval.
+func (p *Peer) dueProbe(now time.Time, interval time.Duration) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.lastProbe.IsZero() && now.Sub(p.lastProbe) < interval {
+		return false
+	}
+	p.lastProbe = now
+	return true
 }
 
 // resetReceive restarts the silence clock, after the host was suspended or a

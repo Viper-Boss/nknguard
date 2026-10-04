@@ -74,7 +74,10 @@ that a path died. Both sides send a keepalive every 25 s, so a live path
 delivers a packet at least that often. The controller watches each peer's
 received-byte counter: when it has not moved for two keepalive intervals plus
 five seconds (55 s, so one lost keepalive is tolerated) the path counts as
-dead, and after a further 10 s of grace the peer falls back to the relay and a
+dead. From half that time on the node also sends the quiet peer a packet
+every 10 s; WireGuard answers received data with a keepalive within 10 s, so
+a live path replies even when the other side has persistent keepalive turned
+off. After a further 10 s of grace the peer falls back to the relay and a
 new punch starts. A relayed stream that goes silent the same way is dropped
 and reopened. `Timing.ReceiveTimeout` overrides the interval; a negative value
 turns the check off.
