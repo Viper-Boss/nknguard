@@ -184,6 +184,9 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	daemon := &Daemon{Config: cfg, Node: node, Controller: controller, WireGuard: wg, Pairing: pairing, Logger: logger, Logs: ring, Started: time.Now(), down: cancel}
 	daemon.Usage = NewUsageReporter(cfg, node.Keystore, logger)
 	go daemon.Usage.Run(runCtx)
+	// A laptop that moves to another network, or a NAS that gets a new DHCP
+	// lease, tells its peers at once instead of waiting for a path to fail.
+	go controller.WatchNetwork(runCtx, 0, nil)
 
 	api, err := daemon.ServeAPI(runCtx)
 	if err != nil {
