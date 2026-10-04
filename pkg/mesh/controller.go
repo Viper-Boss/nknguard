@@ -73,15 +73,18 @@ type Controller struct {
 	// A client uses it to learn that its NAS has revoked it.
 	OnPeerError func(deviceID string, report protocol.Error)
 
-	mu        sync.RWMutex
-	peers     map[string]*Peer
-	admitted  map[string]struct{}
-	bridges   map[string]*relay.Bridge
-	sequence  uint64
-	selfCands []nat.EndpointCandidate
-	mapping   nat.PortMapping
-	virtualIP netip.Addr
-	metrics   Metrics
+	mu       sync.RWMutex
+	peers    map[string]*Peer
+	admitted map[string]struct{}
+	bridges  map[string]*relay.Bridge
+	// lastReconcile is when the reconcile loop last ran, to notice a host
+	// that was suspended.
+	lastReconcile time.Time
+	sequence      uint64
+	selfCands     []nat.EndpointCandidate
+	mapping       nat.PortMapping
+	virtualIP     netip.Addr
+	metrics       Metrics
 	// introduced remembers when each rendezvous address was last sent our
 	// record, so a static list or a topic listing does not turn into a
 	// message per address per tick.
@@ -127,7 +130,13 @@ type Timing struct {
 	// RelayAfter is how long a peer may sit without any path before the
 	// initiator opens the relay even though a direct attempt is pending.
 	RelayAfter time.Duration
-	Selector   Selector
+	// ReceiveTimeout is how long a peer's received-byte counter may stand
+	// still before its path counts as dead. Zero derives it from the
+	// keepalive interval (two intervals plus five seconds, so one lost
+	// keepalive is tolerated); negative disables the check and leaves only
+	// the three-minute handshake freshness.
+	ReceiveTimeout time.Duration
+	Selector       Selector
 }
 
 // DefaultConfig returns the shipped defaults.
@@ -555,6 +564,66 @@ func (c *Controller) gatherCandidates(ctx context.Context) {
 // republish. A phone calls it after switching between Wi-Fi and mobile data.
 func (c *Controller) RefreshCandidates(ctx context.Context) {
 	c.gatherCandidates(ctx)
+}
+
+// NetworkChanged is called when this host's network changed (a new address,
+// another Wi-Fi, a cable plugged in). It does three things, none of which
+// disturbs a path that still works:
+//
+//   - sends a packet to every peer now, so WireGuard on the other side roams
+//     to our new address at once instead of at the next keepalive;
+//   - gathers candidates and pushes the fresh record to the peers, for the
+//     case where the old path is gone and a new punch is needed;
+//   - clears the direct-retry backoff, so that punch is not delayed by a wait
+//     earned on the previous network.
+func (c *Controller) NetworkChanged(ctx context.Context) {
+	c.mu.RLock()
+	peers := make([]*Peer, 0, len(c.peers))
+	for _, peer := range c.peers {
+		peers = append(peers, peer)
+	}
+	c.mu.RUnlock()
+	for _, peer := range peers {
+		if peer.Revoked() {
+			continue
+		}
+		c.Reconnect(peer.DeviceID())
+		c.nudgePeer(ctx, peer)
+	}
+	c.gatherCandidates(ctx)
+	if record, err := c.buildRecord(ctx); err == nil {
+		c.pushRecord(ctx, record)
+	}
+	c.logger().Info("network changed; refreshed candidates and nudged peers", "component", "mesh", "peers", len(peers))
+}
+
+// nudgePeer makes WireGuard send to the peer now.
+func (c *Controller) nudgePeer(ctx context.Context, peer *Peer) {
+	if c.Nudge == nil {
+		return
+	}
+	record := peer.Record()
+	if len(record.VirtualIPs) == 0 {
+		return
+	}
+	if addr, err := netip.ParseAddr(record.VirtualIPs[0]); err == nil {
+		c.Nudge(ctx, addr)
+	}
+}
+
+// receiveTimeout is the silence after which a path counts as dead; zero
+// disables the check.
+func (c *Controller) receiveTimeout() time.Duration {
+	switch timeout := c.Config.Timing.ReceiveTimeout; {
+	case timeout < 0:
+		return 0
+	case timeout > 0:
+		return timeout
+	}
+	if c.Config.Keepalive <= 0 {
+		return 0
+	}
+	return time.Duration(2*c.Config.Keepalive)*time.Second + 5*time.Second
 }
 
 func (c *Controller) ownCandidates() []nat.EndpointCandidate {

@@ -41,6 +41,7 @@ func (c *Controller) reconcileLoop(ctx context.Context) {
 type observation struct {
 	handshake time.Time
 	endpoint  string
+	rxBytes   int64
 }
 
 func (c *Controller) observe(ctx context.Context) map[string]observation {
@@ -53,7 +54,7 @@ func (c *Controller) observe(ctx context.Context) map[string]observation {
 		return out
 	}
 	for _, stat := range stats {
-		entry := observation{endpoint: stat.Endpoint}
+		entry := observation{endpoint: stat.Endpoint, rxBytes: stat.TransferRxBytes}
 		if stat.LastHandshake > 0 {
 			entry.handshake = time.Unix(stat.LastHandshake, 0)
 		}
@@ -71,12 +72,29 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 	now := time.Now()
 	observed := c.observe(ctx)
 
-	c.mu.RLock()
+	c.mu.Lock()
 	peers := make([]*Peer, 0, len(c.peers))
 	for _, peer := range c.peers {
 		peers = append(peers, peer)
 	}
-	c.mu.RUnlock()
+	// A tick that arrives far later than scheduled means the host was
+	// suspended (a laptop lid, a phone in deep sleep). Nothing was received
+	// meanwhile on any path, dead or alive, so the silence says nothing:
+	// restart the clocks and ask every peer for a packet instead.
+	resumed := !c.lastReconcile.IsZero() && now.Sub(c.lastReconcile) > resumeGap(c.Config.Timing.ReconcileInterval)
+	c.lastReconcile = now
+	c.mu.Unlock()
+	if resumed {
+		c.logger().Info("resumed after a pause; re-checking paths", "component", "mesh")
+		for _, peer := range peers {
+			peer.resetReceive(now)
+			if !peer.Revoked() {
+				c.Reconnect(peer.DeviceID())
+				c.nudgePeer(ctx, peer)
+			}
+		}
+	}
+	receiveTimeout := c.receiveTimeout()
 
 	direct, relayed, switches := 0, 0, 0
 	for _, peer := range peers {
@@ -97,6 +115,26 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		fresh := !seen.handshake.IsZero() && now.Sub(seen.handshake) < wireguard.HandshakeFreshness
 		viaBridge := isLoopbackEndpoint(seen.endpoint)
 		bridge := c.bridgeFor(peer.DeviceID())
+		// A fresh handshake only says the path worked within the last three
+		// minutes. Keepalives arrive every few seconds on a live path, so
+		// their absence shows a dead one much sooner.
+		silent := peer.NoteReceive(seen.rxBytes, now)
+		if fresh && receiveTimeout > 0 && silent >= receiveTimeout/2 && silent < receiveTimeout && peer.dueProbe(now, probeInterval) {
+			// Quiet for a while: ask for a packet before concluding anything.
+			// WireGuard answers received data with a keepalive within ten
+			// seconds when it has nothing else to send, so a live path
+			// replies even if the other side has persistent keepalive off.
+			c.spawn(func() { c.nudgePeer(ctx, peer) })
+		}
+		if fresh && receiveTimeout > 0 && silent >= receiveTimeout {
+			fresh = false
+			if viaBridge && bridge != nil {
+				// The relayed stream stopped delivering. Drop it so the
+				// initiator opens a new one.
+				c.dropBridge(peer.DeviceID(), "no packets received")
+				bridge = nil
+			}
+		}
 
 		before := peer.Path()
 		path := peer.SelectPath(Observation{
@@ -438,6 +476,31 @@ func (c *Controller) closeBridge(deviceID string) {
 		bridge.Close()
 		c.logger().Info("relay closed, peer is direct", "component", "relay", "peer", deviceID)
 	}
+}
+
+// dropBridge closes a relay bridge that stopped working.
+func (c *Controller) dropBridge(deviceID, reason string) {
+	c.mu.Lock()
+	bridge := c.bridges[deviceID]
+	delete(c.bridges, deviceID)
+	c.mu.Unlock()
+	if bridge != nil {
+		bridge.Close()
+		c.logger().Info("relay dropped", "component", "relay", "peer", deviceID, "reason", reason)
+	}
+}
+
+// probeInterval spaces the packets sent to a quiet peer.
+const probeInterval = 10 * time.Second
+
+// resumeGap is the tick delay that is taken as the host having been
+// suspended: several missed ticks, and never less than ten seconds.
+func resumeGap(interval time.Duration) time.Duration {
+	gap := 5 * orDefault(interval, 2*time.Second)
+	if gap < 10*time.Second {
+		gap = 10 * time.Second
+	}
+	return gap
 }
 
 func (c *Controller) closeBridges() {

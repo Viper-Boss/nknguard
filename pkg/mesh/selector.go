@@ -21,9 +21,10 @@ const (
 // DirectLossGrace, and returning to direct requires it to have been good for
 // DirectRecoveryHold. Both are held state, not instantaneous checks.
 type Selector struct {
-	// DirectLossGrace is how long a direct path may be stale before we give up
-	// on it. It is longer than one WireGuard rekey interval on purpose: a
-	// single missed handshake is normal.
+	// DirectLossGrace is how long a direct path may be observed unhealthy
+	// before we give up on it. The observation itself already tolerates a
+	// lost keepalive (Timing.ReceiveTimeout), so this only has to absorb a
+	// reconcile tick or two of jitter.
 	DirectLossGrace time.Duration
 	// DirectRecoveryHold is how long a recovered direct path must stay healthy
 	// before traffic moves back onto it.
@@ -46,7 +47,7 @@ type Selector struct {
 // DefaultSelector returns the tuned defaults.
 func DefaultSelector() *Selector {
 	return &Selector{
-		DirectLossGrace:     20 * time.Second,
+		DirectLossGrace:     10 * time.Second,
 		DirectRecoveryHold:  5 * time.Second,
 		DirectRetryInterval: 30 * time.Second,
 		DirectRetryMax:      10 * time.Minute,

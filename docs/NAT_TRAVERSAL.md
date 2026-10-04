@@ -67,6 +67,34 @@ NKN; a changed candidate set resets the direct-retry backoff so the next
 reconcile tries the new address immediately. Device id and virtual IP do not
 change.
 
+### Noticing a dead path
+
+A WireGuard handshake stays "fresh" for three minutes, far too long to notice
+that a path died. Both sides send a keepalive every 25 s, so a live path
+delivers a packet at least that often. The controller watches each peer's
+received-byte counter: when it has not moved for two keepalive intervals plus
+five seconds (55 s, so one lost keepalive is tolerated) the path counts as
+dead. From half that time on the node also sends the quiet peer a packet
+every 10 s; WireGuard answers received data with a keepalive within 10 s, so
+a live path replies even when the other side has persistent keepalive turned
+off. After a further 10 s of grace the peer falls back to the relay and a
+new punch starts. A relayed stream that goes silent the same way is dropped
+and reopened. `Timing.ReceiveTimeout` overrides the interval; a negative value
+turns the check off.
+
+Three events short-cut the wait:
+
+- **Local address change.** The daemon polls its interface addresses every
+  5 s (`Controller.WatchNetwork`); the Android app reports changes from the
+  system. On a change the node sends a packet to every peer at once (so the
+  other side's WireGuard roams without waiting for a keepalive), gathers
+  candidates, pushes its record and clears the direct-retry backoff. A path
+  that still works is not touched.
+- **Resume from suspend.** A reconcile tick arriving more than 10 s late means
+  the host slept. The silence clocks restart and every peer gets a packet, so
+  a path that survived the sleep is not mistaken for a dead one.
+- **The peer's candidates changed** (above).
+
 ## Relay fallback
 
 After 20 s without any path the initiator opens an NKN session to the peer.

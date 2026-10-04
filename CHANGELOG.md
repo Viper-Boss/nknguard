@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Faster recovery: a path whose received-byte counter stands still for 55 s (two keepalives plus margin) is abandoned after 10 s of grace instead of waiting for the three-minute handshake freshness; silent relay streams are reopened. The daemon (Windows, Linux, NAS) watches its interface addresses and, like the Android app, nudges peers and refreshes candidates at once on a change; a host resuming from suspend re-checks its paths instead of declaring them dead.
 - Windows client rewritten as a native Win32 app (walk): painted banner and buttons, white cards, tray icon (closing the window keeps the tunnel), single instance, no Microsoft Edge needed. Built with a go-winres manifest and icon.
 - NAS dashboard shows the pairing link (`nknguard://pair/v1?...`) as text next to the QR code, with a copy button that falls back to selecting the text.
 - Anonymous active-installation counts (24 h / 30 d / 90 d) from zero-fee NKN subscriptions to `nknguard.usage.*`, shown in the NAS dashboard, Windows client and Android app, on by default with a switch (`pkg/usagestats`, docs/USAGE_STATS.md).

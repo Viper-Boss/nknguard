@@ -413,8 +413,10 @@ func (s *session) networkChanged(ctx context.Context) {
 	go func() {
 		refreshCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		controller.RefreshCandidates(refreshCtx)
-		controller.Reconnect(s.profile.NASID)
+		// Sends a packet to the NAS at once (so its WireGuard roams to the
+		// phone's new address), gathers fresh candidates, pushes them to the
+		// NAS and clears the direct-retry backoff.
+		controller.NetworkChanged(refreshCtx)
 	}()
 	s.agent.Logger.Info("network changed; retrying the direct path", "component", "session")
 }

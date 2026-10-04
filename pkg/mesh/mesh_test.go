@@ -61,6 +61,7 @@ func (n *fakeNet) evaluate() {
 			}
 			if a.endpointFor(b.key) == b.public.String() && b.endpointFor(a.key) == a.public.String() {
 				a.noteHandshake(b.key, now)
+				a.noteReceived(b.key)
 			}
 		}
 	}
@@ -75,6 +76,7 @@ type fakeWG struct {
 	mu         sync.Mutex
 	endpoints  map[string]string
 	handshakes map[string]time.Time
+	received   map[string]int64
 	peers      map[string]wireguard.PeerConfig
 }
 
@@ -86,7 +88,7 @@ func newFakeWG(t *testing.T, network *fakeNet, key string, public netip.AddrPort
 	}
 	fake := &fakeWG{
 		net: network, key: key, public: public, sock: sock,
-		endpoints: map[string]string{}, handshakes: map[string]time.Time{}, peers: map[string]wireguard.PeerConfig{},
+		endpoints: map[string]string{}, handshakes: map[string]time.Time{}, received: map[string]int64{}, peers: map[string]wireguard.PeerConfig{},
 	}
 	network.mu.Lock()
 	network.nodes[key] = fake
@@ -112,6 +114,7 @@ func (f *fakeWG) serve() {
 		peerKey := message[1:]
 		f.mu.Lock()
 		f.handshakes[peerKey] = time.Now()
+		f.received[peerKey] += int64(read)
 		// Real WireGuard roams to the source of the latest authenticated
 		// packet. Once a direct path is up, direct packets keep arriving and
 		// win over any relay stragglers; the fake models that converged
@@ -136,6 +139,14 @@ func (f *fakeWG) noteHandshake(key string, at time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.handshakes[key] = at
+}
+
+// noteReceived counts a packet from the peer, as a keepalive on a live direct
+// path would.
+func (f *fakeWG) noteReceived(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.received[key] += 32
 }
 
 func (f *fakeWG) initiate(endpoint string) {
@@ -176,7 +187,7 @@ func (f *fakeWG) Stats(context.Context) ([]wireguard.PeerStats, error) {
 	defer f.mu.Unlock()
 	out := make([]wireguard.PeerStats, 0, len(f.peers))
 	for key := range f.peers {
-		stat := wireguard.PeerStats{PublicKey: key, Endpoint: f.endpoints[key]}
+		stat := wireguard.PeerStats{PublicKey: key, Endpoint: f.endpoints[key], TransferRxBytes: f.received[key]}
 		if at, ok := f.handshakes[key]; ok {
 			stat.LastHandshake = at.Unix()
 		}
@@ -446,6 +457,109 @@ func TestRelayFallbackThenRecoverToDirect(t *testing.T) {
 	})
 }
 
+// A direct path that stops delivering packets keeps a "fresh" handshake for
+// three minutes. The received-byte counter standing still must be enough to
+// leave it, fall back to the relay and come back when the path returns.
+func TestSilentDirectPathIsAbandonedQuickly(t *testing.T) {
+	e := newEnv(t)
+	quick := func(c *Controller) { c.Config.Timing.ReceiveTimeout = 400 * time.Millisecond }
+	a := e.startWith(t, "a", "198.51.100.1:51820", e.key, quick)
+	b := e.startWith(t, "b", "198.51.100.2:51820", e.key, quick)
+	waitPath(t, 10*time.Second, a, b, PathDirectWG, StateDirect)
+
+	e.fake.setBlocked(true)
+	started := time.Now()
+	waitPath(t, 15*time.Second, a, b, PathNKNRelay, StateRelay)
+	if took := time.Since(started); took > 12*time.Second {
+		t.Fatalf("leaving the dead direct path took %v", took)
+	}
+
+	e.fake.setBlocked(false)
+	waitPath(t, 15*time.Second, a, b, PathDirectWG, StateDirect)
+}
+
+// Without the check (old peers, or keepalive off) only handshake freshness
+// counts, so a quiet but configured path is left alone.
+func TestReceiveTimeoutDerivation(t *testing.T) {
+	c := New()
+	c.Config.Keepalive = 25
+	if got := c.receiveTimeout(); got != 55*time.Second {
+		t.Fatalf("derived timeout %v, want 55s", got)
+	}
+	c.Config.Keepalive = 0
+	if got := c.receiveTimeout(); got != 0 {
+		t.Fatalf("timeout %v without keepalive, want disabled", got)
+	}
+	c.Config.Keepalive = 25
+	c.Config.Timing.ReceiveTimeout = -1
+	if got := c.receiveTimeout(); got != 0 {
+		t.Fatalf("timeout %v when disabled", got)
+	}
+	c.Config.Timing.ReceiveTimeout = 7 * time.Second
+	if got := c.receiveTimeout(); got != 7*time.Second {
+		t.Fatalf("explicit timeout %v", got)
+	}
+	if resumeGap(2*time.Second) != 10*time.Second || resumeGap(10*time.Second) != 50*time.Second {
+		t.Fatal("resume gap")
+	}
+}
+
+func TestPeerReceiveSilence(t *testing.T) {
+	peer := &Peer{}
+	now := time.Unix(1_800_000_000, 0)
+	if silent := peer.NoteReceive(100, now); silent != 0 {
+		t.Fatalf("first observation silent for %v", silent)
+	}
+	if silent := peer.NoteReceive(100, now.Add(30*time.Second)); silent != 30*time.Second {
+		t.Fatalf("silent for %v, want 30s", silent)
+	}
+	if silent := peer.NoteReceive(132, now.Add(40*time.Second)); silent != 0 {
+		t.Fatalf("a new packet did not reset the clock: %v", silent)
+	}
+	// A counter that restarts (the peer was re-added) is activity too.
+	if silent := peer.NoteReceive(0, now.Add(50*time.Second)); silent != 0 {
+		t.Fatalf("counter reset counted as silence: %v", silent)
+	}
+	peer.resetReceive(now.Add(90 * time.Second))
+	if silent := peer.NoteReceive(0, now.Add(95*time.Second)); silent != 5*time.Second {
+		t.Fatalf("after reset silent for %v, want 5s", silent)
+	}
+}
+
+// A network change must reach the peers at once: a packet to each (so the
+// other side's WireGuard roams) and fresh candidates.
+func TestNetworkChangedNudgesPeers(t *testing.T) {
+	e := newEnv(t)
+	var mu sync.Mutex
+	nudged := map[netip.Addr]int{}
+	a := e.startWith(t, "a", "198.51.100.1:51820", e.key, func(c *Controller) {
+		c.Nudge = func(_ context.Context, addr netip.Addr) {
+			mu.Lock()
+			nudged[addr]++
+			mu.Unlock()
+		}
+	})
+	b := e.start(t, "b", "198.51.100.2:51820", e.key)
+	waitPath(t, 10*time.Second, a, b, PathDirectWG, StateDirect)
+	mu.Lock()
+	before := nudged[b.ctrl.VirtualIP()]
+	mu.Unlock()
+
+	a.ctrl.NetworkChanged(context.Background())
+
+	mu.Lock()
+	after := nudged[b.ctrl.VirtualIP()]
+	mu.Unlock()
+	if after != before+1 {
+		t.Fatalf("peer nudged %d times by a network change, want 1", after-before)
+	}
+	// The working path is left alone.
+	time.Sleep(300 * time.Millisecond)
+	if snapshot, _ := a.peer(b.ctrl.Device.DeviceID()); snapshot.Path != PathDirectWG {
+		t.Fatalf("network change moved a working path to %s", snapshot.Path)
+	}
+}
+
 func otherID(self, a, b *node) string {
 	if self == a {
 		return b.ctrl.Device.DeviceID()
@@ -596,5 +710,91 @@ func TestOwnerTellsUnapprovedMemberItIsRevoked(t *testing.T) {
 	// Repeated introductions within a minute get one reply.
 	if len(reports["revoked"]) != 1 {
 		t.Fatalf("replies were not rate limited: %d", len(reports["revoked"]))
+	}
+}
+
+func TestAddressFingerprint(t *testing.T) {
+	overlay := netip.MustParsePrefix("10.88.0.0/16")
+	ipnet := func(cidr string) net.Addr {
+		ip, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		network.IP = ip
+		return network
+	}
+	home := []net.Addr{ipnet("127.0.0.1/8"), ipnet("192.168.1.20/24"), ipnet("fe80::1/64"), ipnet("10.88.41.7/16")}
+	if got := addressFingerprint(home, overlay); got != "192.168.1.20" {
+		t.Fatalf("fingerprint %q, want only the LAN address", got)
+	}
+	// The tunnel coming up or going down is not a network change.
+	withoutTunnel := home[:3]
+	if addressFingerprint(withoutTunnel, overlay) != addressFingerprint(home, overlay) {
+		t.Fatal("overlay address changed the fingerprint")
+	}
+	// Order does not matter; a new address does.
+	shuffled := []net.Addr{home[1], home[0]}
+	if addressFingerprint(shuffled, overlay) != addressFingerprint(home, overlay) {
+		t.Fatal("order changed the fingerprint")
+	}
+	office := []net.Addr{ipnet("127.0.0.1/8"), ipnet("172.20.5.9/22"), ipnet("2001:db8::9/64")}
+	if got := addressFingerprint(office, overlay); got != "172.20.5.9,2001:db8::9" {
+		t.Fatalf("fingerprint %q", got)
+	}
+}
+
+func TestWatchNetworkReportsChanges(t *testing.T) {
+	e := newEnv(t)
+	var mu sync.Mutex
+	nudges := 0
+	a := e.startWith(t, "a", "198.51.100.1:51820", e.key, func(c *Controller) {
+		c.Nudge = func(context.Context, netip.Addr) {
+			mu.Lock()
+			nudges++
+			mu.Unlock()
+		}
+	})
+	b := e.start(t, "b", "198.51.100.2:51820", e.key)
+	waitPath(t, 10*time.Second, a, b, PathDirectWG, StateDirect)
+	mu.Lock()
+	nudges = 0
+	mu.Unlock()
+
+	address := "192.168.1.20"
+	list := func() ([]net.Addr, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return []net.Addr{&net.IPNet{IP: net.ParseIP(address), Mask: net.CIDRMask(24, 32)}}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go a.ctrl.WatchNetwork(ctx, 20*time.Millisecond, list)
+
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	quiet := nudges
+	address = "172.20.5.9"
+	mu.Unlock()
+	if quiet != 0 {
+		t.Fatalf("%d nudges without any address change", quiet)
+	}
+	waitFor(t, 5*time.Second, "peer nudged after the address changed", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return nudges == 1
+	})
+}
+
+func TestQuietPeerIsProbedAtIntervals(t *testing.T) {
+	peer := &Peer{}
+	now := time.Unix(1_800_000_000, 0)
+	if !peer.dueProbe(now, probeInterval) {
+		t.Fatal("first probe refused")
+	}
+	if peer.dueProbe(now.Add(probeInterval-time.Second), probeInterval) {
+		t.Fatal("probed again inside the interval")
+	}
+	if !peer.dueProbe(now.Add(probeInterval), probeInterval) {
+		t.Fatal("no probe after the interval")
 	}
 }

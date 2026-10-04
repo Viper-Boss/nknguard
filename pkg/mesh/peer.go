@@ -37,15 +37,20 @@ type Peer struct {
 	selector *Selector
 
 	lastHandshake time.Time
-	observedAt    string
-	installedKey  string
-	attempting    bool
-	relayOpening  bool
-	lastRelayTry  time.Time
-	lastError     string
-	punchRounds   int
-	pathSwitches  int
-	history       []Transition
+	// rxBytes is the peer's received-byte counter at the last observation
+	// and rxAt is when it last moved; see NoteReceive.
+	rxBytes      int64
+	rxAt         time.Time
+	lastProbe    time.Time
+	observedAt   string
+	installedKey string
+	attempting   bool
+	relayOpening bool
+	lastRelayTry time.Time
+	lastError    string
+	punchRounds  int
+	pathSwitches int
+	history      []Transition
 }
 
 // NewPeer returns a peer in StateUnknown with the default path selector.
@@ -231,6 +236,41 @@ func (p *Peer) Endpoint() netip.AddrPort {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.endpoint
+}
+
+// NoteReceive records the peer's WireGuard received-byte counter and returns
+// how long it has not moved. With persistent keepalive on both sides a live
+// path delivers a packet at least every keepalive interval, so a counter that
+// stands still for much longer means the path is dead, long before the last
+// handshake ages out of its three-minute freshness window.
+func (p *Peer) NoteReceive(bytes int64, now time.Time) time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.rxAt.IsZero() || bytes != p.rxBytes {
+		p.rxBytes = bytes
+		p.rxAt = now
+	}
+	return now.Sub(p.rxAt)
+}
+
+// dueProbe reports whether a quiet peer should be sent a packet now, at most
+// once per interval.
+func (p *Peer) dueProbe(now time.Time, interval time.Duration) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.lastProbe.IsZero() && now.Sub(p.lastProbe) < interval {
+		return false
+	}
+	p.lastProbe = now
+	return true
+}
+
+// resetReceive restarts the silence clock, after the host was suspended or a
+// path was just (re)established.
+func (p *Peer) resetReceive(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rxAt = now
 }
 
 // NoteHandshake records a WireGuard handshake time observed on the interface.

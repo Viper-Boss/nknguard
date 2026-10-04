@@ -12,13 +12,16 @@
 
 ## 更新内容 / What's new
 
-- **Windows 客户端改为原生桌面程序**：不再打开 Edge 浏览器窗口。新界面有渐变横幅、白色卡片和圆角按钮；关闭窗口后缩到右下角托盘，连接保持，在托盘菜单中“退出”才断开；只允许运行一个实例。不再需要 Microsoft Edge。
-  The Windows client is now a native Win32 app with a tray icon; Microsoft Edge is no longer needed.
-- **NAS 面板显示配对链接**：二维码下方直接显示同内容的 `nknguard://pair/v1?...` 链接，可一键复制（浏览器不允许复制时自动选中）。
-  The dashboard shows the pairing link as text next to the QR code.
-- 包含 preview.3 的全部内容：匿名使用人数统计、Android 客户端、内置国内 NKN seed、撤销通知等。
-  Includes everything from preview.3.
-- v1 线协议未改变。/ The v1 wire protocol is unchanged.
+- **断线后更快恢复**：以前直连断了要等 WireGuard 握手超过 3 分钟才发现；现在双方每 25 秒互发保活包，接收计数 55 秒不动就判定链路失效，再过 10 秒切到 NKN 中继并重新打洞，整体约 1 分钟。中继流断了也会自动重开。
+  A dead path is now noticed after about a minute (received-byte silence) instead of three; silent relay streams are reopened.
+- **换网络立即重连（Windows / Linux / NAS）**：程序每 5 秒检查本机地址，变化后立即给对端发包、重新探测地址并通知对端，不再等定时器。Android 之前已有系统网络变化通知，现在走同一套逻辑。
+  The daemon watches local addresses and reconnects at once on a change, like the Android app.
+- **休眠唤醒**：电脑睡眠后恢复时重新检查链路，不会把还能用的链路误判为断线。
+  Paths are re-checked after resume from suspend instead of being declared dead.
+- 包含 preview.4 的全部内容：Windows 原生客户端、面板配对链接、使用人数统计等。
+  Includes everything from preview.4.
+- v1 线协议未改变，新旧版本可以互通；但更快的断线判定只在升级后的一端生效，建议 NAS 和客户端都升级。
+  The v1 wire protocol is unchanged; upgrade both ends to get the faster detection on both.
 
 ## 注意 / Caveats
 
