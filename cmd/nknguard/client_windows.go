@@ -5,15 +5,14 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-	"unsafe"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/internal/state"
@@ -22,15 +21,18 @@ import (
 )
 
 type clientWindow struct {
-	mu           sync.Mutex
-	globals      globals
-	pairing      bool
-	connecting   bool
-	connectSince time.Time
-	message      string
-	pairCode     string
-	nasAddress   string
-	errorMessage string
+	mu            sync.Mutex
+	globals       globals
+	pairing       bool
+	connecting    bool
+	disconnecting bool
+	launchDone    chan struct{}
+	background    windows.Handle
+	connectSince  time.Time
+	message       string
+	pairCode      string
+	nasAddress    string
+	errorMessage  string
 	// usage is the anonymous usage-statistics reporter; nil if unavailable.
 	usage *usagestats.Reporter
 }
@@ -45,12 +47,14 @@ func (w *clientWindow) snapshot() map[string]any {
 	w.mu.Lock()
 	pairing, connecting, connectSince, message, pairCode, nasAddress, errorMessage :=
 		w.pairing, w.connecting, w.connectSince, w.message, w.pairCode, w.nasAddress, w.errorMessage
+	disconnecting := w.disconnecting
 	w.mu.Unlock()
 	cfg, _, err := loadConfig(w.globals)
 	result := map[string]any{
 		"paired": false, "connected": false, "pairing": pairing,
 		"connecting": connecting, "message": message,
-		"pair_code": pairCode, "nas_address": nasAddress,
+		"disconnecting": disconnecting,
+		"pair_code":     pairCode, "nas_address": nasAddress,
 		"error": errorMessage, "path": "none",
 	}
 	if err != nil {
@@ -166,24 +170,6 @@ func (w *clientWindow) pair(invitation, name string) error {
 	return nil
 }
 
-func runElevated(executable, configPath string) error {
-	verb, _ := syscall.UTF16PtrFromString("runas")
-	file, err := syscall.UTF16PtrFromString(executable)
-	if err != nil {
-		return err
-	}
-	params, err := syscall.UTF16PtrFromString("--config " + syscall.EscapeArg(configPath) + " up")
-	if err != nil {
-		return err
-	}
-	shell := syscall.NewLazyDLL("shell32.dll").NewProc("ShellExecuteW")
-	result, _, callErr := shell.Call(0, uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(file)), uintptr(unsafe.Pointer(params)), 0, 1)
-	if result <= 32 {
-		return fmt.Errorf("管理员授权未完成: %v", callErr)
-	}
-	return nil
-}
-
 func (w *clientWindow) connect() error {
 	cfg, _, err := loadConfig(w.globals)
 	if err != nil {
@@ -200,18 +186,46 @@ func (w *clientWindow) connect() error {
 	if err != nil {
 		return err
 	}
-	w.update(func() {
-		w.connecting = true
-		w.connectSince = time.Now()
-		w.errorMessage = ""
-		w.message = "正在请求管理员权限并建立连接…"
-	})
-	_ = os.Remove(filepath.Join(os.Getenv("LOCALAPPDATA"), "NKNGuard", "last-error.txt"))
-	if err := runElevated(executable, w.globals.configPath); err != nil {
-		w.update(func() { w.connecting = false; w.errorMessage = err.Error() })
-		return err
+	w.mu.Lock()
+	if w.launchDone != nil {
+		select {
+		case <-w.launchDone:
+		default:
+			w.mu.Unlock()
+			return errors.New("请先完成或取消管理员授权")
+		}
 	}
-	return nil
+	if w.connecting || w.disconnecting {
+		w.mu.Unlock()
+		return errors.New("连接操作尚未完成")
+	}
+	if w.background != 0 {
+		code, waitErr := windows.WaitForSingleObject(w.background, 0)
+		if waitErr != nil || code != windows.WAIT_OBJECT_0 {
+			w.mu.Unlock()
+			return errors.New("后台仍在运行，请先断开")
+		}
+		_ = windows.CloseHandle(w.background)
+		w.background = 0
+	}
+	done := make(chan struct{})
+	w.launchDone = done
+	w.connecting = true
+	w.connectSince = time.Now()
+	w.errorMessage = ""
+	w.message = "正在请求管理员权限并建立连接…"
+	w.mu.Unlock()
+	_ = os.Remove(filepath.Join(os.Getenv("LOCALAPPDATA"), "NKNGuard", "last-error.txt"))
+	handle, err := runElevated(executable, w.globals.configPath)
+	w.mu.Lock()
+	w.background = handle
+	if err != nil {
+		w.connecting = false
+		w.errorMessage = err.Error()
+	}
+	close(done)
+	w.mu.Unlock()
+	return err
 }
 
 func (w *clientWindow) disconnect() error {
@@ -219,12 +233,45 @@ func (w *clientWindow) disconnect() error {
 	if err != nil {
 		return err
 	}
-	err = app.NewClient(cfg.Paths.Socket).Down()
-	if errors.Is(err, app.ErrDaemonNotRunning) {
-		err = nil
+	w.mu.Lock()
+	if w.disconnecting {
+		w.mu.Unlock()
+		return errors.New("正在断开，请稍后")
 	}
+	w.disconnecting = true
+	done := w.launchDone
+	w.mu.Unlock()
+	defer w.update(func() { w.disconnecting = false })
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return errors.New("请完成或取消管理员授权后，再退出")
+		}
+	}
+	w.mu.Lock()
+	handle := w.background
+	w.mu.Unlock()
+	err = waitForClientStop(ctx, func() (bool, error) {
+		if handle == 0 {
+			return true, nil
+		}
+		code, err := windows.WaitForSingleObject(handle, 0)
+		return code == windows.WAIT_OBJECT_0, err
+	}, app.NewClient(cfg.Paths.Socket).Down)
 	if err == nil {
-		w.update(func() { w.connecting = false; w.message = "已断开"; w.errorMessage = "" })
+		w.update(func() {
+			if w.background != 0 {
+				_ = windows.CloseHandle(w.background)
+				w.background = 0
+			}
+			w.launchDone = nil
+			w.connecting = false
+			w.message = "已断开"
+			w.errorMessage = ""
+		})
 	}
 	return err
 }

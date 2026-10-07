@@ -192,7 +192,7 @@ func (c *Controller) initiator(peer *Peer) bool {
 
 // progress takes one step for a peer that is not on a direct path.
 func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, bridge *relay.Bridge) {
-	if !c.initiator(peer) || c.Direct == nil {
+	if c.Signaling == nil || !c.initiator(peer) || c.Direct == nil {
 		return
 	}
 	// The relay comes first when a peer has had no path for RelayAfter: being

@@ -67,6 +67,7 @@ type clientUI struct {
 	trayDisconnect *walk.Action
 	trayHinted     bool
 	quitting       bool
+	quitPending    bool
 
 	banner      *walk.CustomWidget
 	bannerIcon  *walk.Bitmap
@@ -390,10 +391,25 @@ func (u *clientUI) showWindow() {
 }
 
 func (u *clientUI) quit() {
-	u.quitting = true
-	_ = u.w.disconnect()
-	_ = u.tray.SetVisible(false)
-	_ = u.mw.Close()
+	if u.quitPending {
+		return
+	}
+	u.quitPending = true
+	go func() {
+		err := u.w.disconnect()
+		u.mw.Synchronize(func() {
+			u.quitPending = false
+			if err != nil {
+				u.keepError(err)
+				u.showWindow()
+				u.render(u.w.snapshot())
+				return
+			}
+			u.quitting = true
+			_ = u.tray.SetVisible(false)
+			_ = u.mw.Close()
+		})
+	}()
 }
 
 // ---- painted parts ---------------------------------------------------------------------
@@ -701,11 +717,14 @@ func setText(control textControl, value string) {
 func (u *clientUI) render(state map[string]any) {
 	paired, connected := stateFlag(state, "paired"), stateFlag(state, "connected")
 	connecting, pairing := stateFlag(state, "connecting"), stateFlag(state, "pairing")
+	disconnecting := stateFlag(state, "disconnecting") || u.quitPending
 	path := stateText(state, "path")
 
 	var title, short string
 	tone := colorIdle
 	switch {
+	case disconnecting:
+		title, short, tone = "正在断开并清理隧道", "断开中", colorWarn
 	case !paired:
 		title, short = "请先配对 NAS", "尚未配对"
 	case !connected && connecting:
@@ -748,11 +767,17 @@ func (u *clientUI) render(state map[string]any) {
 	}
 	u.errText.SetVisible(errorText != "")
 
-	canConnect := paired && !connected && !connecting
+	canConnect := paired && !connected && !connecting && !disconnecting
 	u.connect.SetEnabled(canConnect)
-	u.disconnect.SetEnabled(connected)
+	u.disconnect.SetEnabled((connected || connecting) && !disconnecting)
+	if connecting {
+		u.disconnect.text = "取消连接"
+	} else {
+		u.disconnect.text = "断开"
+	}
+	_ = u.disconnect.widget.Invalidate()
 	_ = u.trayConnect.SetEnabled(canConnect)
-	_ = u.trayDisconnect.SetEnabled(connected)
+	_ = u.trayDisconnect.SetEnabled((connected || connecting) && !disconnecting)
 
 	setText(u.nasAddress, orDefault(stateText(state, "nas_address"), "未配对"))
 	setText(u.localAddress, orDefault(stateText(state, "local_nkn_address"), "连接后显示"))

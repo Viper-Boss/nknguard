@@ -43,6 +43,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private val app get() = application as NkgApp
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "nkg-vpn").apply { isDaemon = true } }
     @Volatile private var connected = false
+    @Volatile private var stopping = false
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
@@ -54,9 +55,9 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
+                stopping = true
                 executor.execute {
-                    disconnect()
-                    stopSelf()
+                    if (disconnect()) stopSelf()
                 }
             }
             else -> {
@@ -70,14 +71,15 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     }
 
     private fun connectOrStop() {
+        if (stopping) return
         try {
             connect()
         } catch (error: Exception) {
             val message = error.message ?: error.toString()
             app.core.logs.add("connect failed: $message")
-            disconnect()
+            val stopped = disconnect()
             reportProblem(message)
-            stopSelf()
+            if (stopped) stopSelf()
         }
     }
 
@@ -132,13 +134,20 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
         }
     }
 
-    private fun disconnect() {
+    private fun disconnect(): Boolean {
+        stopping = true
         unwatchNetwork()
         if (app.core.isRunning) {
             try {
                 app.core.call("disconnect", timeoutMillis = 15_000)
             } catch (error: Exception) {
                 app.core.logs.add("disconnect failed: ${error.message}")
+                try {
+                    app.stopCore()
+                } catch (stopError: Exception) {
+                    reportProblem("断开失败：${stopError.message}")
+                    return false
+                }
             }
         }
         connected = false
@@ -149,6 +158,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+        return true
     }
 
     private fun watchNetwork() {
@@ -159,11 +169,12 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             override fun onLost(network: Network) = changed(null)
 
             private fun changed(network: Network?) {
-                executor.execute {
+                if (stopping) return
+                runCatching { executor.execute {
                     if (!connected) return@execute
                     setUnderlyingNetworks(network?.let { arrayOf(it) })
                     runCatching { app.core.call("network", NetworkInfo.describe(this@NkgVpnService, network)) }
-                }
+                } }
             }
         }
         // The app is outside its own VPN, so its default network is the real
@@ -181,18 +192,18 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     override fun onRevoke() {
         // Another VPN took over or the user switched ours off in Settings.
         executor.execute {
-            disconnect()
-            stopSelf()
+            if (disconnect()) stopSelf()
         }
     }
 
     override fun onDestroy() {
+        stopping = true
+        unwatchNetwork()
         app.removeListener(this)
-        if (connected) {
-            executor.execute { disconnect() }
-        }
+        // Cleanup continues on the worker; lifecycle callbacks must never
+        // wait for IPC or process termination on Android's main thread.
+        executor.execute { disconnect() }
         executor.shutdown()
-        runCatching { executor.awaitTermination(15, TimeUnit.SECONDS) }
         super.onDestroy()
     }
 
@@ -204,8 +215,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             // The core ended the session itself (for example after a
             // revocation); follow it.
             executor.execute {
-                disconnect()
-                stopSelf()
+                if (disconnect()) stopSelf()
             }
             return
         }
@@ -214,9 +224,9 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
 
     override fun onRevoked(message: String) {
         executor.execute {
-            disconnect()
+            val stopped = disconnect()
             reportProblem(message)
-            stopSelf()
+            if (stopped) stopSelf()
         }
     }
 
@@ -224,9 +234,9 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
         if (!connected) return
         connected = false
         executor.execute {
-            disconnect()
+            val stopped = disconnect()
             reportProblem(message)
-            stopSelf()
+            if (stopped) stopSelf()
         }
     }
 
@@ -286,7 +296,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             PROBLEM_ID,
             Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_tunnel)
-                .setContentTitle("NKNGuard 已断开")
+                .setContentTitle(if (connected) "NKNGuard 连接问题" else "NKNGuard 已断开")
                 .setContentText(message)
                 .setStyle(Notification.BigTextStyle().bigText(message))
                 .setContentIntent(mainIntent())
