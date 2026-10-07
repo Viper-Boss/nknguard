@@ -45,6 +45,12 @@ jobs:
         run: go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard --file-description "NKNGuard Windows client" --original-filename NKNGuard-Windows.exe
       - name: build Windows app
         run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1" -o NKNGuard-Windows.exe ./cmd/nknguard
+      - name: upload Windows client
+        uses: actions/upload-artifact@v4
+        with:
+          name: NKNGuard-Windows
+          path: NKNGuard-Windows.exe
+          if-no-files-found: error
 
   full:
     name: full (nknsdk + libp2pdht)
