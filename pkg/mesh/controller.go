@@ -92,6 +92,9 @@ type Controller struct {
 	// refused remembers when each unapproved device was last told so, so a
 	// revoked device that keeps introducing itself costs one reply a minute.
 	refused map[string]time.Time
+	// cachedEndpoints are untrusted hints bound to already verified records.
+	// Only a new WireGuard handshake can promote one to a working path.
+	cachedEndpoints map[string]netip.AddrPort
 
 	wg sync.WaitGroup
 }
@@ -172,13 +175,14 @@ type Metrics struct {
 // New returns a controller with an empty peer table and a deny-all policy.
 func New() *Controller {
 	return &Controller{
-		Config:     DefaultConfig(),
-		peers:      make(map[string]*Peer),
-		admitted:   make(map[string]struct{}),
-		bridges:    make(map[string]*relay.Bridge),
-		introduced: make(map[string]time.Time),
-		refused:    make(map[string]time.Time),
-		Policy:     acl.DefaultPolicy(),
+		Config:          DefaultConfig(),
+		peers:           make(map[string]*Peer),
+		admitted:        make(map[string]struct{}),
+		bridges:         make(map[string]*relay.Bridge),
+		introduced:      make(map[string]time.Time),
+		refused:         make(map[string]time.Time),
+		cachedEndpoints: make(map[string]netip.AddrPort),
+		Policy:          acl.DefaultPolicy(),
 	}
 }
 
@@ -223,6 +227,22 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	dispatcher := c.newDispatcher()
 	c.spawn(func() { _ = dispatcher.Run(ctx, c.Signaling) })
+	// Cached peers are skipped by ordinary rendezvous introductions. Ask them
+	// explicitly for a fresh signed record as soon as signaling is ready.
+	c.spawn(func() {
+		record, err := c.buildRecord(ctx)
+		if err != nil {
+			return
+		}
+		raw, err := record.Marshal()
+		if err != nil {
+			return
+		}
+		for _, peer := range c.Records() {
+			c.Signaling.SetPeerAddress(peer.DeviceID, peer.NKNAddress)
+			_ = c.send(ctx, peer.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw, WantReply: true})
+		}
+	})
 	c.spawn(func() { c.publishLoop(ctx) })
 	if c.Discovery != nil {
 		c.spawn(func() { c.discoverLoop(ctx) })
@@ -508,7 +528,48 @@ func (c *Controller) RestoreLinkHint(deviceID, publicKey, endpoint string, seenA
 		return false
 	}
 	peer.MergeCandidates(append([]nat.EndpointCandidate{hint}, peer.Candidates()...), time.Now())
+	c.mu.Lock()
+	c.cachedEndpoints[deviceID] = address
+	c.mu.Unlock()
 	return true
+}
+
+// RunCached probes previously verified endpoints while NKN is opening. It
+// must finish before Signaling/Relay/Discovery are assigned and Run starts.
+// It does not publish records or authorize new peers.
+func (c *Controller) RunCached(ctx context.Context) {
+	defer c.wg.Wait()
+	c.mu.RLock()
+	hints := make(map[string]netip.AddrPort, len(c.cachedEndpoints))
+	for id, endpoint := range c.cachedEndpoints {
+		hints[id] = endpoint
+	}
+	c.mu.RUnlock()
+	for id, endpoint := range hints {
+		peer, ok := c.lookupPeer(id)
+		if !ok || peer.Revoked() || !c.Authorized(id) || c.WireGuard == nil {
+			continue
+		}
+		c.ensureWireGuardPeer(ctx, peer)
+		if peer.NeedsInstall() {
+			continue
+		}
+		if err := c.WireGuard.UpdateEndpoint(ctx, peer.Record().WireGuardPublicKey, endpoint.String()); err != nil {
+			peer.NoteError("cached endpoint: " + err.Error())
+			continue
+		}
+		c.nudgePeer(ctx, peer)
+	}
+	ticker := time.NewTicker(orDefault(c.Config.Timing.ReconcileInterval, 2*time.Second))
+	defer ticker.Stop()
+	for {
+		c.reconcileOnce(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // Reconnect forces an immediate direct attempt for one peer.
@@ -978,14 +1039,16 @@ func (c *Controller) ingestRecordAt(ctx context.Context, record discovery.PeerRe
 		// nothing about the new one, so try the new one now.
 		c.Reconnect(record.DeviceID)
 	}
-	if record.NKNAddress != "" {
+	if record.NKNAddress != "" && c.Signaling != nil {
 		c.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
 	}
 	state := peer.State()
 	if state == StateUnknown || state == StateOffline || state == StateDegraded {
 		_, _ = peer.Apply(EventRecordSeen, time.Now())
 		c.logger().Info("peer discovered", "component", "mesh", "peer", record.DeviceID, "name", record.Name)
-		c.sendHello(ctx, peer)
+		if c.Signaling != nil {
+			c.sendHello(ctx, peer)
+		}
 	}
 }
 

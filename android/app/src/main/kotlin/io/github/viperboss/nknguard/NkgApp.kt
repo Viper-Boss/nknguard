@@ -60,6 +60,15 @@ class NkgApp : Application() {
     fun addListener(listener: Listener) = listeners.add(listener)
     fun removeListener(listener: Listener) = listeners.remove(listener)
 
+    /** Stops a stuck VPN core; serialize with initialization/restart. */
+    fun stopCore() {
+        synchronized(initLock) {
+            core.stop()
+            initialized = false
+            publishStatus(JSONObject().put("phase", "idle").put("connected", false))
+        }
+    }
+
     /** Default name the NAS dashboard shows for this phone. */
     val defaultDeviceName: String
         get() = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ").take(60).ifBlank { "Android" }

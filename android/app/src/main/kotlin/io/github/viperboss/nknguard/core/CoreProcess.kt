@@ -37,6 +37,7 @@ class CoreProcess(
     private val lock = Any()
     private var process: Process? = null
     private var writer: BufferedWriter? = null
+    private var stopping = false
     private val nextId = AtomicLong(0)
     private val pending = ConcurrentHashMap<Long, Pending>()
     private val generationCounter = AtomicLong(0)
@@ -52,6 +53,7 @@ class CoreProcess(
     /** Starts the core if it is not running. Returns true if it was started. */
     fun start(): Boolean {
         synchronized(lock) {
+            if (stopping) throw CoreException("核心正在关闭，请稍后重试")
             if (process?.isAlive == true) return false
             val executable = File(context.applicationInfo.nativeLibraryDir, "libnkgcore.so")
             if (!executable.canExecute()) {
@@ -84,10 +86,10 @@ class CoreProcess(
                     if (process === started) {
                         process = null
                         writer = null
+                        failAll("NKNGuard 核心已退出（状态 $code）")
+                        onExit(generation)
                     }
                 }
-                failAll("NKNGuard 核心已退出（状态 $code）")
-                onExit(generation)
             }
             return true
         }
@@ -101,12 +103,18 @@ class CoreProcess(
         BufferedReader(InputStreamReader(source.inputStream, Charsets.UTF_8)).useLines { lines ->
             for (line in lines) {
                 val message = try { JSONObject(line) } catch (_: Exception) { continue }
+                if (synchronized(lock) { process !== source }) return@useLines
                 if (message.has("event")) {
+                    val name = message.getString("event")
+                    val data = message.optJSONObject("data") ?: JSONObject()
+                    var saved = true
                     try {
-                        onEvent(message.getString("event"), message.optJSONObject("data") ?: JSONObject())
+                        onEvent(name, data)
                     } catch (error: Exception) {
+                        saved = false
                         logs.add("event handler failed: ${error.message}")
                     }
+                    if (name == "secrets") acknowledgeSecrets(source, data, saved)
                     continue
                 }
                 val waiter = pending.remove(message.optLong("id", -1)) ?: continue
@@ -116,6 +124,21 @@ class CoreProcess(
                     waiter.error = message.optString("error", "未知错误")
                 }
                 waiter.latch.countDown()
+            }
+        }
+    }
+
+    // The reader sends an ACK without waiting for a reply. Calling call()
+    // here would deadlock the only thread that reads command responses.
+    private fun acknowledgeSecrets(source: Process, data: JSONObject, saved: Boolean) {
+        synchronized(lock) {
+            if (process !== source) return
+            val message = JSONObject().put("id", 0).put("cmd", "secrets_ack")
+                .put("args", JSONObject().put("sequence", data.getLong("sequence")).put("saved", saved))
+            try {
+                writer?.apply { write(message.toString()); write("\n"); flush() }
+            } catch (_: Exception) {
+                source.destroy()
             }
         }
     }
@@ -169,16 +192,27 @@ class CoreProcess(
 
     /** Asks the core to exit and makes sure it does. */
     fun stop() {
-        val current = synchronized(lock) { process } ?: return
+        val current = synchronized(lock) {
+            val active = process ?: return
+            stopping = true
+            active
+        }
         try {
-            call("shutdown", timeoutMillis = 3_000)
-        } catch (_: Exception) {
-        }
-        synchronized(lock) {
-            try { writer?.close() } catch (_: Exception) {}
-        }
-        if (!current.waitFor(3, TimeUnit.SECONDS)) {
+            // This is the fallback for a stalled IPC channel. Termination
+            // cannot depend on another command being accepted by that pipe.
             current.destroy()
+            if (!current.waitFor(3, TimeUnit.SECONDS)) current.destroyForcibly()
+            if (!current.waitFor(3, TimeUnit.SECONDS)) throw CoreException("无法结束 VPN 核心，请在系统设置中关闭 VPN")
+            synchronized(lock) {
+                if (process === current) {
+                    process = null
+                    writer = null
+                    failAll("NKNGuard 核心已关闭")
+                    onExit(generationCounter.get())
+                }
+            }
+        } finally {
+            synchronized(lock) { stopping = false }
         }
     }
 }

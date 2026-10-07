@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Viper-Boss/nknguard/internal/config"
@@ -41,8 +42,9 @@ type Daemon struct {
 	// Usage counts active installations anonymously; see pkg/usagestats.
 	Usage *usagestats.Reporter
 
-	down     context.CancelFunc
-	downOnce sync.Once
+	down       context.CancelFunc
+	downOnce   sync.Once
+	nknAddress atomic.Value
 }
 
 // NewLogger builds the daemon logger: text to w, and a redacted copy into the
@@ -123,7 +125,29 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		ListenPort: cfg.WireGuard.ListenPort,
 		MTU:        cfg.WireGuard.MTU,
 	}
-	if err := wg.EnsureInterface(ctx, interfaceConfig); err != nil {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	controller.WireGuard = wg
+	controller.Direct = &mesh.WireGuardStrategy{WireGuard: wg, Nudge: mesh.UDPNudge}
+	controller.Nudge = mesh.UDPNudge
+	daemon := &Daemon{Config: cfg, Node: node, Controller: controller, WireGuard: wg, Logger: logger, Logs: ring, Started: time.Now(), down: cancel}
+	// Keep the control API alive until interface cleanup completes. A client's
+	// disconnect waits for this socket to disappear, not just for the stop ACK.
+	apiCtx, apiCancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer apiCancel()
+	api, err := daemon.ServeAPI(apiCtx)
+	if err != nil {
+		return err
+	}
+	defer api.Close()
+	defer func() {
+		downCtx, downCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer downCancel()
+		if err := wg.Down(downCtx); err != nil {
+			logger.Warn("removing interface failed", "component", "wireguard", "error", err)
+		}
+	}()
+	if err := wg.EnsureInterface(runCtx, interfaceConfig); err != nil {
 		return fmt.Errorf("bring up %s: %w", cfg.WireGuard.Interface, err)
 	}
 	logger.Info("wireguard interface up", "component", "wireguard", "interface", cfg.WireGuard.Interface, "address", interfaceConfig.Address)
@@ -132,7 +156,6 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	if !cfg.NAT.STUNEnabled {
 		servers = nil
 	}
-	controller.WireGuard = wg
 	controller.Candidates = &nat.WireGuardGatherer{
 		STUNServers: servers,
 		ListenPort: func(ctx context.Context) (int, error) {
@@ -142,25 +165,42 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 			return 0, errors.New("wireguard listen port not yet known")
 		},
 	}
-	controller.Direct = &mesh.WireGuardStrategy{WireGuard: wg, Nudge: mesh.UDPNudge}
-	controller.Nudge = mesh.UDPNudge
-
-	plane, err := controlPlaneFactory(ctx, cfg, node.Keystore, key, logger)
+	cached, _ := node.State.LoadPeerCache()
+	for _, record := range cached {
+		controller.IngestCached(runCtx, record)
+	}
+	hints, _ := node.State.LoadLinkHints()
+	for _, hint := range hints {
+		controller.RestoreLinkHint(hint.DeviceID, hint.PublicKey, hint.Endpoint, hint.SeenAt)
+	}
+	cacheCtx, cacheCancel := context.WithCancel(runCtx)
+	cacheDone := make(chan struct{})
+	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
+	stopCache := func() { cacheCancel(); <-cacheDone }
+	defer stopCache()
+	plane, err := openControlPlane(runCtx, func(ctx context.Context) (*ControlPlane, error) {
+		return controlPlaneFactory(ctx, cfg, node.Keystore, key, logger)
+	}, logger)
+	stopCache()
 	if err != nil {
-		_ = wg.Down(context.WithoutCancel(ctx))
-		return fmt.Errorf("NKN control plane: %w", err)
+		return err
 	}
 	var closePlane sync.Once
 	closeNKN := func() { closePlane.Do(func() { _ = plane.Close() }) }
 	defer closeNKN()
 	controller.Signaling = plane.Signaling
+	// Records loaded before the transport existed must teach it their addresses.
+	for _, record := range controller.Records() {
+		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
+	}
+	daemon.nknAddress.Store(plane.Signaling.LocalAddress())
 	controller.Relay = plane.Relay
 	controller.Rendezvous = plane.Rendezvous
 	pairing := NewPairing(node, controller, plane.Signaling)
 	controller.PairRequest = pairing.HandleRequest
 
 	if cfg.Discovery.DHT && discoveryFactory != nil {
-		backend, err := discoveryFactory(ctx, cfg, key, logger)
+		backend, err := discoveryFactory(runCtx, cfg, key, logger)
 		if err != nil {
 			// The DHT is one discovery source among several; its absence is
 			// logged, not fatal.
@@ -171,8 +211,6 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		}
 	}
 
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	// The NKN SDK's session Accept has no context argument. Closing the client
 	// unblocks it before Controller.Run waits for its workers on shutdown.
 	planeStopped := make(chan struct{})
@@ -181,39 +219,19 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		<-runCtx.Done()
 		closeNKN()
 	}()
-	daemon := &Daemon{Config: cfg, Node: node, Controller: controller, WireGuard: wg, Pairing: pairing, Logger: logger, Logs: ring, Started: time.Now(), down: cancel}
+	daemon.Pairing = pairing
 	daemon.Usage = NewUsageReporter(cfg, node.Keystore, logger)
 	go daemon.Usage.Run(runCtx)
 	// A laptop that moves to another network, or a NAS that gets a new DHCP
 	// lease, tells its peers at once instead of waiting for a path to fail.
 	go controller.WatchNetwork(runCtx, 0, nil)
 
-	api, err := daemon.ServeAPI(runCtx)
-	if err != nil {
-		_ = wg.Down(context.WithoutCancel(ctx))
-		return err
-	}
-	defer func() { _ = api.Close() }()
 	panel, err := daemon.ServeDashboard(runCtx)
 	if err != nil {
 		logger.Warn("dashboard unavailable", "component", "dashboard", "error", err)
 	} else {
 		defer func() { _ = panel.Close() }()
 		logger.Info("dashboard listening", "component", "dashboard", "address", cfg.Dashboard.Listen)
-	}
-
-	// Replay the peer cache: records still inside their TTL come back
-	// immediately, which is what lets a quick restart resume without waiting
-	// for discovery.
-	cached, _ := node.State.LoadPeerCache()
-	for _, record := range cached {
-		controller.IngestCached(runCtx, record)
-	}
-	hints, _ := node.State.LoadLinkHints()
-	for _, hint := range hints {
-		if controller.RestoreLinkHint(hint.DeviceID, hint.PublicKey, hint.Endpoint, hint.SeenAt) {
-			logger.Info("probing last direct endpoint", "component", "mesh", "peer", hint.DeviceID)
-		}
 	}
 
 	persistDone := make(chan struct{})
@@ -229,11 +247,6 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	<-persistDone
 	daemon.persist()
 
-	downCtx, downCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer downCancel()
-	if err := wg.Down(downCtx); err != nil {
-		logger.Warn("removing interface failed", "component", "wireguard", "error", err)
-	}
 	logger.Info("nknguard stopped", "component", "app")
 	if errors.Is(runErr, context.Canceled) {
 		return nil
@@ -312,17 +325,19 @@ func (d *Daemon) persistLinkHints() {
 // Status renders the node for the local API.
 func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 	status := diagnostics.Status{
-		Version:    Version,
-		DeviceID:   d.Node.Device.DeviceID(),
-		Device:     d.Config.Device.Name,
-		NetworkID:  d.Controller.Config.NetworkID,
-		StartedAt:  d.Started,
-		Uptime:     time.Since(d.Started).Round(time.Second).String(),
-		NKNAddress: d.Controller.Signaling.LocalAddress(),
-		NAT:        d.Controller.PortMapping().Behaviour,
-		WireGuard:  d.WireGuard.Status(ctx),
-		Peers:      d.Controller.Peers(),
-		Metrics:    d.Controller.Metrics(),
+		Version:   Version,
+		DeviceID:  d.Node.Device.DeviceID(),
+		Device:    d.Config.Device.Name,
+		NetworkID: d.Controller.Config.NetworkID,
+		StartedAt: d.Started,
+		Uptime:    time.Since(d.Started).Round(time.Second).String(),
+		NAT:       d.Controller.PortMapping().Behaviour,
+		WireGuard: d.WireGuard.Status(ctx),
+		Peers:     d.Controller.Peers(),
+		Metrics:   d.Controller.Metrics(),
+	}
+	if address, ok := d.nknAddress.Load().(string); ok {
+		status.NKNAddress = address
 	}
 	if virtual := d.Controller.VirtualIP(); virtual.IsValid() {
 		status.VirtualIP = virtual.String()

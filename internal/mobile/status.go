@@ -66,7 +66,7 @@ func (a *Agent) status() Status {
 	status.Phase = current.phase
 	status.LastError = current.lastError
 	status.NKNAddress = current.nknAddress
-	status.NKNConnected = controller != nil
+	status.NKNConnected = current.nknAddress != ""
 	status.VirtualIP = current.virtual.String()
 	status.Since = current.started.Unix()
 	revoked := current.revoked

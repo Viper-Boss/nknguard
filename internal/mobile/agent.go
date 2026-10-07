@@ -80,12 +80,11 @@ type Agent struct {
 	usageOnce sync.Once
 	usage     *usagestats.Reporter
 
-	writeMu sync.Mutex
-	out     *json.Encoder
-	// cmdMu runs state-changing commands one at a time, in the order the app
-	// sent them. Read-only commands bypass it so status stays responsive
-	// while, say, a connect waits for the VPN file descriptor.
-	cmdMu sync.Mutex
+	writeMu        sync.Mutex
+	out            *json.Encoder
+	secretMu       sync.Mutex
+	secretSequence uint64
+	secretWait     map[uint64]chan error
 
 	mu          sync.Mutex
 	device      *identity.DeviceIdentity
@@ -136,17 +135,34 @@ func (a *Agent) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		a.OpenPlane = DefaultPlaneFactory
 	}
 	a.out = json.NewEncoder(out)
-	a.Secrets.SetOnChange(func(values map[string][]byte) {
-		a.emit("secrets", map[string]any{"values": Encode(values)})
-	})
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer a.stopAll()
+	a.Secrets.SetOnChange(func(values map[string][]byte) error { return a.persistSecrets(ctx, values) })
 
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), MaxRequestBytes)
 	var handlers sync.WaitGroup
-	defer handlers.Wait()
+	// The scanner must remain free to read persistence ACKs while an init or
+	// pairing command waits for them. One worker preserves mutation order.
+	serialQueue := make(chan Request, 32)
+	defer func() { cancel(); close(serialQueue); handlers.Wait(); a.stopAll() }()
+	execute := func(request Request) {
+		result, err := a.handle(ctx, request)
+		if err != nil {
+			a.reply(Response{ID: request.ID, Error: err.Error()})
+			return
+		}
+		a.reply(Response{ID: request.ID, OK: true, Result: result})
+	}
+	handlers.Add(1)
+	go func() {
+		defer handlers.Done()
+		for request := range serialQueue {
+			if ctx.Err() != nil {
+				return
+			}
+			execute(request)
+		}
+	}()
 	for scanner.Scan() {
 		var request Request
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
@@ -157,24 +173,22 @@ func (a *Agent) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			a.reply(Response{ID: request.ID, OK: true})
 			return nil
 		}
-		serial := !concurrentCommands[request.Cmd]
-		if serial {
-			// Taking the lock here, before the goroutine starts, keeps
-			// state-changing commands in arrival order.
-			a.cmdMu.Lock()
+		if request.Cmd == "secrets_ack" {
+			a.ackSecrets(request.Args)
+			continue
+		}
+		if !concurrentCommands[request.Cmd] {
+			select {
+			case serialQueue <- request:
+			default:
+				a.reply(Response{ID: request.ID, Error: "command queue full"})
+			}
+			continue
 		}
 		handlers.Add(1)
 		go func() {
 			defer handlers.Done()
-			if serial {
-				defer a.cmdMu.Unlock()
-			}
-			result, err := a.handle(ctx, request)
-			if err != nil {
-				a.reply(Response{ID: request.ID, Error: err.Error()})
-				return
-			}
-			a.reply(Response{ID: request.ID, OK: true, Result: result})
+			execute(request)
 		}()
 	}
 	return scanner.Err()
@@ -539,7 +553,9 @@ func (a *Agent) forget() (any, error) {
 	if err := removeState(a.StateDir); err != nil {
 		return nil, err
 	}
-	a.Secrets.Delete(SecretJoinSecret)
+	if err := a.Secrets.Delete(SecretJoinSecret); err != nil {
+		return nil, err
+	}
 	return map[string]bool{"forgotten": true}, nil
 }
 

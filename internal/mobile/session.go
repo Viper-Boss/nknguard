@@ -216,7 +216,18 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 		defer close(statusDone)
 		s.statusLoop(ctx)
 	}()
-	defer func() { <-statusDone }()
+	defer func() { s.cancel(); <-statusDone }()
+	controller, err := s.prepareController(ctx)
+	if err != nil {
+		s.setPhase(PhaseError, err.Error())
+		return
+	}
+	cacheCtx, cacheCancel := context.WithCancel(ctx)
+	cacheDone := make(chan struct{})
+	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
+	stopCache := func() { cacheCancel(); <-cacheDone }
+	defer stopCache()
+	defer s.persist(controller)
 
 	seed, err := a.nknSeed()
 	if err != nil {
@@ -249,23 +260,21 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 			}
 			continue
 		}
-		s.runController(ctx, plane)
-		_ = plane.Close()
+		stopCache()
+		s.runController(ctx, plane, controller)
 		return
 	}
 }
 
-func (s *session) runController(ctx context.Context, plane *Plane) {
+func (s *session) prepareController(ctx context.Context) (*mesh.Controller, error) {
 	a := s.agent
 	identityDevice, _, err := a.identity()
 	if err != nil {
-		s.setPhase(PhaseError, err.Error())
-		return
+		return nil, err
 	}
 	key, err := a.membershipKey(s.profile)
 	if err != nil {
-		s.setPhase(PhaseError, err.Error())
-		return
+		return nil, err
 	}
 	store := a.store()
 	runtime, _ := store.LoadRuntime()
@@ -303,8 +312,6 @@ func (s *session) runController(ctx context.Context, plane *Plane) {
 	}
 	controller.Direct = &mesh.WireGuardStrategy{WireGuard: s.wg, Nudge: s.wg.Nudge}
 	controller.Nudge = s.wg.Nudge
-	controller.Signaling = plane.Signaling
-	controller.Relay = plane.Relay
 	controller.Rendezvous = rendezvous.Static{s.profile.NASAddress}
 	controller.OnPeerError = func(deviceID string, report protocol.Error) {
 		if deviceID == s.profile.NASID && report.Code == protocol.ErrorNotAuthorized {
@@ -314,10 +321,7 @@ func (s *session) runController(ctx context.Context, plane *Plane) {
 
 	s.mu.Lock()
 	s.controller = controller
-	s.nknAddress = plane.Signaling.LocalAddress()
-	s.phase = PhaseWaiting
 	s.mu.Unlock()
-	a.Logger.Info("connected to NKN", "component", "session", "nkn_address", redact(s.nknAddress))
 
 	cached, _ := store.LoadPeerCache()
 	for _, record := range cached {
@@ -332,6 +336,25 @@ func (s *session) runController(ctx context.Context, plane *Plane) {
 		}
 	}
 
+	return controller, nil
+}
+
+func (s *session) runController(ctx context.Context, plane *Plane, controller *mesh.Controller) {
+	controller.Signaling = plane.Signaling
+	controller.Relay = plane.Relay
+	for _, record := range controller.Records() {
+		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
+	}
+	s.mu.Lock()
+	s.nknAddress = plane.Signaling.LocalAddress()
+	s.phase = PhaseWaiting
+	s.mu.Unlock()
+	s.agent.Logger.Info("connected to NKN", "component", "session", "nkn_address", redact(plane.Signaling.LocalAddress()))
+	var closeOnce sync.Once
+	closePlane := func() { closeOnce.Do(func() { _ = plane.Close() }) }
+	stopClose := context.AfterFunc(ctx, closePlane)
+	defer stopClose()
+	defer closePlane()
 	persistDone := make(chan struct{})
 	go func() {
 		defer close(persistDone)
@@ -347,6 +370,7 @@ func (s *session) runController(ctx context.Context, plane *Plane) {
 		}
 	}()
 	_ = controller.Run(ctx)
+	s.cancel()
 	<-persistDone
 	s.persist(controller)
 }
@@ -406,8 +430,9 @@ func (s *session) networkChanged(ctx context.Context) {
 	}
 	s.mu.Lock()
 	controller := s.controller
+	online := s.nknAddress != ""
 	s.mu.Unlock()
-	if controller == nil {
+	if controller == nil || !online {
 		return
 	}
 	go func() {

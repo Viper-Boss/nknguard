@@ -107,15 +107,16 @@ func startNAS(t *testing.T, ctx context.Context, wire *signaling.Switch, hub *re
 
 // phone drives an Agent over its real JSON-lines interface.
 type phone struct {
-	t      *testing.T
-	in     *io.PipeWriter
-	mu     sync.Mutex
-	nextID int64
-	waits  map[int64]chan Response
-	events chan Event
-	raw    chan map[string]any
-	tun    *tuntest.ChannelTUN
-	agent  *Agent
+	t           *testing.T
+	in          *io.PipeWriter
+	mu          sync.Mutex
+	nextID      int64
+	waits       map[int64]chan Response
+	events      chan Event
+	raw         chan map[string]any
+	tun         *tuntest.ChannelTUN
+	agent       *Agent
+	saveSecrets func(map[string]string) bool
 }
 
 func startPhone(t *testing.T, ctx context.Context, wire *signaling.Switch, hub *relay.Hub) *phone {
@@ -127,9 +128,6 @@ func startPhoneWith(t *testing.T, ctx context.Context, wire *signaling.Switch, h
 	t.Helper()
 	channel := tuntest.NewChannelTUN()
 	agent := &Agent{StateDir: t.TempDir(), Timing: fastTiming(), Candidates: mesh.StaticCandidates{}}
-	if configure != nil {
-		configure(agent)
-	}
 	agent.OpenPlane = func(ctx context.Context, seed []byte, _ []string) (*Plane, error) {
 		device, _, err := agent.identity()
 		if err != nil {
@@ -143,6 +141,9 @@ func startPhoneWith(t *testing.T, ctx context.Context, wire *signaling.Switch, h
 			t.Errorf("token = %q", token)
 		}
 		return channel.TUN(), nil
+	}
+	if configure != nil {
+		configure(agent)
 	}
 	inReader, inWriter := io.Pipe()
 	outReader, outWriter := io.Pipe()
@@ -179,6 +180,19 @@ func (p *phone) readLoop(out io.Reader) {
 				Data  json.RawMessage `json:"data"`
 			}
 			_ = json.Unmarshal(scanner.Bytes(), &event)
+			if event.Event == "secrets" {
+				var secret struct {
+					Sequence uint64            `json:"sequence"`
+					Values   map[string]string `json:"values"`
+				}
+				_ = json.Unmarshal(event.Data, &secret)
+				p.mu.Lock()
+				save := p.saveSecrets
+				p.mu.Unlock()
+				saved := save == nil || save(secret.Values)
+				raw, _ := json.Marshal(map[string]any{"cmd": "secrets_ack", "id": 0, "args": map[string]any{"sequence": secret.Sequence, "saved": saved}})
+				_, _ = p.in.Write(append(raw, '\n'))
+			}
 			p.events <- Event{Event: event.Event, Data: event.Data}
 			continue
 		}
@@ -425,7 +439,7 @@ func TestPairingRejectsSubstitutedApproval(t *testing.T) {
 func TestSecretStoreReportsChanges(t *testing.T) {
 	store := NewSecretStore()
 	var seen map[string][]byte
-	store.SetOnChange(func(values map[string][]byte) { seen = values })
+	store.SetOnChange(func(values map[string][]byte) error { seen = values; return nil })
 	if err := store.Load(map[string]string{"a": base64.StdEncoding.EncodeToString([]byte("x"))}); err != nil {
 		t.Fatal(err)
 	}
