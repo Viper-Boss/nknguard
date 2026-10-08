@@ -32,6 +32,22 @@ func TestWindowsDownMustConfirmServiceRemoval(t *testing.T) {
 	}
 }
 
+func TestWindowsDownWithoutToolsRequiresVerifiedAbsence(t *testing.T) {
+	// No runner: any attempt to invoke tools would panic. Service absence
+	// must still remove our private tunnel configuration.
+	dir := t.TempDir()
+	manager := &WindowsManager{name: "nknguard", dir: dir, serviceExists: func(string) (bool, error) { return false, nil }}
+	if err := os.WriteFile(manager.confPath(), []byte("PrivateKey = sensitive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Down(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(manager.confPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("private tunnel config remains: %v", err)
+	}
+}
+
 type windowsRunner struct {
 	installed bool
 	secured   bool

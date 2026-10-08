@@ -10,6 +10,9 @@ import (
 	"image/color"
 	"io"
 	"math"
+	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -19,6 +22,7 @@ import (
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 
+	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 )
 
@@ -76,13 +80,18 @@ type clientUI struct {
 	bannerState string
 	bannerTone  walk.Color
 
-	statusDot  *walk.Label
-	stateTitle *walk.Label
-	stateCopy  *walk.Label
-	pathLabel  *walk.Label
-	errText    *walk.TextEdit
-	connect    *flatButton
-	disconnect *flatButton
+	statusDot     *walk.Label
+	stateTitle    *walk.Label
+	stateCopy     *walk.Label
+	pathLabel     *walk.Label
+	errText       *walk.TextEdit
+	connect       *flatButton
+	disconnect    *flatButton
+	openNAS       *flatButton
+	copyIP        *flatButton
+	installWG     *flatButton
+	animating     bool
+	animationTick int
 
 	nasAddress   *walk.LineEdit
 	localAddress *walk.LineEdit
@@ -134,6 +143,23 @@ func cmdClient(g globals, _ io.Writer) error {
 	stop := make(chan struct{})
 	defer close(stop)
 	go u.poll(stop)
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				u.mw.Synchronize(func() {
+					if u.animating {
+						u.animationTick++
+						_ = u.banner.Invalidate()
+					}
+				})
+			}
+		}
+	}()
 	go u.refreshUsage(false)
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -214,6 +240,16 @@ func (u *clientUI) create() error {
 	copyNAS := u.newButton("复制", false, 68, func() { u.copyText(u.nasAddress.Text()) })
 	copyLocal := u.newButton("复制", false, 68, func() { u.copyText(u.localAddress.Text()) })
 	refresh := u.newButton("刷新人数", false, 96, func() { go u.refreshUsage(true) })
+	u.openNAS = u.newButton("打开飞牛", false, 108, func() {
+		if target, err := nasWebURL(u.nasIP.Text()); err == nil {
+			openURL(target)
+		} else {
+			u.keepError(err)
+		}
+	})
+	u.copyIP = u.newButton("复制 NAS IP", false, 120, func() { u.copyText(u.nasIP.Text()) })
+	u.installWG = u.newButton("安装 WireGuard", false, 140, func() { openURL("https://www.wireguard.com/install/") })
+	export := u.newButton("导出诊断", false, 108, u.exportDiagnostics)
 
 	err := ui.MainWindow{
 		AssignTo:   &u.mw,
@@ -249,6 +285,8 @@ func (u *clientUI) create() error {
 						ui.Label{Font: font(10, false), AssignTo: &u.stateCopy, Text: "正在读取这台电脑的连接信息。", TextColor: colorMuted, EllipsisMode: ui.EllipsisEnd},
 						ui.VSpacer{Size: 4},
 						row(u.connect.decl(), u.disconnect.decl(), ui.HSpacer{}),
+						row(u.openNAS.decl(), u.copyIP.decl(), export.decl(), ui.HSpacer{}),
+						row(u.installWG.decl(), muted("缺少依赖时安装官方 WireGuard，完成后即可连接。")),
 						ui.TextEdit{AssignTo: &u.errText, Font: font(10, false), ReadOnly: true, Visible: false, VScroll: true, MinSize: ui.Size{Height: 44}, TextColor: colorBad},
 					),
 					card("设备身份",
@@ -463,6 +501,9 @@ func (u *clientUI) paintBanner(canvas *walk.Canvas, _ walk.Rectangle) error {
 	if dotBrush, err := walk.NewSolidColorBrush(u.bannerTone); err == nil {
 		defer dotBrush.Dispose()
 		dot := px(10)
+		if u.animating {
+			dot = px(7 + int(3*(1+math.Sin(float64(u.animationTick)*0.6))/2))
+		}
 		_ = canvas.FillEllipsePixels(dotBrush, walk.Rectangle{X: pill.X + px(14), Y: pill.Y + (pill.Height-dot)/2, Width: dot, Height: dot})
 	}
 	pillFont, _ := walk.NewFont(uiFont, 9, walk.FontBold)
@@ -732,6 +773,8 @@ func (u *clientUI) render(state map[string]any) {
 		title, short = "请先配对 NAS", "尚未配对"
 	case !connected && connecting:
 		title, short, tone = "正在建立连接", "连接中", colorWarn
+	case !connected && stateFlag(state, "tools_missing"):
+		title, short, tone = "请先安装 WireGuard", "缺少依赖", colorWarn
 	case !connected:
 		title, short = "已断开", "未连接"
 	case path == "direct-wg":
@@ -739,8 +782,9 @@ func (u *clientUI) render(state map[string]any) {
 	case path == "nkn-relay":
 		title, short, tone = "已通过 NKN 中继", "已中继", colorGood
 	default:
-		title, short, tone = "正在建立安全链路", "连接中", colorWarn
+		title, short, tone = connectionPhase(stateText(state, "phase")), "连接中", colorWarn
 	}
+	u.animating = connecting || disconnecting || (connected && path != "direct-wg" && path != "nkn-relay")
 	setText(u.stateTitle, title)
 	u.statusDot.SetTextColor(tone)
 	if u.bannerState != short || u.bannerTone != tone {
@@ -748,6 +792,10 @@ func (u *clientUI) render(state map[string]any) {
 		_ = u.banner.Invalidate()
 	}
 	message := stateText(state, "message")
+	// Launch and pairing progress must not mask the current observed path.
+	if connected && !disconnecting {
+		message = ""
+	}
 	if message == "" {
 		switch {
 		case connected && (path == "direct-wg" || path == "nkn-relay"):
@@ -772,7 +820,12 @@ func (u *clientUI) render(state map[string]any) {
 	}
 	u.errText.SetVisible(errorText != "")
 
-	canConnect := paired && !connected && !connecting && !disconnecting
+	canConnect := paired && !connected && !connecting && !disconnecting && !cleanupFailed && !stateFlag(state, "tools_missing")
+	ready := connected && (path == "direct-wg" || path == "nkn-relay") && !disconnecting
+	_, ipErr := nasWebURL(stateText(state, "nas_ip"))
+	u.openNAS.SetEnabled(ready && ipErr == nil)
+	u.copyIP.SetEnabled(ready && ipErr == nil)
+	u.installWG.SetEnabled(stateFlag(state, "tools_missing"))
 	u.connect.SetEnabled(canConnect)
 	u.disconnect.SetEnabled((connected || connecting || cleanupFailed) && !disconnecting)
 	if connecting {
@@ -808,6 +861,62 @@ func (u *clientUI) render(state map[string]any) {
 }
 
 func orDash(value string) string { return orDefault(value, "—") }
+
+func connectionPhase(phase string) string {
+	switch phase {
+	case "cached":
+		return "检查上次链路，同时获取最新信标"
+	case "probing":
+		return "正在探测 WireGuard 直连"
+	case "relay":
+		return "直连受阻，正在连接 NKN 中继"
+	default:
+		return "正在获取信标并验证 NAS 链路"
+	}
+}
+
+func nasWebURL(value string) (string, error) {
+	address, err := netip.ParseAddr(value)
+	if err != nil || !address.IsGlobalUnicast() || address.IsLoopback() {
+		return "", errors.New("NAS 虚拟 IP 尚未就绪")
+	}
+	return "http://" + netip.AddrPortFrom(address, 5666).String() + "/", nil
+}
+
+func (u *clientUI) exportDiagnostics() {
+	dialog := walk.FileDialog{Title: "保存脱敏诊断", FilePath: "nknguard-diagnostics-" + time.Now().Format("20060102-150405") + ".tar.gz", Filter: "诊断包 (*.tar.gz)|*.tar.gz"}
+	ok, err := dialog.ShowSave(u.mw)
+	if err != nil {
+		u.keepError(err)
+		return
+	}
+	if !ok {
+		return
+	}
+	path := dialog.FilePath
+	go func() {
+		cfg, _, err := loadConfig(u.w.globals)
+		if err == nil {
+			var file *os.File
+			file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+			if err == nil {
+				err = app.ExportDiagnostics(cfg, file)
+				err = errors.Join(err, file.Close())
+				if err != nil {
+					_ = os.Remove(path)
+				}
+			}
+		}
+		u.mw.Synchronize(func() {
+			if err != nil {
+				u.keepError(err)
+				return
+			}
+			_ = u.tray.ShowInfo("诊断已导出", "诊断包含网络地址，分享前请检查；不包含配对私钥。")
+			openURL(filepath.Dir(path))
+		})
+	}()
+}
 
 func orDefault(value, fallback string) string {
 	if value == "" {
