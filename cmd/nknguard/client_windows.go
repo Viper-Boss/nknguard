@@ -18,6 +18,7 @@ import (
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
+	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
 
 type clientWindow struct {
@@ -61,6 +62,9 @@ func (w *clientWindow) snapshot() map[string]any {
 		result["error"] = err.Error()
 		return result
 	}
+	tools, reason := wireguard.NewHostManager(nil, cfg.WireGuard.Interface, cfg.Paths.StateDir).Supported(context.Background())
+	result["tools_missing"] = tools == wireguard.StateToolsMissing
+	result["tools_reason"] = reason
 	current, err := state.New(cfg.Paths.StateDir).LoadMembership()
 	if err == nil && current.NetworkID != "" {
 		result["paired"] = true
@@ -78,7 +82,17 @@ func (w *clientWindow) snapshot() map[string]any {
 		result["local_nkn_address"] = status.NKNAddress
 		result["virtual_ip"] = status.VirtualIP
 		result["wireguard_state"] = status.WireGuard.State
+		result["phase"] = "signaling"
+		if status.NKNAddress == "" {
+			result["phase"] = "cached"
+		}
 		for _, peer := range status.Peers {
+			switch peer.State {
+			case mesh.StatePunching, mesh.StateWGConnecting, mesh.StateCandidateExchange:
+				result["phase"] = "probing"
+			case mesh.StateRelayConnecting:
+				result["phase"] = "relay"
+			}
 			if peer.Path == mesh.PathDirectWG || peer.Path == mesh.PathNKNRelay {
 				result["path"] = peer.Path
 				result["nas_address"] = peer.NKNAddress
@@ -187,6 +201,9 @@ func (w *clientWindow) connect() error {
 	}
 	if _, err := app.NewClient(cfg.Paths.Socket).Status(); err == nil {
 		return nil
+	}
+	if toolState, _ := wireguard.NewHostManager(nil, cfg.WireGuard.Interface, cfg.Paths.StateDir).Supported(context.Background()); toolState == wireguard.StateToolsMissing {
+		return errors.New("请先点击“安装 WireGuard”，从官网安装后再连接")
 	}
 	executable, err := os.Executable()
 	if err != nil {

@@ -54,3 +54,16 @@ func TestStateHelpers(t *testing.T) {
 		t.Fatal("defaults")
 	}
 }
+
+func TestNASURLRejectsUntrustedTargets(t *testing.T) {
+	for _, value := range []string{"", "—", "javascript:alert(1)", "127.0.0.1", "0.0.0.0", "224.0.0.1", "10.88.0.1/evil"} {
+		if target, err := nasWebURL(value); err == nil {
+			t.Fatalf("accepted %q as %s", value, target)
+		}
+	}
+	for value, want := range map[string]string{"10.88.0.1": "http://10.88.0.1:5666/", "fd00::1": "http://[fd00::1]:5666/"} {
+		if got, err := nasWebURL(value); err != nil || got != want {
+			t.Fatalf("target %s: %s %v", value, got, err)
+		}
+	}
+}

@@ -23,14 +23,14 @@
 
 ## 下载
 
-所有安装包都在 **[Releases 页面](https://github.com/Viper-Boss/nknguard/releases)**。
+公开预览版见 **[Releases 页面](https://github.com/Viper-Boss/nknguard/releases)**。最新构建和 Windows 安装器可在 [Actions](https://github.com/Viper-Boss/nknguard/actions) 对应成功运行的 Artifacts 中下载，详情见[客户端使用与验收](docs/CLIENT_ACCEPTANCE.md)。
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | 🗄️ **NAS / Linux**（ARM64，飞牛 ARM 机型） | `nknguard-linux-arm64` | 需要 root 与 `wireguard-tools`，见[安装 NAS 端](#1-安装-nas-端) |
 | 🗄️ **NAS / Linux**（x86_64） | `nknguard-linux-amd64` | 同上 |
 | 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
-| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 预览版，尚未完成真机测试；升级前需先卸载旧版 |
+| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 测试签名可能不同；遇到签名冲突先保留旧版，卸载会删除配对资料 |
 
 每个版本都附带 `SHA256SUMS`，下载后可以核对：`sha256sum -c SHA256SUMS`。预览版没有代码签名。
 

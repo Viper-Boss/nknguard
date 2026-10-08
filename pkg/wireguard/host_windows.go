@@ -320,6 +320,19 @@ func (m *WindowsManager) Down(ctx context.Context) error {
 	if !validTunnelName(m.name) || !strings.HasPrefix(strings.ToLower(m.name), "nknguard") {
 		return errors.New("wireguard: refusing to remove an unrelated Windows tunnel")
 	}
+	// A user may already have removed the shared WireGuard installation.
+	// SCM absence is authoritative; missing tools alone are not proof.
+	exists, verifyErr := m.serviceExists("WireGuardTunnel$" + m.name)
+	if verifyErr != nil {
+		return fmt.Errorf("wireguard: cannot verify service removal: %w", verifyErr)
+	}
+	if !exists {
+		m.applied = false
+		if err := os.Remove(m.confPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
 	wireguard, err := m.tool("wireguard")
 	if err != nil {
 		return err

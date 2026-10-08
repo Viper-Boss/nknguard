@@ -636,7 +636,7 @@ func cmdDiagnostics(g globals, args []string, stdout io.Writer) error {
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
-	c, err := client(g)
+	cfg, _, err := loadConfig(g)
 	if err != nil {
 		return err
 	}
@@ -644,7 +644,7 @@ func cmdDiagnostics(g globals, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := c.Diagnostics(file); err != nil {
+	if err := app.ExportDiagnostics(cfg, file); err != nil {
 		_ = file.Close()
 		_ = os.Remove(*output)
 		return err

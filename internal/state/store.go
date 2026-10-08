@@ -226,7 +226,7 @@ func (s *Store) writeJSON(name string, value any) error {
 	if err := os.Chmod(temporaryName, FileMode); err != nil {
 		return fmt.Errorf("state: chmod %s: %w", name, err)
 	}
-	if err := os.Rename(temporaryName, s.path(name)); err != nil {
+	if err := replaceStateFile(temporaryName, s.path(name)); err != nil {
 		return fmt.Errorf("state: install %s: %w", name, err)
 	}
 	return nil

@@ -44,12 +44,35 @@ jobs:
         working-directory: cmd/nknguard
         run: go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard --file-description "NKNGuard Windows client" --original-filename NKNGuard-Windows.exe
       - name: build Windows app
-        run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1 -X github.com/Viper-Boss/nknguard/internal/app.Version=0.2.2-preview" -o NKNGuard-Windows.exe ./cmd/nknguard
+        run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1 -X github.com/Viper-Boss/nknguard/internal/app.Version=0.2.3-preview" -o NKNGuard-Windows.exe ./cmd/nknguard
+      - name: build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
+          }
+          & $compiler packaging/windows/nknguard.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+      - name: smoke test install upgrade and uninstall
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP "nknguard-install-test"
+          $installer = (Resolve-Path dist/windows/NKNGuard-Setup-0.2.3-preview.exe).Path
+          foreach ($iteration in 1..2) {
+            $process = Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$target`"") -PassThru -Wait -WindowStyle Hidden
+            if ($process.ExitCode -ne 0 -or !(Test-Path "$target\NKNGuard-Windows.exe")) { throw "Install/upgrade failed" }
+          }
+          $process = Start-Process "$target\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait -WindowStyle Hidden
+          if ($process.ExitCode -ne 0 -or (Test-Path "$target\NKNGuard-Windows.exe")) { throw "Uninstall left application binary" }
       - name: upload Windows client
         uses: actions/upload-artifact@v4
         with:
           name: NKNGuard-Windows
-          path: NKNGuard-Windows.exe
+          path: |
+            NKNGuard-Windows.exe
+            dist/windows/NKNGuard-Setup-0.2.3-preview.exe
           if-no-files-found: error
 
   full:
