@@ -84,8 +84,10 @@ function render(status) {
   setText('route-relay', relay);
   setText('route-idle', peers.length - online);
   const pill = byId('overall-pill');
-  pill.className = `pill ${status.wireguard?.state === 'up' ? 'good' : 'warn'}`;
-  pill.replaceChildren(); const dot = document.createElement('i'); pill.append(dot, document.createTextNode(status.wireguard?.state === 'up' ? 'NAS 已就绪' : '检查 WireGuard'));
+  const wgReady = status.wireguard?.state === 'up';
+  const beaconReady = !!status.nkn_address;
+  pill.className = `pill ${wgReady && beaconReady ? 'good' : 'warn'}`;
+  pill.replaceChildren(); const dot = document.createElement('i'); pill.append(dot, document.createTextNode(!wgReady ? '检查 WireGuard' : beaconReady ? 'NAS 已就绪' : '等待 NKN 信标 · 本地管理可用'));
   setText('detail-name', status.device_name);
   setText('detail-id', status.device_id);
   setText('detail-ip', status.virtual_ip);

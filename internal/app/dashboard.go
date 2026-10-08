@@ -97,7 +97,11 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 		}
 		invite, err := d.Pairing.NewInvite()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusForbidden)
+			status := http.StatusForbidden
+			if errors.Is(err, ErrPairingOffline) {
+				status = http.StatusServiceUnavailable
+			}
+			http.Error(w, err.Error(), status)
 			return
 		}
 		uri, err := invite.URI()

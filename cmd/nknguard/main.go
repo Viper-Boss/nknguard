@@ -49,6 +49,7 @@ Usage:
   sudo nknguard up                              run the daemon in the foreground
   sudo nknguard daemon                          same as up (what the systemd unit runs)
   sudo nknguard down                            stop the daemon and remove the interface
+  sudo nknguard cleanup                         retry cleanup of a stopped daemon's tunnel
   nknguard status                               node and peer summary
   nknguard peers                                peer table with state history
   nknguard reconnect <device-id>                retry a direct path now
@@ -76,7 +77,7 @@ func main() {
 	if runtime.GOOS == "windows" && guiBuild == "1" && len(args) == 0 {
 		args = []string{"client"}
 	}
-	if runtime.GOOS == "windows" && guiBuild == "1" && len(args) > 0 && args[len(args)-1] == "up" {
+	if runtime.GOOS == "windows" && guiBuild == "1" && len(args) > 0 && (args[len(args)-1] == "up" || args[len(args)-1] == "cleanup") {
 		var diagnostic bytes.Buffer
 		code := run(args, os.Stdout, io.MultiWriter(os.Stderr, &diagnostic))
 		if code != 0 {
@@ -130,6 +131,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdUp(g, stderr)
 	case "down":
 		err = cmdDown(g, stdout)
+	case "cleanup":
+		var cfg config.Config
+		cfg, _, err = loadConfig(g)
+		if err == nil {
+			err = app.CleanupStoppedTunnel(cfg)
+		}
 	case "status":
 		err = cmdStatus(g, stdout)
 	case "peers":

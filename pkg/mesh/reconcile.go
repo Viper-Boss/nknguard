@@ -254,7 +254,7 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 	if peer.Revoked() {
 		peer.EndAttempt(false)
 		if c.WireGuard != nil {
-			_ = c.WireGuard.RemovePeer(context.WithoutCancel(ctx), record.WireGuardPublicKey)
+			_ = c.RemoveRevokedKey(ctx, record.WireGuardPublicKey)
 		}
 		return
 	}
@@ -331,7 +331,7 @@ func (c *Controller) ensureWireGuardPeer(ctx context.Context, peer *Peer) {
 	}
 	peer.markInstalled(record.WireGuardPublicKey)
 	if peer.Revoked() {
-		_ = c.WireGuard.RemovePeer(context.WithoutCancel(ctx), record.WireGuardPublicKey)
+		_ = c.RemoveRevokedKey(ctx, record.WireGuardPublicKey)
 	}
 }
 
@@ -448,7 +448,7 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 	}
 	if peer.Revoked() {
 		c.closeBridge(peer.DeviceID())
-		_ = c.WireGuard.RemovePeer(context.WithoutCancel(ctx), record.WireGuardPublicKey)
+		_ = c.RemoveRevokedKey(ctx, record.WireGuardPublicKey)
 		return false
 	}
 	if c.Nudge != nil && len(record.VirtualIPs) > 0 {

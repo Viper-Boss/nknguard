@@ -3,9 +3,30 @@
 package main
 
 import (
+	"github.com/Viper-Boss/nknguard/internal/state"
 	"image/color"
+	"path/filepath"
 	"testing"
 )
+
+func TestReopenedClientShowsIncompleteCleanup(t *testing.T) {
+	dir := t.TempDir()
+	store := state.New(dir)
+	if err := store.SaveShutdown(state.Shutdown{Completed: true, Error: "uninstall failed"}); err != nil {
+		t.Fatal(err)
+	}
+	w := &clientWindow{globals: globals{stateDir: dir, socket: filepath.Join(dir, "missing.sock"), configPath: filepath.Join(dir, "missing.yaml")}}
+	view := w.snapshot()
+	if !stateFlag(view, "cleanup_failed") || stateText(view, "error") != "uninstall failed" {
+		t.Fatalf("cleanup failure hidden: %v", view)
+	}
+	if err := store.SaveShutdown(state.Shutdown{Completed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if stateFlag(w.snapshot(), "cleanup_failed") {
+		t.Fatal("successful retry still marked as failed")
+	}
+}
 
 func TestAppIcon(t *testing.T) {
 	img := appIconImage(64)

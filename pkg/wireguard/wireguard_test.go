@@ -16,6 +16,22 @@ type memoryKeystore struct {
 	secrets map[string][]byte
 }
 
+type failedProbeRunner struct {
+	Runner
+	err error
+}
+
+func (r failedProbeRunner) Run(context.Context, string, ...string) (string, error) { return "", r.err }
+
+func TestLinuxDownDoesNotTreatProbeFailureAsAbsent(t *testing.T) {
+	for _, cause := range []error{errors.New("permission denied"), context.Canceled, errors.New("executable file not found")} {
+		manager := NewLinuxManagerWithRunner(nil, "nkg0", failedProbeRunner{err: cause})
+		if err := manager.Down(context.Background()); !errors.Is(err, cause) {
+			t.Fatalf("probe failure suppressed: %v", err)
+		}
+	}
+}
+
 func (k *memoryKeystore) ReadSecret(name string) ([]byte, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()

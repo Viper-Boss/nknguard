@@ -86,6 +86,12 @@ func (w *clientWindow) snapshot() map[string]any {
 				break
 			}
 		}
+	} else if !connecting {
+		if cleanupErr := app.CheckShutdown(cfg.Paths.StateDir); cleanupErr != nil {
+			result["cleanup_failed"] = true
+			result["error"] = cleanupErr.Error()
+			result["message"] = "隧道清理尚未确认完成，请点击“重试清理”并允许管理员操作。"
+		}
 	} else if connecting {
 		errorPath := filepath.Join(os.Getenv("LOCALAPPDATA"), "NKNGuard", "last-error.txt")
 		if raw, readErr := os.ReadFile(errorPath); readErr == nil && len(raw) > 0 {
@@ -254,6 +260,7 @@ func (w *clientWindow) disconnect() error {
 	w.mu.Lock()
 	handle := w.background
 	w.mu.Unlock()
+	retryCleanup := app.CheckShutdown(cfg.Paths.StateDir) != nil
 	err = waitForClientStop(ctx, func() (bool, error) {
 		if handle == 0 {
 			return true, nil
@@ -261,6 +268,46 @@ func (w *clientWindow) disconnect() error {
 		code, err := windows.WaitForSingleObject(handle, 0)
 		return code == windows.WAIT_OBJECT_0, err
 	}, app.NewClient(cfg.Paths.Socket).Down)
+	if err == nil {
+		err = app.CheckShutdown(cfg.Paths.StateDir)
+	}
+	if err != nil && retryCleanup && ctx.Err() == nil {
+		// waitForClientStop must first confirm that the old process exited.
+		if handle != 0 {
+			code, waitErr := windows.WaitForSingleObject(handle, 0)
+			if waitErr != nil || code != windows.WAIT_OBJECT_0 {
+				return err
+			}
+		}
+		executable, exeErr := os.Executable()
+		if exeErr != nil {
+			return exeErr
+		}
+		repair, repairErr := runElevatedCommand(executable, w.globals.configPath, "cleanup")
+		if repairErr != nil {
+			return repairErr
+		}
+		w.update(func() {
+			if w.background != 0 {
+				_ = windows.CloseHandle(w.background)
+			}
+			w.background = repair
+		})
+		err = waitForClientStop(ctx, func() (bool, error) {
+			code, waitErr := windows.WaitForSingleObject(repair, 0)
+			return code == windows.WAIT_OBJECT_0, waitErr
+		}, app.NewClient(cfg.Paths.Socket).Down)
+		if err == nil {
+			var exitCode uint32
+			if codeErr := windows.GetExitCodeProcess(repair, &exitCode); codeErr != nil {
+				err = codeErr
+			} else if exitCode != 0 {
+				err = errors.New("清理程序未成功完成，请查看诊断日志后重试")
+			} else {
+				err = app.CheckShutdown(cfg.Paths.StateDir)
+			}
+		}
+	}
 	if err == nil {
 		w.update(func() {
 			if w.background != 0 {

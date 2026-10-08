@@ -69,6 +69,10 @@ func TestLocalAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closer.Close()
+	if duplicate, err := daemon.ServeAPI(ctx); err == nil {
+		duplicate.Close()
+		t.Fatal("duplicate server replaced the live control socket")
+	}
 
 	client := NewClient(cfg.Paths.Socket)
 	status, err := client.Status()

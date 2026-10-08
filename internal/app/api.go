@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/diagnostics"
@@ -28,6 +29,16 @@ const SocketMode = 0o660
 // ServeAPI starts the local API.
 func (d *Daemon) ServeAPI(ctx context.Context) (io.Closer, error) {
 	path := d.Config.Paths.Socket
+	lock, err := acquireInstanceLock(path + ".lock")
+	if err != nil {
+		return nil, err
+	}
+	keepLock := false
+	defer func() {
+		if !keepLock {
+			_ = lock.Close()
+		}
+	}()
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
@@ -81,10 +92,16 @@ func (d *Daemon) ServeAPI(ctx context.Context) (io.Closer, error) {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
+	keepLock = true
+	var closeOnce sync.Once
+	var closeErr error
 	return closerFunc(func() error {
-		err := server.Close()
-		_ = os.Remove(path)
-		return err
+		closeOnce.Do(func() {
+			closeErr = server.Close()
+			_ = os.Remove(path)
+			_ = lock.Close()
+		})
+		return closeErr
 	}), nil
 }
 
