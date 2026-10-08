@@ -26,12 +26,19 @@ type shellExecuteInfo struct {
 }
 
 func runElevated(executable, configPath string) (windows.Handle, error) {
+	return runElevatedCommand(executable, configPath, "up")
+}
+
+func runElevatedCommand(executable, configPath, command string) (windows.Handle, error) {
+	if command != "up" && command != "cleanup" {
+		return 0, fmt.Errorf("不支持的后台操作")
+	}
 	verb, _ := syscall.UTF16PtrFromString("runas")
 	file, err := syscall.UTF16PtrFromString(executable)
 	if err != nil {
 		return 0, err
 	}
-	params, err := syscall.UTF16PtrFromString("--config " + syscall.EscapeArg(configPath) + " up")
+	params, err := syscall.UTF16PtrFromString("--config " + syscall.EscapeArg(configPath) + " " + command)
 	if err != nil {
 		return 0, err
 	}

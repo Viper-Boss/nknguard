@@ -718,6 +718,7 @@ func (u *clientUI) render(state map[string]any) {
 	paired, connected := stateFlag(state, "paired"), stateFlag(state, "connected")
 	connecting, pairing := stateFlag(state, "connecting"), stateFlag(state, "pairing")
 	disconnecting := stateFlag(state, "disconnecting") || u.quitPending
+	cleanupFailed := stateFlag(state, "cleanup_failed")
 	path := stateText(state, "path")
 
 	var title, short string
@@ -725,6 +726,8 @@ func (u *clientUI) render(state map[string]any) {
 	switch {
 	case disconnecting:
 		title, short, tone = "正在断开并清理隧道", "断开中", colorWarn
+	case cleanupFailed:
+		title, short, tone = "WireGuard 清理未完成", "需处理", colorWarn
 	case !paired:
 		title, short = "请先配对 NAS", "尚未配对"
 	case !connected && connecting:
@@ -747,8 +750,10 @@ func (u *clientUI) render(state map[string]any) {
 	message := stateText(state, "message")
 	if message == "" {
 		switch {
-		case connected:
+		case connected && (path == "direct-wg" || path == "nkn-relay"):
 			message = "现在可以用 NAS 的虚拟 IP 访问飞牛。"
+		case connected:
+			message = "正在验证与 NAS 的安全链路，请稍候。"
 		case paired:
 			message = "点击“连接 NAS”，先尝试上次的直连路径，同时获取最新信标。"
 		default:
@@ -769,15 +774,17 @@ func (u *clientUI) render(state map[string]any) {
 
 	canConnect := paired && !connected && !connecting && !disconnecting
 	u.connect.SetEnabled(canConnect)
-	u.disconnect.SetEnabled((connected || connecting) && !disconnecting)
+	u.disconnect.SetEnabled((connected || connecting || cleanupFailed) && !disconnecting)
 	if connecting {
 		u.disconnect.text = "取消连接"
+	} else if cleanupFailed {
+		u.disconnect.text = "重试清理"
 	} else {
 		u.disconnect.text = "断开"
 	}
 	_ = u.disconnect.widget.Invalidate()
 	_ = u.trayConnect.SetEnabled(canConnect)
-	_ = u.trayDisconnect.SetEnabled((connected || connecting) && !disconnecting)
+	_ = u.trayDisconnect.SetEnabled((connected || connecting || cleanupFailed) && !disconnecting)
 
 	setText(u.nasAddress, orDefault(stateText(state, "nas_address"), "未配对"))
 	setText(u.localAddress, orDefault(stateText(state, "local_nkn_address"), "连接后显示"))

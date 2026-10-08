@@ -25,6 +25,8 @@ import (
 
 const inviteLifetime = 5 * time.Minute
 
+var ErrPairingOffline = errors.New("NKN 尚未上线，请稍后重试配对；本地管理和已有直连不受影响")
+
 // PairInvite is the QR payload. The token opens only a pending request; it is
 // never a membership credential and is consumed after local approval.
 type PairInvite struct {
@@ -94,6 +96,12 @@ func NewPairing(node *Node, controller *mesh.Controller, transport signaling.Tra
 	return &Pairing{node: node, mesh: controller, transport: transport, pending: make(map[string]pendingRequest)}
 }
 
+func (p *Pairing) SetTransport(transport signaling.Transport) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.transport = transport
+}
+
 func (p *Pairing) owner() bool {
 	current, err := p.node.State.LoadMembership()
 	return err == nil && current.IsOwner
@@ -110,6 +118,9 @@ func (p *Pairing) NewInvite() (PairInvite, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.pending = make(map[string]pendingRequest)
+	if p.transport == nil {
+		return PairInvite{}, ErrPairingOffline
+	}
 	p.invite = PairInvite{
 		Version: 1, NetworkID: p.mesh.Config.NetworkID,
 		NASID: p.node.Device.DeviceID(), NASPublicKey: p.node.Device.PublicKey(),
@@ -188,6 +199,12 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	if !ok || time.Now().After(entry.ExpiresAt) {
 		return errors.New("pairing: request expired or unknown")
 	}
+	if p.transport == nil {
+		return ErrPairingOffline
+	}
+	if err := p.cleanPendingLocked(ctx); err != nil {
+		return err
+	}
 	secret, err := p.node.JoinSecret()
 	if err != nil {
 		return err
@@ -209,7 +226,6 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	// Persist and admit before the secret leaves: a device must never hold
 	// the join secret while this NAS does not list it, or its first
 	// introduction would be refused as unapproved.
-	previous := append([]string(nil), current.Members...)
 	current.Members = append(current.Members, deviceID)
 	if err := p.node.State.SaveMembership(current); err != nil {
 		return err
@@ -217,12 +233,8 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	p.mesh.ApproveDevice(deviceID)
 	if err := p.transport.SendAddress(ctx, entry.NKNAddress, envelope); err != nil {
 		// Undo, and keep the request pending so the owner can retry.
-		current.Members = previous
-		if saveErr := p.node.State.SaveMembership(current); saveErr != nil {
-			return fmt.Errorf("pairing: approval not delivered (%v) and rollback failed: %w", err, saveErr)
-		}
-		p.mesh.RevokeDevice(ctx, deviceID)
-		return fmt.Errorf("pairing: approval not delivered, try again: %w", err)
+		rollbackErr := p.revokeLocked(ctx, deviceID)
+		return errors.Join(fmt.Errorf("pairing: approval not delivered, try again: %w", err), rollbackErr)
 	}
 	delete(p.pending, deviceID)
 	p.invite = PairInvite{}
@@ -230,6 +242,12 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 }
 
 func (p *Pairing) Revoke(ctx context.Context, deviceID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.revokeLocked(ctx, deviceID)
+}
+
+func (p *Pairing) revokeLocked(ctx context.Context, deviceID string) error {
 	if !p.owner() {
 		return errors.New("pairing: only the NAS owner can revoke devices")
 	}
@@ -247,9 +265,49 @@ func (p *Pairing) Revoke(ctx context.Context, deviceID string) error {
 		}
 	}
 	current.Members = filtered
+	if key := p.mesh.PeerPublicKey(deviceID); key != "" {
+		found := false
+		for _, pending := range current.PendingRemovals {
+			if pending == key {
+				found = true
+			}
+		}
+		if !found {
+			current.PendingRemovals = append(current.PendingRemovals, key)
+		}
+	}
 	if err := p.node.State.SaveMembership(current); err != nil {
 		return err
 	}
-	p.mesh.RevokeDevice(ctx, deviceID)
-	return nil
+	if _, err := p.mesh.RevokeDevice(ctx, deviceID); err != nil {
+		return err
+	}
+	if err := p.mesh.PruneUntrackedPeers(ctx); err != nil {
+		return err
+	}
+	return p.cleanPendingLocked(ctx)
+}
+
+// CleanPending runs before any cached peer is installed after a restart.
+func (p *Pairing) CleanPending(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cleanPendingLocked(ctx)
+}
+
+func (p *Pairing) cleanPendingLocked(ctx context.Context) error {
+	current, err := p.node.State.LoadMembership()
+	if err != nil {
+		return err
+	}
+	if len(current.PendingRemovals) == 0 {
+		return nil
+	}
+	for _, key := range current.PendingRemovals {
+		if err := p.mesh.RemoveRevokedKey(ctx, key); err != nil {
+			return err
+		}
+	}
+	current.PendingRemovals = nil
+	return p.node.State.SaveMembership(current)
 }

@@ -334,8 +334,13 @@ func (m *LinuxManager) Down(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.applied = false
-	if !m.interfaceExists(ctx, m.ifaceName) {
-		return nil
+	if _, err := m.runner.Run(ctx, "ip", "link", "show", "dev", m.ifaceName); err != nil {
+		// An unavailable command, permission error or cancelled context is not
+		// evidence that the interface disappeared.
+		if ctx.Err() == nil && (strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Cannot find device")) {
+			return nil
+		}
+		return fmt.Errorf("wireguard: cannot confirm interface absence: %w", err)
 	}
 	_, err := m.runner.Run(ctx, "ip", "link", "delete", "dev", m.ifaceName)
 	return err

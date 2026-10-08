@@ -72,6 +72,9 @@ type Controller struct {
 	// OnPeerError observes a verified ERROR message from an admitted peer.
 	// A client uses it to learn that its NAS has revoked it.
 	OnPeerError func(deviceID string, report protocol.Error)
+	// OnSecurityFailure stops the host when a revoked key cannot be removed.
+	// It must not wait for Controller.Run (the caller may be one of its workers).
+	OnSecurityFailure func(error)
 
 	mu       sync.RWMutex
 	peers    map[string]*Peer
@@ -208,12 +211,15 @@ var ErrNotJoined = errors.New("mesh: no network configured — run `nknguard joi
 // Run drives the controller until ctx is cancelled and returns only after
 // every goroutine it started has finished.
 func (c *Controller) Run(ctx context.Context) error {
+	c.mu.RLock()
+	hasMembers := len(c.Config.Members) > 0
+	c.mu.RUnlock()
 	switch {
 	case c.Config.NetworkID == "":
 		return ErrNotJoined
 	case c.Device == nil:
 		return errors.New("mesh: controller has no device identity")
-	case c.Membership == nil && len(c.Config.Members) == 0:
+	case c.Membership == nil && !hasMembers:
 		return errors.New("mesh: no membership key and no explicit members — nobody could ever be admitted")
 	case c.Signaling == nil:
 		return errors.New("mesh: signalling is required")
@@ -352,7 +358,7 @@ func (c *Controller) ApproveDevice(deviceID string) []string {
 }
 
 // RevokeDevice drops authorization, the peer, and its WireGuard key.
-func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) []string {
+func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) ([]string, error) {
 	c.mu.Lock()
 	filtered := c.Config.Members[:0]
 	for _, member := range c.Config.Members {
@@ -372,10 +378,70 @@ func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) []string
 	c.closeBridge(deviceID)
 	if peer != nil && c.WireGuard != nil {
 		if key := peer.Record().WireGuardPublicKey; key != "" {
-			_ = c.WireGuard.RemovePeer(ctx, key)
+			return members, c.RemoveRevokedKey(ctx, key)
 		}
 	}
-	return members
+	return members, nil
+}
+
+func (c *Controller) PeerPublicKey(deviceID string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if peer := c.peers[deviceID]; peer != nil {
+		return peer.Record().WireGuardPublicKey
+	}
+	return ""
+}
+
+// PruneUntrackedPeers keeps a surviving owner interface from carrying keys
+// absent from its verified, approved cache after a crash or old-version revoke.
+func (c *Controller) PruneUntrackedPeers(ctx context.Context) error {
+	if !c.Config.OwnerDevice || !c.Config.RequireApproval || c.WireGuard == nil {
+		return nil
+	}
+	allowed := make(map[string]bool)
+	for _, record := range c.Records() {
+		if c.Authorized(record.DeviceID) {
+			allowed[record.WireGuardPublicKey] = true
+		}
+	}
+	stats, err := c.WireGuard.Stats(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot audit existing WireGuard peers: %w", err)
+	}
+	for _, peer := range stats {
+		if !allowed[peer.PublicKey] {
+			if err := c.RemoveRevokedKey(ctx, peer.PublicKey); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// RemoveRevokedKey also covers late direct/relay workers that installed a key
+// concurrently with revocation. Failure closes the entire interface and stops
+// the host; callers still receive an error and may retry the durable queue.
+func (c *Controller) RemoveRevokedKey(ctx context.Context, key string) error {
+	if c.WireGuard == nil || key == "" {
+		return nil
+	}
+	cleanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	err := c.WireGuard.RemovePeer(cleanCtx, key)
+	cancel()
+	if err == nil {
+		return nil
+	}
+	err = fmt.Errorf("revoked WireGuard key cleanup failed: %w", err)
+	if c.OnSecurityFailure != nil {
+		c.OnSecurityFailure(err)
+	}
+	downCtx, downCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	downErr := c.WireGuard.Down(downCtx)
+	downCancel()
+	err = errors.Join(err, downErr)
+	c.logger().Error("revocation cleanup failed; stopping tunnel", "error", err)
+	return err
 }
 
 func cutTag(capability string) (string, bool) {

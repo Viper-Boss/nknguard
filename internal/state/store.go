@@ -40,6 +40,22 @@ type Membership struct {
 	// as peers present a valid join proof; signed invitations replace it in
 	// v0.2, which is why it is a list rather than a boolean.
 	Members []string `json:"members"`
+	// PendingRemovals survives a crash between revocation and kernel cleanup.
+	PendingRemovals []string `json:"pending_wireguard_removals,omitempty"`
+}
+
+// Shutdown is written before the control socket closes. A missing completion
+// after a crash must not be presented as a successful tunnel cleanup.
+type Shutdown struct {
+	Completed bool   `json:"completed"`
+	Error     string `json:"error,omitempty"`
+}
+
+func (s *Store) SaveShutdown(result Shutdown) error { return s.writeJSON("shutdown.json", result) }
+func (s *Store) LoadShutdown() (Shutdown, error) {
+	var result Shutdown
+	err := s.readJSON("shutdown.json", &result)
+	return result, err
 }
 
 // Runtime is the bookkeeping that must survive a restart but is not a

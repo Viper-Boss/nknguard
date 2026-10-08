@@ -9,9 +9,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/identity"
 )
+
+func TestWindowsDownMustConfirmServiceRemoval(t *testing.T) {
+	for _, denied := range []bool{false, true} {
+		runner := &windowsRunner{installed: true}
+		manager := &WindowsManager{runner: runner, name: "nknguard", dir: t.TempDir(), serviceExists: func(string) (bool, error) {
+			if denied {
+				return false, errors.New("access denied")
+			}
+			return true, nil
+		}}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		err := manager.Down(ctx)
+		cancel()
+		if err == nil {
+			t.Fatal("uninstall exit code accepted without service removal")
+		}
+	}
+}
 
 type windowsRunner struct {
 	installed bool
@@ -55,7 +74,7 @@ func TestWindowsManagerTunnelLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	store := identity.NewKeystore(filepath.Join(dir, "keys"))
 	runner := &windowsRunner{}
-	manager := &WindowsManager{store: store, runner: runner, name: "nknguard", dir: filepath.Join(dir, "tunnels")}
+	manager := &WindowsManager{store: store, runner: runner, name: "nknguard", dir: filepath.Join(dir, "tunnels"), serviceExists: func(string) (bool, error) { return runner.installed, nil }}
 	ctx := context.Background()
 	if !validTunnelName("nknguard") || validTunnelName("../other") {
 		t.Fatal("tunnel name validation failed")

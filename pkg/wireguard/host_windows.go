@@ -13,22 +13,46 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 // WindowsManager controls an official WireGuard for Windows tunnel service.
 // The service creates routes and the adapter; wg.exe changes peers in place.
 type WindowsManager struct {
-	store   Keystore
-	runner  Runner
-	name    string
-	dir     string
-	mu      sync.Mutex
-	current InterfaceConfig
-	applied bool
+	store         Keystore
+	runner        Runner
+	name          string
+	dir           string
+	mu            sync.Mutex
+	current       InterfaceConfig
+	applied       bool
+	serviceExists func(string) (bool, error)
 }
 
 func NewHostManager(store Keystore, interfaceName, stateDir string) Manager {
-	return &WindowsManager{store: store, runner: ExecRunner{}, name: interfaceName, dir: filepath.Join(stateDir, "tunnels")}
+	return &WindowsManager{store: store, runner: ExecRunner{}, name: interfaceName, dir: filepath.Join(stateDir, "tunnels"), serviceExists: tunnelServiceExists}
+}
+
+func tunnelServiceExists(name string) (bool, error) {
+	scm, err := mgr.Connect()
+	if err != nil {
+		return false, err
+	}
+	defer scm.Disconnect()
+	service, err := scm.OpenService(name)
+	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		return false, nil
+	}
+	if errors.Is(err, windows.ERROR_SERVICE_MARKED_FOR_DELETE) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer service.Close()
+	return true, nil
 }
 
 func (m *WindowsManager) tool(name string) (string, error) {
@@ -300,8 +324,23 @@ func (m *WindowsManager) Down(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := m.runner.Run(ctx, wireguard, "/uninstalltunnelservice", m.name); err != nil {
-		return err
+	_, uninstallErr := m.runner.Run(ctx, wireguard, "/uninstalltunnelservice", m.name)
+	for {
+		exists, err := m.serviceExists("WireGuardTunnel$" + m.name)
+		if err != nil {
+			return fmt.Errorf("wireguard: cannot verify service removal: %w", err)
+		}
+		if !exists {
+			break
+		}
+		if uninstallErr != nil {
+			return uninstallErr
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wireguard: tunnel service still exists: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 	m.applied = false
 	if err := os.Remove(m.confPath()); err != nil && !errors.Is(err, os.ErrNotExist) {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,13 +72,25 @@ func NewLogger(w io.Writer, level string) (*slog.Logger, *LogRing) {
 // discovery, signalling, NAT workers and relay (the controller), then remove
 // the interface.
 func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
-	logger, ring := NewLogger(logOut, cfg.Logging.Level)
 	if controlPlaneFactory == nil {
 		return ErrNoNKN
 	}
 	if !hasTunnelPrivilege() {
 		return errors.New("the daemon needs administrator privileges to manage WireGuard")
 	}
+	return runDaemon(ctx, cfg, logOut, wireguard.NewHostManager)
+}
+
+func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newManager func(wireguard.Keystore, string, string) wireguard.Manager) (resultErr error) {
+	logger, ring := NewLogger(logOut, cfg.Logging.Level)
+	if controlPlaneFactory == nil {
+		return ErrNoNKN
+	}
+	instanceLock, err := acquireInstanceLock(filepath.Join(cfg.Paths.StateDir, "daemon.lock"))
+	if err != nil {
+		return err
+	}
+	defer instanceLock.Close()
 	node, err := OpenNode(cfg)
 	if err != nil {
 		return err
@@ -88,7 +101,7 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	}
 	logger = logger.With("device_id", node.Device.DeviceID())
 
-	wg := wireguard.NewHostManager(wireguard.FromIdentityKeystore(node.Keystore), cfg.WireGuard.Interface, cfg.Paths.StateDir)
+	wg := newManager(wireguard.FromIdentityKeystore(node.Keystore), cfg.WireGuard.Interface, cfg.Paths.StateDir)
 	if supported, reason := wg.Supported(ctx); supported == wireguard.StateUnsupported || supported == wireguard.StateToolsMissing {
 		return fmt.Errorf("WireGuard is not usable on this host: %s", reason)
 	}
@@ -127,6 +140,21 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	securityErrors := make(chan error, 1)
+	controller.OnSecurityFailure = func(err error) {
+		select {
+		case securityErrors <- err:
+		default:
+		}
+		cancel()
+	}
+	defer func() {
+		select {
+		case err := <-securityErrors:
+			resultErr = errors.Join(resultErr, err)
+		default:
+		}
+	}()
 	controller.WireGuard = wg
 	controller.Direct = &mesh.WireGuardStrategy{WireGuard: wg, Nudge: mesh.UDPNudge}
 	controller.Nudge = mesh.UDPNudge
@@ -140,11 +168,14 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		return err
 	}
 	defer api.Close()
+	if err := node.State.SaveShutdown(state.Shutdown{}); err != nil {
+		return err
+	}
 	defer func() {
-		downCtx, downCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer downCancel()
-		if err := wg.Down(downCtx); err != nil {
-			logger.Warn("removing interface failed", "component", "wireguard", "error", err)
+		cleanupErr := cleanupTunnel(wg, node.State)
+		resultErr = errors.Join(resultErr, cleanupErr)
+		if cleanupErr != nil {
+			logger.Error("removing interface failed", "component", "wireguard", "error", cleanupErr)
 		}
 	}()
 	if err := wg.EnsureInterface(runCtx, interfaceConfig); err != nil {
@@ -173,6 +204,23 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	for _, hint := range hints {
 		controller.RestoreLinkHint(hint.DeviceID, hint.PublicKey, hint.Endpoint, hint.SeenAt)
 	}
+	pairing := NewPairing(node, controller, nil)
+	daemon.Pairing = pairing
+	controller.PairRequest = pairing.HandleRequest
+	if err := pairing.CleanPending(runCtx); err != nil {
+		return err
+	}
+	if err := controller.PruneUntrackedPeers(runCtx); err != nil {
+		return err
+	}
+	daemon.Usage = NewUsageReporter(cfg, node.Keystore, logger)
+	panel, err := daemon.ServeDashboard(runCtx)
+	if err != nil {
+		logger.Warn("dashboard unavailable", "component", "dashboard", "error", err)
+	} else {
+		defer func() { _ = panel.Close() }()
+		logger.Info("dashboard listening", "component", "dashboard", "address", cfg.Dashboard.Listen)
+	}
 	cacheCtx, cacheCancel := context.WithCancel(runCtx)
 	cacheDone := make(chan struct{})
 	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
@@ -196,8 +244,7 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 	daemon.nknAddress.Store(plane.Signaling.LocalAddress())
 	controller.Relay = plane.Relay
 	controller.Rendezvous = plane.Rendezvous
-	pairing := NewPairing(node, controller, plane.Signaling)
-	controller.PairRequest = pairing.HandleRequest
+	pairing.SetTransport(plane.Signaling)
 
 	if cfg.Discovery.DHT && discoveryFactory != nil {
 		backend, err := discoveryFactory(runCtx, cfg, key, logger)
@@ -219,20 +266,10 @@ func RunDaemon(ctx context.Context, cfg config.Config, logOut io.Writer) error {
 		<-runCtx.Done()
 		closeNKN()
 	}()
-	daemon.Pairing = pairing
-	daemon.Usage = NewUsageReporter(cfg, node.Keystore, logger)
 	go daemon.Usage.Run(runCtx)
 	// A laptop that moves to another network, or a NAS that gets a new DHCP
 	// lease, tells its peers at once instead of waiting for a path to fail.
 	go controller.WatchNetwork(runCtx, 0, nil)
-
-	panel, err := daemon.ServeDashboard(runCtx)
-	if err != nil {
-		logger.Warn("dashboard unavailable", "component", "dashboard", "error", err)
-	} else {
-		defer func() { _ = panel.Close() }()
-		logger.Info("dashboard listening", "component", "dashboard", "address", cfg.Dashboard.Listen)
-	}
 
 	persistDone := make(chan struct{})
 	go func() {
