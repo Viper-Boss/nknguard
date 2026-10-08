@@ -3,6 +3,7 @@ package mesh
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -112,14 +113,19 @@ func (f *fakeWG) serve() {
 			continue
 		}
 		peerKey := message[1:]
+		// Read before f.mu: fakeNet.evaluate holds the network lock before
+		// taking a node lock. A blackholed direct path cannot win roaming.
+		f.net.mu.Lock()
+		directBlocked := f.net.blockDirect
+		f.net.mu.Unlock()
 		f.mu.Lock()
 		f.handshakes[peerKey] = time.Now()
 		f.received[peerKey] += int64(read)
 		// Real WireGuard roams to the source of the latest authenticated
 		// packet. Once a direct path is up, direct packets keep arriving and
 		// win over any relay stragglers; the fake models that converged
-		// result by not roaming off a direct endpoint onto the bridge.
-		if current, err := netip.ParseAddrPort(f.endpoints[peerKey]); err != nil || current.Addr().IsLoopback() {
+		// result only while direct traffic is actually available.
+		if current, err := netip.ParseAddrPort(f.endpoints[peerKey]); directBlocked || err != nil || current.Addr().IsLoopback() {
 			f.endpoints[peerKey] = from.String()
 		}
 		f.mu.Unlock()
@@ -370,6 +376,14 @@ func dump(nodes ...*node) string {
 		out.WriteString("\n== " + n.ctrl.Config.DeviceName + " " + n.ctrl.Device.DeviceID() + "\n")
 		for _, p := range n.ctrl.Peers() {
 			out.WriteString("  peer " + p.Name + " state=" + string(p.State) + " path=" + string(p.Path) + " ep=" + p.Endpoint + " err=" + p.LastError + "\n")
+			if peer, ok := n.ctrl.lookupPeer(p.DeviceID); ok {
+				peer.mu.RLock()
+				out.WriteString(fmt.Sprintf("  attempt=%v relayOpening=%v lastDirect=%v failures=%d candidates=%d\n", peer.attempting, peer.relayOpening, peer.selector.lastDirectTry, peer.selector.failures, len(peer.candidates)))
+				peer.mu.RUnlock()
+			}
+			if bridge := n.ctrl.bridgeFor(p.DeviceID); bridge != nil {
+				out.WriteString(fmt.Sprintf("  bridge=%v stats=%+v\n", bridge.LocalAddr(), bridge.Stats()))
+			}
 			for _, h := range p.History {
 				out.WriteString("    " + h.At.Format("15:04:05.000") + " " + string(h.From) + " -" + string(h.Event) + "-> " + string(h.To) + "\n")
 			}

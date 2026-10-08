@@ -153,7 +153,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			_, _ = peer.Apply(EventHandshakeOK, now)
 			// WireGuard has already roamed onto the direct endpoint by itself;
 			// the bridge is now idle and can go.
-			if bridge != nil {
+			if bridge != nil && fresh && !viaBridge {
 				c.closeBridge(peer.DeviceID())
 			}
 			continue
@@ -434,6 +434,9 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 	}
 	c.bridges[peer.DeviceID()] = bridge
 	c.mu.Unlock()
+	// The previous path's silence is not evidence about this new stream.
+	// Allow its first round trip before applying the receive timeout.
+	peer.resetReceive(time.Now())
 
 	record := peer.Record()
 	if err := c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String()); err != nil {
