@@ -14,14 +14,14 @@ const metric = value => typeof value === 'number' ? value.toLocaleString('zh-CN'
 let field, fieldSize = '', status = {}, time = 0, previous = 0, inViewport = true;
 
 function updateStates() {
-  // The daemon publishes this address only after opening its NKN control plane.
-  const nknActive = status.nkn_connected ?? !!status.nkn_address;
+  const nknActive = status.nkn_connected === true;
   const known = typeof status.dht_enabled === 'boolean';
   const ready = status.dht_enabled && status.dht_peers > 0;
   const badge = !known ? '未知' : !status.dht_enabled ? '已关闭' : ready ? '网络健康' : '运行中，未找到任何人';
   globe.closest('.net-card').dataset.state = nknActive ? 'online' : 'offline';
   mesh.closest('.net-card').dataset.state = ready ? 'online' : 'offline';
-  text('nkn-animation-state', nknActive ? '已连接' : '未连接');
+  text('nkn-animation-state', nknActive ? '已连接' : ({checking:'验证连接中',reconnecting:'重新连接中',closed:'未连接',unavailable:'状态不可用'})[status.nkn_connection?.state] || '等待 NKN');
+  document.getElementById('nkn-animation-state').title = status.nkn_connection?.last_success && !status.nkn_connection.last_success.startsWith('0001-') ? `最近确认：${new Date(status.nkn_connection.last_success).toLocaleString()} · 自检往返 ${status.nkn_connection.latency_ms} 毫秒` : '等待消息经过 NKN 返回后确认连接';
   text('nkn-path-state', nknActive ? '连接正常' : '等待连接');
   text('nkn-visual-note', nknActive ? '全球连接 · 持续在线' : '全球节点示意');
   text('nkn-dht-state', !known ? '第二通路尚未启用' : !status.dht_enabled ? 'DHT 已关闭' : ready ? '可用 · 自动协同' : '孤立——没有找到任何节点');
@@ -40,6 +40,7 @@ function updateStates() {
 }
 
 window.addEventListener('nknguard-status', event => { status = event.detail; updateStates(); render(); });
+window.addEventListener('nknguard-status-unavailable', () => { status = {...status,nkn_connected:false,nkn_connection:{state:'unavailable'}}; updateStates(); render(); });
 window.addEventListener('nknguard-usage', event => {
   const counts = event.detail.counts || {};
   text('nkn-active-day', metric(counts.day));
@@ -66,7 +67,7 @@ function drawable() {
 }
 function render() {
   if (!drawable()) return;
-  const nknActive = status.nkn_connected ?? !!status.nkn_address;
+  const nknActive = status.nkn_connected === true;
   const ready = status.dht_enabled && status.dht_peers > 0;
   const g = surface(globe);
   if (g) paintGlobe(g.context, points, {width:g.width,height:g.height,time,strength:nknActive ? 1 : .42,

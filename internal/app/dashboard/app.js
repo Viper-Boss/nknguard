@@ -2,6 +2,8 @@ const byId = id => document.getElementById(id);
 const setText = (id, value) => { byId(id).textContent = value ?? '—'; };
 const pathLabel = path => ({'direct-wg':'WireGuard 直连','nkn-relay':'NKN 中继','none':'等待连接'})[path] || '等待连接';
 const stateLabel = state => ({'DIRECT':'已直连','RELAY':'已中继','PUNCHING':'正在打洞','RELAY_CONNECTING':'建立中继','OFFLINE':'离线'})[state] || '连接中';
+const natLabel = value => ({'endpoint-independent':'端点无关型','address-dependent':'对称型','open':'无需 NAT','unknown':'未知'})[value] || '未知';
+const natHint = value => ({'endpoint-independent':'映射稳定 · 利于直连','address-dependent':'映射受限 · 可能需要中继','open':'直接连接公网','unknown':'等待自动探测'})[value] || '等待自动探测';
 let currentStatus = null;
 let currentUsage = null;
 window.addEventListener('nknguard-network-ready', () => {
@@ -84,13 +86,18 @@ function render(status) {
   setText('total-count', peers.length ? `${peers.length} 台已验证设备` : '等待设备配对');
   setText('direct-count', direct);
   setText('relay-count', relay);
-  setText('nat-state', status.nat_behaviour || '未知');
+  setText('nat-state', natLabel(status.nat_behaviour));
+  setText('nat-note', natHint(status.nat_behaviour));
+  setText('hero-device-name', status.device_name || '我的飞牛 NAS');
+  const nknVerified = status.nkn_connected === true;
+  byId('nkn-sidebar-state').textContent = nknVerified ? 'NKN 已连接' : status.nkn_connection?.state === 'checking' ? '正在验证 NKN' : 'NKN 连接待恢复';
+  document.querySelector('.sidebar').dataset.connection = nknVerified ? 'online' : 'offline';
   setText('route-direct', direct);
   setText('route-relay', relay);
   setText('route-idle', peers.length - online);
   const pill = byId('overall-pill');
   const wgReady = status.wireguard?.state === 'up';
-  const beaconReady = !!status.nkn_address;
+  const beaconReady = nknVerified;
   pill.className = `pill ${wgReady && beaconReady ? 'good' : 'warn'}`;
   pill.replaceChildren(); const dot = document.createElement('i'); pill.append(dot, document.createTextNode(!wgReady ? '检查 WireGuard' : beaconReady ? 'NAS 已就绪' : '等待 NKN 信标 · 本地管理可用'));
   setText('detail-name', status.device_name);
@@ -107,7 +114,7 @@ function render(status) {
   setText('detail-uptime', status.uptime);
   setText('detail-wg', status.wireguard?.state);
   setText('detail-port', status.wireguard?.listen_port);
-  setText('detail-nat', status.nat_behaviour);
+  setText('detail-nat', natLabel(status.nat_behaviour));
   setText('detail-punch', status.metrics?.punch_success);
   setText('detail-fallback', status.metrics?.relay_fallback_count);
   renderDevices(peers);
@@ -121,6 +128,8 @@ async function refresh() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     render(await response.json());
   } catch (error) {
+    currentStatus = null;
+    window.dispatchEvent(new Event('nknguard-status-unavailable'));
     const pill = byId('overall-pill'); pill.className = 'pill bad'; pill.textContent = '状态不可用';
     setText('updated', '连接中断');
   }

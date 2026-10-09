@@ -19,6 +19,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
@@ -46,6 +47,7 @@ type Daemon struct {
 	down       context.CancelFunc
 	downOnce   sync.Once
 	nknAddress atomic.Value
+	nknStatus  atomic.Value // func() nknclient.ConnectionStatus, published once
 }
 
 // NewLogger builds the daemon logger: text to w, and a redacted copy into the
@@ -246,6 +248,11 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
 	}
 	daemon.nknAddress.Store(plane.Signaling.LocalAddress())
+	if transport, ok := plane.Signaling.(interface {
+		ConnectionStatus() nknclient.ConnectionStatus
+	}); ok {
+		daemon.nknStatus.Store(transport.ConnectionStatus)
+	}
 	controller.Relay = plane.Relay
 	controller.Rendezvous = plane.Rendezvous
 	pairing.SetTransport(plane.Signaling)
@@ -379,6 +386,10 @@ func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 	}
 	if address, ok := d.nknAddress.Load().(string); ok {
 		status.NKNAddress = address
+	}
+	if query, ok := d.nknStatus.Load().(func() nknclient.ConnectionStatus); ok {
+		status.NKNConnection = query()
+		status.NKNConnected = status.NKNConnection.State == "connected"
 	}
 	if virtual := d.Controller.VirtualIP(); virtual.IsValid() {
 		status.VirtualIP = virtual.String()
