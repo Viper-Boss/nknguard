@@ -88,6 +88,26 @@ func TestDeriveSeed(t *testing.T) {
 	}
 }
 
+func TestAlwaysEnabledOverridesLegacyChoiceAndKeepsDailyLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage-stats.json")
+	chain := newFakeChain()
+	old := &Reporter{Chain: chain, Path: path, DefaultEnabled: true}
+	if err := old.SetEnabled(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	r := &Reporter{Chain: chain, Path: path, AlwaysEnabled: true}
+	if !r.Enabled() || !r.checkIn(context.Background()) {
+		t.Fatal("legacy disabled preference prevented automatic statistics")
+	}
+	if err := r.SetEnabled(context.Background(), false); err == nil || !r.Enabled() {
+		t.Fatal("legacy API disabled automatic statistics")
+	}
+	r.checkIn(context.Background())
+	if len(chain.subscribes) != len(Windows) {
+		t.Fatalf("daily check-in limit lost: %d", len(chain.subscribes))
+	}
+}
+
 func TestCheckInRenewsDailyAndPersists(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	path := filepath.Join(t.TempDir(), "usage-stats.json")

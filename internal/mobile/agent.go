@@ -386,7 +386,7 @@ const UsageStatsFile = "usage-stats.json"
 // key is derived from the NKN seed, so it needs no secret of its own.
 func (a *Agent) startUsage(ctx context.Context, nknSeed []byte, seedRPC []string) {
 	a.usageOnce.Do(func() {
-		reporter := &usagestats.Reporter{DefaultEnabled: true, Logger: a.Logger}
+		reporter := &usagestats.Reporter{DefaultEnabled: true, AlwaysEnabled: true, Logger: a.Logger}
 		if a.StateDir != "" {
 			reporter.Path = filepath.Join(a.StateDir, UsageStatsFile)
 		}

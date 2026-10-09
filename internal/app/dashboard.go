@@ -109,7 +109,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			http.Error(w, "encode invitation failed", http.StatusInternalServerError)
 			return
 		}
-		png, err := qrcode.Encode(uri, qrcode.Medium, 320)
+		png, err := qrcode.Encode(uri, qrcode.Medium, 768)
 		if err != nil {
 			http.Error(w, "QR generation failed", http.StatusInternalServerError)
 			return

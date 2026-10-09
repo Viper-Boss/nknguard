@@ -25,7 +25,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import io.github.viperboss.nknguard.NkgApp
@@ -54,8 +53,6 @@ class MainActivity : Activity(), NkgApp.Listener {
     private lateinit var forgetButton: Button
     private lateinit var usageCounts: TextView
     private lateinit var usageNote: TextView
-    private lateinit var usageSwitch: Switch
-    private var usageUpdating = false
 
     private var status = JSONObject()
     private var pairing: JSONObject? = null
@@ -287,42 +284,12 @@ class MainActivity : Activity(), NkgApp.Listener {
         }.apply { isDaemon = true }.start()
     }
 
-    private fun onUsageSwitched(enabled: Boolean) {
-        if (usageUpdating) return
-        usageSwitch.isEnabled = false
-        usageNote.text = if (enabled) "正在开启…" else "正在关闭并退订…"
-        Thread {
-            try {
-                app.ensureCore()
-                val result = app.core.call("usage_set", JSONObject().put("enabled", enabled), timeoutMillis = 35_000)
-                main.post {
-                    renderUsage(result)
-                    toast(if (enabled) "已开启匿名统计" else "已关闭，本机不再发送统计交易")
-                }
-            } catch (error: Exception) {
-                main.post {
-                    setUsageSwitch(!enabled)
-                    usageSwitch.isEnabled = true
-                    toast(error.message ?: error.toString())
-                }
-            }
-        }.apply { isDaemon = true }.start()
-    }
-
-    private fun setUsageSwitch(checked: Boolean) {
-        usageUpdating = true
-        usageSwitch.isChecked = checked
-        usageUpdating = false
-    }
-
     private fun renderUsage(result: JSONObject) {
         if (!::usageCounts.isInitialized) return
         val counts = result.optJSONObject("counts") ?: JSONObject()
         fun count(key: String) = if (!counts.has(key) || counts.isNull(key)) "—" else counts.optLong(key).toString()
         usageCounts.text = "24 小时  ${count("day")}     30 天  ${count("month")}     90 天  ${count("quarter")}"
         val enabled = result.optBoolean("enabled")
-        setUsageSwitch(enabled)
-        usageSwitch.isEnabled = true
         val lastCheckIn = result.optString("last_check_in")
         usageNote.text = buildString {
             append(
@@ -449,9 +416,16 @@ class MainActivity : Activity(), NkgApp.Listener {
         }
         row("NAS NKN 地址（点按复制）", status.optString("nas_address"), copyable = true)
         row("NAS 设备 ID", status.optString("nas_id"))
+        val nasIP = status.optString("nas_virtual_ip")
+        if (nasIP.isNotEmpty()) {
+            row("NAS 虚拟 IP（点按复制）", nasIP, copyable = true)
+            row("飞牛客户端服务器地址（点按复制）", "$nasIP:5666", copyable = true)
+            row("使用方法", "NKNGuard 显示已连接后，在飞牛客户端填写上面的服务器地址。若改过飞牛端口，请替换 5666。")
+        } else {
+            row("飞牛客户端服务器地址", "连接后自动显示 NAS 虚拟 IP；无需填写 NKN 地址。")
+        }
         if (connected) {
             row("本机虚拟 IP", status.optString("virtual_ip"))
-            row("NAS 虚拟 IP", status.optString("nas_virtual_ip").ifEmpty { "等待 NAS 签名记录…" })
             row("链路", Text.path(status))
             row("WireGuard 端点", status.optString("endpoint"))
             row("最近握手", Text.handshake(status))
@@ -569,17 +543,8 @@ class MainActivity : Activity(), NkgApp.Listener {
             setTextColor(palette.muted)
         }
         usageCard.addView(usageNote)
-        usageSwitch = Switch(this).apply {
-            text = "参与匿名使用人数统计"
-            textSize = 14f
-            setTextColor(palette.text)
-            isEnabled = false
-            setPadding(0, dp(10), 0, 0)
-            setOnCheckedChangeListener { _, checked -> onUsageSwitched(checked) }
-        }
-        usageCard.addView(usageSwitch)
         usageCard.addView(TextView(this).apply {
-            text = "开启后每天最多提交 3 个零手续费 NKN 链上订阅，只公开一个与本机 NKN 地址无关的匿名公钥，不含设备名、配对或流量信息。关闭后退订。点按人数可刷新。"
+            text = "自动参与匿名使用人数统计，每天最多提交 3 个零手续费 NKN 链上订阅。使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。点按人数可刷新。"
             textSize = 11f
             setTextColor(palette.muted)
             setPadding(0, dp(6), 0, 0)

@@ -91,6 +91,9 @@ function render(status) {
   setText('detail-name', status.device_name);
   setText('detail-id', status.device_id);
   setText('detail-ip', status.virtual_ip);
+  setText('overview-nas-ip', status.virtual_ip);
+  setText('overview-fnos-address', status.virtual_ip ? `${status.virtual_ip}:5666` : '等待 NAS 虚拟 IP');
+  byId('copy-fnos-address').disabled = !status.virtual_ip;
   setText('detail-nkn', status.nkn_address);
   setText('overview-nkn-address', status.nkn_address || 'NKN 尚未连接');
   byId('copy-nkn-address').disabled = !status.nkn_address;
@@ -158,9 +161,6 @@ function renderUsage(status) {
   setText('usage-day', countText(counts.day));
   setText('usage-month', countText(counts.month));
   setText('usage-quarter', countText(counts.quarter));
-  const toggle = byId('usage-enabled');
-  toggle.checked = !!status.enabled;
-  toggle.disabled = false;
   let note;
   if (!status.enabled) note = '本机未参与统计。人数仍可查看。';
   else if (status.last_check_in) note = `本机已参与统计 · 上次签到 ${new Date(status.last_check_in).toLocaleString()}`;
@@ -178,22 +178,6 @@ async function refreshUsage(force) {
   } catch (error) { setText('usage-note', '读取使用人数失败'); }
 }
 
-async function setUsage(event) {
-  const enabled = event.target.checked;
-  event.target.disabled = true;
-  setText('usage-message', enabled ? '正在开启…' : '正在关闭并退订…');
-  try {
-    const response = await fetch('/api/usage', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({enabled})});
-    if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
-    renderUsage(await response.json());
-    setText('usage-message', enabled ? '已开启匿名统计' : '已关闭，本机不再发送统计交易');
-  } catch (error) {
-    event.target.checked = !enabled;
-    event.target.disabled = false;
-    setText('usage-message', `操作失败：${error.message}`);
-  }
-}
-
 async function postAction(route) {
   const response = await fetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
   if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
@@ -205,6 +189,13 @@ async function newInvite() {
     const result = await postAction('/api/pair/invite');
     inviteURI = result.uri;
     const qr = document.createElement('img'); qr.src = result.qr_data_url; qr.alt = 'NKNGuard 一次性配对二维码';
+    qr.tabIndex = 0;
+    qr.setAttribute('role', 'button');
+    qr.setAttribute('aria-label', '放大配对二维码');
+    const enlarge = () => { byId('qr-large').src = qr.src; byId('qr-dialog').showModal(); };
+    qr.addEventListener('click', enlarge);
+    qr.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); enlarge(); } });
+    byId('qr-large').src = qr.src;
     byId('qr-wrap').replaceChildren(qr);
     byId('copy-invite').disabled = false;
     setText('invite-link', result.uri);
@@ -268,7 +259,6 @@ document.querySelectorAll('[data-go]').forEach(button => button.addEventListener
 byId('refresh').addEventListener('click', refresh);
 byId('refresh-logs').addEventListener('click', refreshLogs);
 byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
-byId('usage-enabled').addEventListener('change', setUsage);
 byId('password-form').addEventListener('submit', changePassword);
 byId('new-invite').addEventListener('click', newInvite);
 byId('copy-invite').addEventListener('click', () => {
@@ -286,6 +276,17 @@ function selectInviteLink() {
 byId('copy-nkn-address').addEventListener('click', () => {
   const address = currentStatus?.nkn_address;
   if (address) navigator.clipboard.writeText(address).then(() => toast('NKN 地址已复制')).catch(() => toast('复制失败'));
+});
+byId('close-qr').addEventListener('click', () => byId('qr-dialog').close());
+byId('copy-fnos-address').addEventListener('click', async () => {
+  if (!currentStatus?.virtual_ip) return;
+  const value = `${currentStatus.virtual_ip}:5666`;
+  try { await navigator.clipboard.writeText(value); toast('飞牛地址已复制'); }
+  catch (_) {
+    const range = document.createRange(); range.selectNodeContents(byId('overview-fnos-address'));
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    toast('已选中飞牛地址，请手动复制');
+  }
 });
 refresh();
 refreshPairState();

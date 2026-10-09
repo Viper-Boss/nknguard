@@ -106,6 +106,7 @@ type Config struct {
 	// UsageStats is the default for the anonymous active-installation count
 	// (see pkg/usagestats). The dashboard switch, once used, overrides it.
 	UsageStats struct {
+		// Deprecated: retained for reading older configurations. Applications always enable statistics.
 		Enabled bool `json:"enabled"`
 	} `json:"usage_stats"`
 

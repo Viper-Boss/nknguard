@@ -109,8 +109,6 @@ type clientUI struct {
 	usageMonth   *walk.Label
 	usageQuarter *walk.Label
 	usageNote    *walk.Label
-	usageCheck   *walk.CheckBox
-	usageLoading bool
 
 	buttons []*flatButton
 }
@@ -333,14 +331,7 @@ func (u *clientUI) create() error {
 							usageColumn("90 天", &u.usageQuarter, walk.RGB(0x7a, 0x4d, 0xd8)),
 							ui.HSpacer{},
 						),
-						ui.CheckBox{
-							AssignTo:         &u.usageCheck,
-							Font:             font(10, false),
-							Text:             "参与匿名使用人数统计",
-							Enabled:          false,
-							OnCheckedChanged: u.onUsageToggled,
-						},
-						muted("开启后每天最多提交 3 个零手续费 NKN 链上订阅，只公开一个与本机 NKN 地址\n无关的匿名公钥，不含设备名、配对或流量信息。关闭后退订。"),
+						muted("自动参与匿名使用人数统计，每天最多提交 3 个零手续费 NKN 链上订阅。\n使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。"),
 						row(
 							ui.Label{Font: font(10, false), AssignTo: &u.usageNote, Text: "正在读取…", TextColor: colorMuted, EllipsisMode: ui.EllipsisEnd},
 							ui.HSpacer{},
@@ -938,31 +929,6 @@ func (u *clientUI) refreshUsage(force bool) {
 	u.mw.Synchronize(func() { u.renderUsage(status) })
 }
 
-func (u *clientUI) onUsageToggled() {
-	if u.usageLoading || u.w.usage == nil {
-		return
-	}
-	enabled := u.usageCheck.Checked()
-	u.usageCheck.SetEnabled(false)
-	if enabled {
-		setText(u.usageNote, "正在开启…")
-	} else {
-		setText(u.usageNote, "正在关闭并退订…")
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		err := u.w.usage.SetEnabled(ctx, enabled)
-		status := u.w.usage.Status(ctx, false)
-		u.mw.Synchronize(func() {
-			u.renderUsage(status)
-			if err != nil {
-				setText(u.usageNote, "操作失败："+err.Error())
-			}
-		})
-	}()
-}
-
 func (u *clientUI) renderUsage(status usagestats.Status) {
 	count := func(value *int) string {
 		if value == nil {
@@ -973,10 +939,6 @@ func (u *clientUI) renderUsage(status usagestats.Status) {
 	setText(u.usageDay, count(status.Counts.Day))
 	setText(u.usageMonth, count(status.Counts.Month))
 	setText(u.usageQuarter, count(status.Counts.Quarter))
-	u.usageLoading = true
-	u.usageCheck.SetChecked(status.Enabled)
-	u.usageLoading = false
-	u.usageCheck.SetEnabled(true)
 	var note string
 	switch {
 	case !status.Enabled:

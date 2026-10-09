@@ -57,7 +57,7 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
 - 📱 **Scan to pair, owner approves.** The QR holds only the NAS public key and a one-time request token — never the network secret. Every new device needs the six-digit code confirmed and approved on the NAS. Single devices can be revoked; a revoked phone gets a signed notice and disconnects at once.
 - 🇨🇳 **Built-in China seed.** A mainland-China community NKN seed is tried before the overseas official seeds; add your own node in the config.
 - 🧱 **The tunnel outlives the control plane.** If NKN drops, established WireGuard tunnels keep running.
-- 📊 **Anonymous user counts.** The dashboard and clients show how many devices ran NKNGuard in the last 24 hours / 30 days / 90 days, read from zero-fee NKN on-chain subscriptions with no server involved. On by default and can be switched off; see [usage statistics](docs/USAGE_STATS.md) (Chinese).
+- 📊 **Anonymous user counts.** The dashboard and clients show how many devices ran NKNGuard in the last 24 hours / 30 days / 90 days, read from zero-fee NKN on-chain subscriptions with no server involved. Automatically enabled without an off switch; see [usage statistics](docs/USAGE_STATS.md) (Chinese).
 - 🧭 **Overlay routes only.** Clients route just `10.88.0.0/16`; the default route and normal browsing are untouched.
 
 ## How it works
@@ -160,7 +160,7 @@ Stated plainly, because networking software that over-promises is worse than use
 - **Kernel WireGuard owns its UDP port**, so the public port is inferred assuming port-preserving NAT. True for most home routers, not all; see [NAT traversal](docs/NAT_TRAVERSAL.md).
 - **Membership proofs still use a shared secret.** The NAS enforces an approved-device list and can revoke single devices; recreate network credentials if the secret or a device key leaks. Automated rotation is not implemented.
 - **Preview clients.** IPv4 overlay, one network per node; no Android start-on-boot or always-on VPN yet.
-- **Usage statistics are public.** When enabled, each device publishes an anonymous key on three public NKN topics once a day; the NKN node it talks to sees its IP address. Anyone can subscribe to the topics, so the counts are indicative.
+- **Usage statistics are public.** Each running device automatically publishes an anonymous key on three public NKN topics once a day; the NKN node it talks to sees its IP address. Anyone can subscribe to the topics, so the counts are indicative.
 - **Not anonymous.** WireGuard endpoints reveal IP addresses to peers, NKN addresses are linkable over time, and STUN servers see your public address.
 - **The China seed is community-run** and may move; the official seeds remain as fallback.
 

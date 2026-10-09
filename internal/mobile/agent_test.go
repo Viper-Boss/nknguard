@@ -545,20 +545,23 @@ func TestUsageStatistics(t *testing.T) {
 	if !status.Enabled || status.Address != "usage-key" {
 		t.Fatalf("status = %+v", status)
 	}
-	p.must("usage_set", map[string]bool{"enabled": false}, &status)
-	if status.Enabled {
-		t.Fatal("still enabled")
+	if _, errText := p.call("usage_set", map[string]bool{"enabled": false}); errText == "" {
+		t.Fatal("application policy disabled")
+	}
+	p.must("usage", nil, &status)
+	if !status.Enabled {
+		t.Fatal("statistics unexpectedly disabled")
 	}
 	chain.mu.Lock()
 	left := len(chain.topics)
 	chain.mu.Unlock()
-	if left != 0 {
-		t.Fatalf("not unsubscribed: %d topics", left)
+	if left != len(usagestats.Windows) {
+		t.Fatalf("subscriptions were removed: %d topics", left)
 	}
 	// A second init (after pairing) does not start a second reporter.
 	p.must("init", map[string]any{}, nil)
 	p.must("usage", nil, &status)
-	if status.Enabled {
-		t.Fatal("choice lost")
+	if !status.Enabled {
+		t.Fatal("automatic statistics policy lost after reinitialization")
 	}
 }
