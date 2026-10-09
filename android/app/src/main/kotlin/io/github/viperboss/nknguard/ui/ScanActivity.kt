@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ScanActivity : Activity() {
     private lateinit var preview: TextureView
     private lateinit var hint: TextView
+    private lateinit var overlay: ScanOverlayView
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private var camera: CameraDevice? = null
@@ -56,24 +57,43 @@ class ScanActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         preview = TextureView(this)
+        overlay = ScanOverlayView(this)
         hint = TextView(this).apply {
-            text = "将 NAS 面板上的配对二维码放入画面"
+            text = "将 NAS 配对二维码对准框内\n保持完整白边，识别后自动配对"
             setTextColor(Color.WHITE)
             setBackgroundColor(0x99000000.toInt())
             textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(24, 32, 24, 32)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
         }
         setContentView(FrameLayout(this).apply {
+            fitsSystemWindows = true
             setBackgroundColor(Color.BLACK)
             addView(preview, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(this@ScanActivity.overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(LinearLayout(this@ScanActivity).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(8), dp(20), dp(8))
+                addView(Button(this@ScanActivity).apply {
+                    text = "‹"; textSize = 28f; contentDescription = "返回"
+                    setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT)
+                    setOnClickListener { finish() }
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                addView(TextView(this@ScanActivity).apply {
+                    text = "扫一扫"; textSize = 20f; setTextColor(Color.WHITE)
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                })
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> this@ScanActivity.overlay.topReserved = height.toFloat() + dp(12) }
+            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP))
             addView(LinearLayout(this@ScanActivity).apply {
                 orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(8), dp(12), dp(20))
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> this@ScanActivity.overlay.bottomReserved = height.toFloat() + dp(12) }
                 setBackgroundColor(0x99000000.toInt())
                 addView(hint)
                 addView(LinearLayout(this@ScanActivity).apply {
                     gravity = Gravity.CENTER
-                    addView(Button(this@ScanActivity).apply { text = "放大 1×"; setOnClickListener {
+                    addView(Button(this@ScanActivity).apply { text = "放大 1×"; contentDescription = "切换相机放大倍数"; setOnClickListener {
                         zoom = if (zoom >= minOf(2f, maxZoom)) 1f else minOf(2f, maxZoom)
                         text = "放大 ${zoom}×"
                         handler?.post { updateRequest() }
@@ -81,6 +101,7 @@ class ScanActivity : Activity() {
                     addView(Button(this@ScanActivity).apply { text = "补光"; setOnClickListener {
                         if (!flashAvailable) { fail("此相机不支持补光"); return@setOnClickListener }
                         torch = !torch
+                        text = if (torch) "关闭补光" else "补光"
                         handler?.post { updateRequest() }
                     } })
                     addView(Button(this@ScanActivity).apply { text = "从相册识别"; setOnClickListener {
@@ -94,6 +115,7 @@ class ScanActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        overlay.startScanning()
         generation++
         thread = HandlerThread("nkg-scan").also { it.start() }
         handler = Handler(thread!!.looper)
@@ -110,6 +132,7 @@ class ScanActivity : Activity() {
     }
 
     override fun onPause() {
+        overlay.stopScanning()
         generation++
         preview.surfaceTextureListener = null
         close()
@@ -118,6 +141,8 @@ class ScanActivity : Activity() {
         handler = null
         super.onPause()
     }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private fun fail(message: String) {
         runOnUiThread { hint.text = message }
@@ -286,8 +311,14 @@ class ScanActivity : Activity() {
         if (isFinishing || isDestroyed) return
         if (!text.startsWith("nknguard://pair/v1?")) { fail("这不是 NKNGuard 配对二维码"); return }
         if (done.compareAndSet(false, true)) runOnUiThread {
-            setResult(RESULT_OK, Intent().putExtra(EXTRA_TEXT, text))
-            finish()
+            overlay.showSuccess()
+            hint.text = "已识别配对二维码"
+            preview.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    setResult(RESULT_OK, Intent().putExtra(EXTRA_TEXT, text))
+                    finish()
+                }
+            }, 320L)
         }
     }
 
