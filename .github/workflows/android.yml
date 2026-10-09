@@ -63,6 +63,30 @@ jobs:
           name: NKNGuard-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      # The maintainer signs downloaded previews with a persistent private
+      # key outside GitHub. Export only the official signing tool, never keys.
+      - name: export APK signing tool
+        run: |
+          mkdir -p signing-tools
+          signer=$(find "$ANDROID_HOME/build-tools" -path '*/lib/apksigner.jar' | sort -V | tail -1)
+          test -n "$signer"
+          cp "$signer" signing-tools/apksigner.jar
+          python3 - <<'PY'
+          import hashlib, json, urllib.request
+          from pathlib import Path
+          url = 'https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture=aarch64&image_type=jre&os=linux&vendor=eclipse'
+          package = json.load(urllib.request.urlopen(url, timeout=60))[0]['binary']['package']
+          output = Path('signing-tools/jre-linux-arm64.tar.gz')
+          urllib.request.urlretrieve(package['link'], output)
+          if hashlib.sha256(output.read_bytes()).hexdigest() != package['checksum']:
+              raise SystemExit('JRE checksum mismatch')
+          Path('signing-tools/JRE-SHA256.txt').write_text(package['checksum'] + '  jre-linux-arm64.tar.gz\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NKNGuard-apk-signing-tool
+          path: signing-tools/
+          if-no-files-found: error
 
   # The NAS must run a build from this branch for the phone to receive the
   # signed revocation notice. This job runs the whole repository's checks and
@@ -86,7 +110,7 @@ jobs:
       - name: tests with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: build release binaries
-        run: make release VERSION=0.2.4-preview
+        run: make release VERSION=0.2.6-preview
       - uses: actions/upload-artifact@v4
         with:
           name: nknguard-nas-linux

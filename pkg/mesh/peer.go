@@ -19,7 +19,9 @@ const maxTransitionHistory = 32
 // its mutex; the controller reads it from the status path and writes it from
 // the peer's own goroutine.
 type Peer struct {
-	mu             sync.RWMutex
+	mu sync.RWMutex
+	// Serializes probe endpoint changes with delayed relay attachments.
+	endpointMu     sync.Mutex
 	lifetime       context.Context
 	cancelLifetime context.CancelFunc
 	revoked        bool
@@ -89,6 +91,12 @@ func (p *Peer) BeginAttempt() bool {
 	p.attempting = true
 	p.punchRounds++
 	return true
+}
+
+func (p *Peer) Attempting() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.attempting
 }
 
 // EndAttempt records the outcome and releases the claim.
@@ -300,6 +308,9 @@ func (p *Peer) NoteError(message string) {
 func (p *Peer) SelectPath(observation Observation) PathType {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.attempting {
+		return p.path
+	}
 	chosen := p.selector.Select(observation)
 	if chosen != p.path {
 		p.pathSwitches++

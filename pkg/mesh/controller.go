@@ -722,6 +722,23 @@ func (c *Controller) gatherCandidates(ctx context.Context) {
 		return
 	}
 	c.mu.Lock()
+	// A transient STUN outage must not erase a still-valid public mapping
+	// and reset every peer's retry backoff on the next published record.
+	reflexive := false
+	for _, candidate := range candidates {
+		if candidate.Type == nat.CandidateReflexive {
+			reflexive = true
+			break
+		}
+	}
+	if !reflexive {
+		for _, candidate := range c.selfCands {
+			if candidate.Type == nat.CandidateReflexive && !candidate.Expired(time.Now()) {
+				candidates = append(candidates, candidate)
+			}
+		}
+		candidates = nat.SanitiseCandidates(candidates, time.Now())
+	}
 	c.selfCands = candidates
 	c.mapping = mapping
 	c.mu.Unlock()
@@ -744,6 +761,9 @@ func (c *Controller) RefreshCandidates(ctx context.Context) {
 //   - clears the direct-retry backoff, so that punch is not delayed by a wait
 //     earned on the previous network.
 func (c *Controller) NetworkChanged(ctx context.Context) {
+	c.mu.Lock()
+	c.selfCands = nil // mappings from the previous network are no longer valid
+	c.mu.Unlock()
 	c.mu.RLock()
 	peers := make([]*Peer, 0, len(c.peers))
 	for _, peer := range c.peers {
