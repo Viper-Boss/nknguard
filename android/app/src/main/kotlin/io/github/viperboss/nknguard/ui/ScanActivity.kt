@@ -59,8 +59,7 @@ class ScanActivity : Activity() {
         preview = TextureView(this)
         overlay = ScanOverlayView(this)
         hint = TextView(this).apply {
-            text = "将 NAS 配对二维码对准框内
-保持完整白边，识别后自动配对"
+            text = "将 NAS 配对二维码对准框内\n保持完整白边，识别后自动配对"
             setTextColor(Color.WHITE)
             setBackgroundColor(0x99000000.toInt())
             textSize = 16f
@@ -71,7 +70,7 @@ class ScanActivity : Activity() {
             fitsSystemWindows = true
             setBackgroundColor(Color.BLACK)
             addView(preview, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-            addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(this@ScanActivity.overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(LinearLayout(this@ScanActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(8), dp(20), dp(8))
@@ -84,12 +83,12 @@ class ScanActivity : Activity() {
                     text = "扫一扫"; textSize = 20f; setTextColor(Color.WHITE)
                     setTypeface(null, android.graphics.Typeface.BOLD)
                 })
-                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> overlay.topReserved = height.toFloat() + dp(12) }
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> this@ScanActivity.overlay.topReserved = height.toFloat() + dp(12) }
             }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP))
             addView(LinearLayout(this@ScanActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(20))
-                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> overlay.bottomReserved = height.toFloat() + dp(12) }
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> this@ScanActivity.overlay.bottomReserved = height.toFloat() + dp(12) }
                 setBackgroundColor(0x99000000.toInt())
                 addView(hint)
                 addView(LinearLayout(this@ScanActivity).apply {
