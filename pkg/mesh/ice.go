@@ -30,15 +30,9 @@ type icePath struct {
 func (c *Controller) capabilities() []string {
 	caps := protocol.DefaultCapabilities()
 	if c.ICE != nil {
-		return caps
+		caps = append(caps, protocol.CapICEUDPV1)
 	}
-	out := caps[:0]
-	for _, cap := range caps {
-		if cap != protocol.CapICEUDPV1 {
-			out = append(out, cap)
-		}
-	}
-	return out
+	return caps
 }
 
 func (c *Controller) usesICE(peer *Peer) bool {
