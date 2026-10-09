@@ -24,9 +24,10 @@ const MaxDatagram = 65535
 // encryption here and there should not be: the payload is already a WireGuard
 // packet, and wrapping ciphertext in more ciphertext buys nothing.
 type Bridge struct {
-	stream net.Conn
-	udp    *net.UDPConn
-	wg     netip.AddrPort
+	stream   net.Conn
+	udp      *net.UDPConn
+	wg       netip.AddrPort
+	datagram bool
 
 	sent     atomic.Int64
 	received atomic.Int64
@@ -48,6 +49,16 @@ func NewBridge(stream net.Conn, wireguard netip.AddrPort) (*Bridge, error) {
 		return nil, fmt.Errorf("relay: bind bridge: %w", err)
 	}
 	return &Bridge{stream: stream, udp: udp, wg: wireguard, openedAt: time.Now(), done: make(chan struct{})}, nil
+}
+
+// NewDatagramBridge preserves packet boundaries on an ICE UDP connection.
+// Unlike an NKN stream, ICE needs neither length framing nor retransmission.
+func NewDatagramBridge(conn net.Conn, wireguard netip.AddrPort) (*Bridge, error) {
+	b, err := NewBridge(conn, wireguard)
+	if err == nil {
+		b.datagram = true
+	}
+	return b, err
 }
 
 // LocalAddr is what WireGuard's endpoint for this peer is set to while the
@@ -87,16 +98,20 @@ func (b *Bridge) Run(ctx context.Context) error {
 	go func() { errs <- b.streamToUDP() }()
 
 	var first error
+	remaining := 2
 	select {
 	case <-ctx.Done():
 		first = ctx.Err()
 	case first = <-errs:
+		remaining--
 	}
 	b.Close()
 	// Wait for the other pump; Close has unblocked it.
-	<-errs
-	if first == nil {
-		first = <-errs
+	for i := 0; i < remaining; i++ {
+		err := <-errs
+		if first == nil {
+			first = err
+		}
 	}
 	return first
 }
@@ -121,6 +136,17 @@ func (b *Bridge) udpToStream() error {
 			continue
 		}
 		if b.Standby() {
+			continue
+		}
+		if b.datagram {
+			n, err := b.stream.Write(buffer[2 : 2+read])
+			if err != nil {
+				return err
+			}
+			if n != read {
+				return io.ErrShortWrite
+			}
+			b.sent.Add(int64(read))
 			continue
 		}
 		binary.BigEndian.PutUint16(buffer[:2], uint16(read))
@@ -150,15 +176,24 @@ func (b *Bridge) streamToUDP() error {
 	header := make([]byte, 2)
 	buffer := make([]byte, MaxDatagram)
 	for {
-		if _, err := io.ReadFull(b.stream, header); err != nil {
-			return err
+		var size int
+		if b.datagram {
+			var err error
+			size, err = b.stream.Read(buffer)
+			if err != nil {
+				return err
+			}
+		} else {
+			if _, err := io.ReadFull(b.stream, header); err != nil {
+				return err
+			}
+			size = int(binary.BigEndian.Uint16(header))
+			if _, err := io.ReadFull(b.stream, buffer[:size]); err != nil {
+				return err
+			}
 		}
-		size := int(binary.BigEndian.Uint16(header))
 		if size == 0 {
 			return errors.New("relay: zero-length frame")
-		}
-		if _, err := io.ReadFull(b.stream, buffer[:size]); err != nil {
-			return err
 		}
 		b.gate.RLock()
 		if b.Standby() {

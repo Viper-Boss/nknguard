@@ -11,6 +11,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/backoff"
+	"github.com/Viper-Boss/nknguard/pkg/directice"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
@@ -327,6 +328,7 @@ func (s *session) prepareController(ctx context.Context) (*mesh.Controller, erro
 		}
 	}
 	controller.Direct = &mesh.WireGuardStrategy{WireGuard: s.wg, Nudge: s.wg.Nudge}
+	controller.ICE = &directice.Config{STUNServers: a.stunList(), Interfaces: a.interfaceAddrs}
 	controller.Nudge = s.wg.Nudge
 	controller.Rendezvous = rendezvous.Static{s.profile.NASAddress}
 	controller.OnPeerError = func(deviceID string, report protocol.Error) {

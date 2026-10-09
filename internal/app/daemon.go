@@ -16,6 +16,7 @@ import (
 	"github.com/Viper-Boss/nknguard/internal/config"
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/diagnostics"
+	"github.com/Viper-Boss/nknguard/pkg/directice"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
@@ -193,6 +194,7 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	if !cfg.NAT.STUNEnabled {
 		servers = nil
 	}
+	controller.ICE = &directice.Config{STUNServers: servers}
 	controller.Candidates = &nat.WireGuardGatherer{
 		STUNServers: servers,
 		ListenPort: func(ctx context.Context) (int, error) {

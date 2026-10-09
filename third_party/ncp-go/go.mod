@@ -1,0 +1,10 @@
+module github.com/nknorg/ncp-go
+
+go 1.13
+
+require (
+	github.com/golang/protobuf v1.4.1
+	github.com/imdario/mergo v0.3.8
+	github.com/nknorg/mockconn-go v0.0.0-20230125231524-d664e728352a
+	gopkg.in/yaml.v2 v2.2.8 // indirect
+)

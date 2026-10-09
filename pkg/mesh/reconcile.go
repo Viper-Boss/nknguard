@@ -120,8 +120,12 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		peer.NoteHandshake(seen.handshake)
 		peer.NoteObservedEndpoint(seen.endpoint)
 		fresh := !seen.handshake.IsZero() && now.Sub(seen.handshake) < wireguard.HandshakeFreshness
-		viaBridge := isLoopbackEndpoint(seen.endpoint)
+		viaICE := c.isICEDirect(peer.DeviceID(), seen.endpoint)
 		bridge := c.bridgeFor(peer.DeviceID())
+		viaBridge := bridge != nil && bridge.Stats().Open && bridge.LocalAddr().String() == seen.endpoint
+		if isLoopbackEndpoint(seen.endpoint) && !viaICE && !viaBridge {
+			fresh = false
+		}
 		// Prepare the fallback concurrently, including while direct is up.
 		if bridge == nil && c.Relay != nil && c.Signaling != nil && c.initiator(peer) {
 			c.spawn(func() { c.openRelay(ctx, peer, "prepare standby") })
@@ -129,7 +133,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		// An attempt temporarily assigns unproven endpoints. The last
 		// handshake may belong to the relay; never promote it to direct or
 		// tear down the working bridge while the worker owns the endpoint.
-		if !endpointOwned || peer.Attempting() {
+		if !endpointOwned || (peer.Attempting() && !c.usesICE(peer)) {
 			silent := peer.NoteReceive(seen.rxBytes, now)
 			// Incoming authenticated relay packets can prove the fallback
 			// while probes are ongoing. Only direct promotion is forbidden.
@@ -162,6 +166,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		}
 		if receiveTimeout > 0 && silent >= receiveTimeout {
 			fresh = false
+			if viaICE {
+				c.closeICEPath(peer.DeviceID())
+			}
 			if viaBridge && bridge != nil && !bridge.Standby() {
 				// The relayed stream stopped delivering. Drop it so the
 				// initiator opens a new one.
@@ -173,7 +180,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		before := peer.Path()
 		path := peer.SelectPath(Observation{
 			Now:           now,
-			DirectHealthy: fresh && !viaBridge,
+			DirectHealthy: fresh && (!isLoopbackEndpoint(seen.endpoint) || viaICE),
 			RelayOpen:     bridge != nil && fresh && viaBridge,
 			RelayActive:   bridge != nil && fresh && viaBridge,
 		})
@@ -181,6 +188,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		if path != before {
 			switches++
 			c.logger().Info("path changed", "component", "mesh", "peer", peer.DeviceID(), "from", before, "to", path)
+		}
+		if path == PathNone && viaICE && bridge != nil {
+			c.activateBridge(ctx, peer, bridge)
 		}
 
 		switch path {
@@ -238,10 +248,14 @@ func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, br
 	if bridge == nil && c.Relay != nil && peer.stuckFor(now) >= orDefault(c.Config.Timing.RelayAfter, 20*time.Second) {
 		c.spawn(func() { c.openRelay(ctx, peer, "no path") })
 	}
-	if len(peer.Candidates()) == 0 {
+	if !c.usesICE(peer) && len(peer.Candidates()) == 0 {
 		return
 	}
 	if !peer.ShouldRetryDirect(now) || !peer.BeginAttempt() {
+		return
+	}
+	if c.usesICE(peer) {
+		c.spawn(func() { c.runICEOffer(ctx, peer) })
 		return
 	}
 	token, err := nat.NewSessionToken()
@@ -314,6 +328,8 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil && record.WireGuardPublicKey != "" {
 			bridge.SetStandby(false)
 			_ = c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String())
+			peer.resetReceive(time.Now())
+			c.nudgePeer(ctx, peer)
 		} else if initiator && c.Relay != nil && ctx.Err() == nil {
 			c.spawn(func() { c.openRelay(ctx, peer, "direct attempt failed") })
 		}
@@ -470,8 +486,8 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 	// afterwards must not replace a direct endpoint that is receiving packets.
 	seen := c.observe(ctx)[peer.Record().WireGuardPublicKey]
 	now := time.Now()
-	confirmed := peer.Path() == PathDirectWG || peer.Endpoint().String() == seen.endpoint
-	standby := confirmed && !isLoopbackEndpoint(seen.endpoint) && !seen.handshake.IsZero() &&
+	confirmed := peer.Path() == PathDirectWG || peer.Endpoint().String() == seen.endpoint || c.isICEDirect(peer.DeviceID(), seen.endpoint)
+	standby := confirmed && (!isLoopbackEndpoint(seen.endpoint) || c.isICEDirect(peer.DeviceID(), seen.endpoint)) && !seen.handshake.IsZero() &&
 		now.Sub(seen.handshake) < wireguard.HandshakeFreshness && (c.receiveTimeout() == 0 || peer.NoteReceive(seen.rxBytes, now) < c.receiveTimeout())
 	local, err := c.wireGuardLoopback(ctx)
 	if err != nil {
@@ -599,8 +615,13 @@ func (c *Controller) closeBridges() {
 	c.mu.Lock()
 	bridges := c.bridges
 	c.bridges = make(map[string]*relay.Bridge)
+	icePaths := c.icePaths
+	c.icePaths = make(map[string]*icePath)
 	c.mu.Unlock()
 	for _, bridge := range bridges {
 		bridge.Close()
+	}
+	for _, path := range icePaths {
+		path.bridge.Close()
 	}
 }

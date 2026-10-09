@@ -137,6 +137,7 @@ require (
 replace github.com/Viper-Boss/nknguard => ../..
 
 replace github.com/nknorg/nkn-sdk-go => ../../third_party/nkn-sdk-go
+replace github.com/nknorg/ncp-go => ../../third_party/ncp-go
 
 // nkn-sdk-go imports golang.org/x/mobile/asset only to keep gomobile in its
 // module graph. That package needs cgo on Android, which this pure-Go build

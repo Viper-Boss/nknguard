@@ -11,6 +11,8 @@ const (
 	TypeCandidate    MessageType = "CANDIDATE"
 	TypePunchRequest MessageType = "PUNCH_REQUEST"
 	TypePunchAck     MessageType = "PUNCH_ACK"
+	TypeICEOffer     MessageType = "ICE_OFFER"
+	TypeICEAnswer    MessageType = "ICE_ANSWER"
 	TypeWGReady      MessageType = "WG_READY"
 	TypeKeepalive    MessageType = "KEEPALIVE"
 	TypeRekey        MessageType = "REKEY"

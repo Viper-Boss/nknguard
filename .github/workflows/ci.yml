@@ -90,7 +90,7 @@ jobs:
       - name: test with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: asymmetric NKN bootstrap regression
-        run: go test -race github.com/nknorg/nkn-sdk-go
+        run: go test -race github.com/nknorg/nkn-sdk-go github.com/nknorg/ncp-go
       - name: build linux-amd64 / linux-arm64
         run: |
           GOOS=linux GOARCH=amd64 go build -tags "nknsdk libp2pdht" -o /dev/null ./cmd/nknguard
