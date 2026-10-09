@@ -7,6 +7,8 @@ RequiresMountsFor=/mnt/docker-data
 ConditionPathIsMountPoint=/mnt/docker-data
 
 [Service]
+StandardOutput=null
+StandardError=null
 Type=simple
 User=root
 WorkingDirectory=/mnt/docker-data/nknguard

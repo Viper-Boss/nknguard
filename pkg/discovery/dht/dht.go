@@ -68,6 +68,8 @@ type Options struct {
 	ListenPort     int
 	BootstrapPeers []string
 	LANDiscovery   bool
+	// Phones participate without serving a permanent routing table.
+	ClientMode bool
 	// Rendezvous is membership.Key.Rendezvous(): the providers key. Derived
 	// from the join secret, so a network id alone does not enumerate members.
 	Rendezvous string
@@ -105,7 +107,11 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dht: start host: %w", err)
 	}
-	kad, err := kaddht.New(created, kaddht.Mode(kaddht.ModeServer), kaddht.ProtocolPrefix(ProtocolPrefix))
+	mode := kaddht.ModeServer
+	if opts.ClientMode {
+		mode = kaddht.ModeClient
+	}
+	kad, err := kaddht.New(created, kaddht.Mode(mode), kaddht.ProtocolPrefix(ProtocolPrefix))
 	if err != nil {
 		_ = created.Close()
 		return nil, fmt.Errorf("dht: start kademlia: %w", err)
@@ -139,6 +145,11 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 		}
 	}
 	return backend, nil
+}
+
+// DiscoveryStatus is local telemetry, never a count of the global network.
+func (b *Backend) DiscoveryStatus() (int, int) {
+	return len(b.host.Network().Peers()), b.kad.RoutingTable().Size()
 }
 
 func parse(address string) (peer.AddrInfo, error) {

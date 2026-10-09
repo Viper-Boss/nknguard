@@ -271,6 +271,13 @@ func (c Config) Validate() error {
 	if !prefix.Addr().Is4() {
 		return fmt.Errorf("config: network.cidr must be IPv4 in this version, got %s", c.Network.CIDR)
 	}
+	last := prefix.Masked().Addr().As4()
+	for bit := prefix.Bits(); bit < 32; bit++ {
+		last[bit/8] |= 1 << (7 - uint(bit%8))
+	}
+	if !prefix.Masked().Addr().IsPrivate() || !netip.AddrFrom4(last).IsPrivate() {
+		return fmt.Errorf("config: network.cidr must stay within a private IPv4 range; internet exit routes are not supported")
+	}
 	if prefix.Bits() > 30 {
 		return fmt.Errorf("config: network.cidr %s leaves no room for peers", c.Network.CIDR)
 	}

@@ -20,14 +20,23 @@ type LogRing struct {
 }
 
 // NewLogRing holds up to size lines.
-func NewLogRing(size int) *LogRing { return &LogRing{lines: make([]string, size)} }
+func NewLogRing(size int) *LogRing {
+	if size < 1 {
+		size = 1
+	}
+	return &LogRing{lines: make([]string, size)}
+}
 
 // Write implements io.Writer for a slog text handler.
 func (r *LogRing) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, line := range bytes.Split(bytes.TrimRight(p, "\n"), []byte("\n")) {
-		r.lines[r.next] = diagnostics.Redact(string(line))
+		value := diagnostics.Redact(string(line))
+		if len(value) > 4096 {
+			value = value[:4096] + "…"
+		}
+		r.lines[r.next] = value
 		r.next = (r.next + 1) % len(r.lines)
 		if r.next == 0 {
 			r.full = true

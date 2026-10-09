@@ -92,6 +92,8 @@ function render(status) {
   setText('detail-id', status.device_id);
   setText('detail-ip', status.virtual_ip);
   setText('overview-nas-ip', status.virtual_ip);
+  setText('overview-cidr', status.overlay_cidr);
+  window.dispatchEvent(new CustomEvent('nknguard-status', {detail: status}));
   setText('overview-fnos-address', status.virtual_ip ? `${status.virtual_ip}:5666` : '等待 NAS 虚拟 IP');
   byId('copy-fnos-address').disabled = !status.virtual_ip;
   setText('detail-nkn', status.nkn_address);
@@ -124,7 +126,7 @@ async function refreshLogs() {
     const response = await fetch('/api/logs', {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const lines = await response.json();
-    setText('log-lines', Array.isArray(lines) && lines.length ? lines.slice(-100).join('\n') : '暂无日志');
+    setText('log-lines', Array.isArray(lines) && lines.length ? lines.slice(-300).join('\n') : '暂无日志');
   } catch (error) { setText('log-lines', '读取日志失败'); }
 }
 

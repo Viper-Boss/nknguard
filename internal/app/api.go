@@ -59,7 +59,7 @@ func (d *Daemon) ServeAPI(ctx context.Context) (io.Closer, error) {
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Status(r.Context())) })
 	mux.HandleFunc("GET /v1/peers", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Controller.Peers()) })
 	mux.HandleFunc("POST /v1/peers/{id}/reconnect", func(w http.ResponseWriter, r *http.Request) {
-		if !d.Controller.Reconnect(r.PathValue("id")) {
+		if !d.Controller.RequestDirect(ctx, r.PathValue("id")) {
 			http.Error(w, "unknown peer", http.StatusNotFound)
 			return
 		}

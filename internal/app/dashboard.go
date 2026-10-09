@@ -151,7 +151,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			http.Error(w, "same-origin action required", http.StatusForbidden)
 			return
 		}
-		if !d.Controller.Reconnect(r.PathValue("id")) {
+		if !d.Controller.RequestDirect(ctx, r.PathValue("id")) {
 			http.Error(w, "unknown peer", http.StatusNotFound)
 			return
 		}

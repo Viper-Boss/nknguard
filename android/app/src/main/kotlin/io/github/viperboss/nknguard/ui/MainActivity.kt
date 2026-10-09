@@ -42,6 +42,7 @@ class MainActivity : Activity(), NkgApp.Listener {
     private lateinit var statusTitle: TextView
     private lateinit var statusHint: TextView
     private lateinit var connectButton: Button
+    private lateinit var retryButton: Button
     private lateinit var pairCard: LinearLayout
     private lateinit var pairTitle: TextView
     private lateinit var pairCode: TextView
@@ -349,6 +350,9 @@ class MainActivity : Activity(), NkgApp.Listener {
         connectButton.text = if (connected) "断开" else "连接"
         style(connectButton, primary = !connected)
         connectButton.isEnabled = !busy
+        retryButton.visibility = if (connected && !revoked && status.optString("phase") != "direct") View.VISIBLE else View.GONE
+        retryButton.isEnabled = !busy && !status.optBoolean("direct_attempting")
+        retryButton.text = if (status.optBoolean("direct_attempting")) "正在尝试直连…" else "重试直连"
 
         val pairingActive = pairing != null
         scanButton.visibility = if ((!paired || revoked) && !pairingActive) View.VISIBLE else View.GONE
@@ -416,6 +420,18 @@ class MainActivity : Activity(), NkgApp.Listener {
         }
         row("NAS NKN 地址（点按复制）", status.optString("nas_address"), copyable = true)
         row("NAS 设备 ID", status.optString("nas_id"))
+        if (connected) {
+            row("隧道接管网段", status.optString("route_cidr"))
+            row("允许访问范围", status.optString("allowed_cidr").ifEmpty { "等待 NAS 验证信息" })
+        }
+        row("连接用途", "仅连接已授权 NAS；不提供互联网出口、不接管普通上网。")
+        if (connected && status.optString("phase") != "direct") {
+            val retryAt = runCatching { OffsetDateTime.parse(status.optString("next_direct_retry")).toInstant().toEpochMilli() }.getOrDefault(0)
+            val seconds = maxOf(0, (retryAt - System.currentTimeMillis()) / 1000)
+            row("自动尝试直连", if (status.optBoolean("direct_attempting")) "正在探测；失败后恢复中继" else if (seconds > 0) "约 ${seconds} 秒后再次尝试" else "等待 NAS 最新地址，后台自动重试")
+            row("切换说明", "直连与中继共用同一个 NAS 虚拟 IP。探测时可能短暂停顿，失败后恢复现有中继。")
+        }
+        if (connected) row("DHT 发现", if (!status.optBoolean("dht_enabled")) "未启用" else "已启用 · 本机连接 ${status.optInt("dht_peers")} 个节点")
         val nasIP = status.optString("nas_virtual_ip")
         if (nasIP.isNotEmpty()) {
             row("NAS 虚拟 IP（点按复制）", nasIP, copyable = true)
@@ -483,6 +499,13 @@ class MainActivity : Activity(), NkgApp.Listener {
 
         connectButton = button("连接") { onConnectClicked() }
         column.addView(connectButton, spaced())
+        retryButton = button("重试直连") {
+            background {
+                app.core.call("retry_direct")
+                main.post { toast("已安排直连探测，NAS 地址保持不变") }
+            }
+        }.also { style(it, primary = false); it.visibility = View.GONE }
+        column.addView(retryButton, spaced())
 
         pairCard = card().apply { visibility = View.GONE }
         pairTitle = TextView(this).apply {

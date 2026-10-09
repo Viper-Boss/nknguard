@@ -20,13 +20,17 @@ import (
 // Status is the whole node, as `nknguard status` prints it and the local API
 // returns it.
 type Status struct {
-	Version   string    `json:"version"`
-	DeviceID  string    `json:"device_id"`
-	Device    string    `json:"device_name"`
-	NetworkID string    `json:"network_id"`
-	VirtualIP string    `json:"virtual_ip,omitempty"`
-	StartedAt time.Time `json:"started_at"`
-	Uptime    string    `json:"uptime"`
+	Version     string    `json:"version"`
+	DeviceID    string    `json:"device_id"`
+	Device      string    `json:"device_name"`
+	NetworkID   string    `json:"network_id"`
+	VirtualIP   string    `json:"virtual_ip,omitempty"`
+	StartedAt   time.Time `json:"started_at"`
+	Uptime      string    `json:"uptime"`
+	OverlayCIDR string    `json:"overlay_cidr"`
+	DHTEnabled  bool      `json:"dht_enabled"`
+	DHTPeers    int       `json:"dht_peers"`
+	DHTRoutes   int       `json:"dht_routes"`
 
 	NKNAddress string        `json:"nkn_address,omitempty"`
 	NAT        nat.Behaviour `json:"nat_behaviour"`

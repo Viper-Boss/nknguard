@@ -44,8 +44,8 @@ jobs:
       - name: vet Android core
         working-directory: android/core
         run: |
-          go vet -tags nknsdk .
-          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go vet -tags nknsdk .
+          go vet -tags "nknsdk libp2pdht" .
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go vet -tags "nknsdk libp2pdht" .
       - name: build Android core (all ABIs)
         run: android/core/build.sh
         env:

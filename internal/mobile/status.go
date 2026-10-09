@@ -16,27 +16,33 @@ import (
 // field is observed: Phase is "direct" or "relay" only while WireGuard has a
 // fresh handshake with the NAS on that path.
 type Status struct {
-	Phase         string `json:"phase"`
-	Connected     bool   `json:"connected"`
-	Paired        bool   `json:"paired"`
-	Revoked       bool   `json:"revoked"`
-	NASID         string `json:"nas_id,omitempty"`
-	NASName       string `json:"nas_name,omitempty"`
-	NASAddress    string `json:"nas_address,omitempty"`
-	NASVirtualIP  string `json:"nas_virtual_ip,omitempty"`
-	VirtualIP     string `json:"virtual_ip,omitempty"`
-	NKNAddress    string `json:"nkn_address,omitempty"`
-	NKNConnected  bool   `json:"nkn_connected"`
-	Path          string `json:"path"`
-	PeerState     string `json:"peer_state,omitempty"`
-	Endpoint      string `json:"endpoint,omitempty"`
-	LastHandshake int64  `json:"last_handshake_unix,omitempty"`
-	HandshakeOK   bool   `json:"handshake_fresh"`
-	RxBytes       int64  `json:"rx_bytes"`
-	TxBytes       int64  `json:"tx_bytes"`
-	RelayFallback int    `json:"relay_fallbacks"`
-	LastError     string `json:"last_error,omitempty"`
-	Since         int64  `json:"since_unix,omitempty"`
+	Phase            string    `json:"phase"`
+	Connected        bool      `json:"connected"`
+	Paired           bool      `json:"paired"`
+	Revoked          bool      `json:"revoked"`
+	NASID            string    `json:"nas_id,omitempty"`
+	NASName          string    `json:"nas_name,omitempty"`
+	NASAddress       string    `json:"nas_address,omitempty"`
+	NASVirtualIP     string    `json:"nas_virtual_ip,omitempty"`
+	VirtualIP        string    `json:"virtual_ip,omitempty"`
+	NKNAddress       string    `json:"nkn_address,omitempty"`
+	NKNConnected     bool      `json:"nkn_connected"`
+	Path             string    `json:"path"`
+	PeerState        string    `json:"peer_state,omitempty"`
+	Endpoint         string    `json:"endpoint,omitempty"`
+	LastHandshake    int64     `json:"last_handshake_unix,omitempty"`
+	HandshakeOK      bool      `json:"handshake_fresh"`
+	RxBytes          int64     `json:"rx_bytes"`
+	TxBytes          int64     `json:"tx_bytes"`
+	RelayFallback    int       `json:"relay_fallbacks"`
+	LastError        string    `json:"last_error,omitempty"`
+	Since            int64     `json:"since_unix,omitempty"`
+	RouteCIDR        string    `json:"route_cidr,omitempty"`
+	AllowedCIDR      string    `json:"allowed_cidr,omitempty"`
+	DirectAttempting bool      `json:"direct_attempting"`
+	NextDirectRetry  time.Time `json:"next_direct_retry,omitempty"`
+	DHTEnabled       bool      `json:"dht_enabled"`
+	DHTPeers         int       `json:"dht_peers"`
 }
 
 func (a *Agent) status() Status {
@@ -47,6 +53,7 @@ func (a *Agent) status() Status {
 		status.Revoked = profile.RevokedAt != nil
 		status.NASID = profile.NASID
 		status.NASAddress = profile.NASAddress
+		status.NASVirtualIP = profile.NASVirtualIP
 	}
 	switch {
 	case !status.Paired:
@@ -69,6 +76,7 @@ func (a *Agent) status() Status {
 	status.NKNConnected = current.nknAddress != ""
 	status.VirtualIP = current.virtual.String()
 	status.Since = current.started.Unix()
+	status.RouteCIDR = nasRoute(current.profile.NASVirtualIP)
 	revoked := current.revoked
 	current.mu.Unlock()
 	status.Connected = true
@@ -89,6 +97,12 @@ func (a *Agent) status() Status {
 	status.PeerState = string(nas.State)
 	status.NASName = nas.Name
 	status.NASVirtualIP = nas.VirtualIP
+	status.DirectAttempting = nas.DirectAttempting
+	status.NextDirectRetry = nas.NextDirectRetry
+	status.DHTEnabled, status.DHTPeers, _ = controller.DiscoveryStatus()
+	if nas.VirtualIP != "" {
+		status.AllowedCIDR = nas.VirtualIP + "/32"
+	}
 	if nas.LastError != "" && status.LastError == "" {
 		status.LastError = nas.LastError
 	}

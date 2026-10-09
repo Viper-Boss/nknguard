@@ -268,6 +268,20 @@ func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 	case "disconnect":
 		a.disconnect()
 		return map[string]bool{"disconnected": true}, nil
+	case "retry_direct":
+		a.mu.Lock()
+		current := a.session
+		a.mu.Unlock()
+		if current == nil {
+			return nil, errors.New("请先连接 NAS")
+		}
+		current.mu.Lock()
+		controller := current.controller
+		current.mu.Unlock()
+		if controller == nil || !controller.RequestDirect(ctx, current.profile.NASID) {
+			return nil, errors.New("正在等待 NAS 连接信息，请稍后重试")
+		}
+		return map[string]bool{"scheduled": true}, nil
 	case "status":
 		return a.status(), nil
 	case "forget":

@@ -75,6 +75,9 @@ type Controller struct {
 	// OnSecurityFailure stops the host when a revoked key cannot be removed.
 	// It must not wait for Controller.Run (the caller may be one of its workers).
 	OnSecurityFailure func(error)
+	// ReserveSequence durably reserves counters before a signed record leaves
+	// the process. Hosts can batch reservations to reduce flash writes.
+	ReserveSequence func(uint64) error
 
 	mu       sync.RWMutex
 	peers    map[string]*Peer
@@ -537,6 +540,25 @@ func (c *Controller) Sequence() uint64 {
 	return c.sequence
 }
 
+func (c *Controller) DiscoveryStatus() (bool, int, int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.Discovery == nil {
+		return false, 0, 0
+	}
+	if backend, ok := c.Discovery.(interface{ DiscoveryStatus() (int, int) }); ok {
+		peers, routes := backend.DiscoveryStatus()
+		return true, peers, routes
+	}
+	return true, 0, 0
+}
+
+func (c *Controller) SetDiscovery(backend discovery.Discovery) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Discovery = backend
+}
+
 // Records returns the latest verified record for every peer, for the on-disk
 // cache that lets a restart survive a discovery outage.
 func (c *Controller) Records() []discovery.PeerRecord {
@@ -641,13 +663,31 @@ func (c *Controller) RunCached(ctx context.Context) {
 // Reconnect forces an immediate direct attempt for one peer.
 func (c *Controller) Reconnect(deviceID string) bool {
 	peer, ok := c.lookupPeer(deviceID)
-	if !ok {
+	if !ok || peer.Revoked() {
 		return false
 	}
 	peer.mu.Lock()
 	peer.selector.lastDirectTry = time.Time{}
 	peer.selector.failures = 0
 	peer.mu.Unlock()
+	return true
+}
+
+// RequestDirect also wakes the initiating client when invoked on the NAS.
+// KEEPALIVE extensions are ignored by older peers, preserving compatibility.
+func (c *Controller) RequestDirect(ctx context.Context, deviceID string) bool {
+	if !c.Reconnect(deviceID) {
+		return false
+	}
+	c.spawn(func() {
+		refreshCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		c.gatherCandidates(refreshCtx)
+		if record, err := c.buildRecord(refreshCtx); err == nil {
+			c.pushRecord(refreshCtx, record)
+		}
+		_ = c.send(refreshCtx, deviceID, protocol.TypeKeepalive, map[string]bool{"retry_direct": true})
+	})
 	return true
 }
 
@@ -765,6 +805,11 @@ func (c *Controller) buildRecord(ctx context.Context) (discovery.PeerRecord, err
 	sequence := c.sequence
 	virtual := c.virtualIP
 	c.mu.Unlock()
+	if c.ReserveSequence != nil {
+		if err := c.ReserveSequence(sequence); err != nil {
+			return discovery.PeerRecord{}, err
+		}
+	}
 
 	capabilities := protocol.DefaultCapabilities()
 	for _, tag := range c.Config.DeviceTags {
@@ -1146,7 +1191,21 @@ func (c *Controller) newDispatcher() *signaling.Dispatcher {
 	dispatcher.Handle(protocol.TypePunchRequest, c.onPunchRequest)
 	dispatcher.Handle(protocol.TypePunchAck, c.onPunchAck)
 	dispatcher.Handle(protocol.TypeWGReady, c.onWGReady)
-	dispatcher.Handle(protocol.TypeKeepalive, func(context.Context, protocol.Envelope) error { return nil })
+	dispatcher.Handle(protocol.TypeKeepalive, func(ctx context.Context, envelope protocol.Envelope) error {
+		if len(envelope.Payload) == 0 {
+			return nil
+		}
+		var request struct {
+			RetryDirect bool `json:"retry_direct"`
+		}
+		if err := json.Unmarshal(envelope.Payload, &request); err != nil {
+			return err
+		}
+		if request.RetryDirect && c.Authorized(envelope.FromDeviceID) {
+			c.Reconnect(envelope.FromDeviceID)
+		}
+		return nil
+	})
 	dispatcher.Handle(protocol.TypeDisconnect, c.onDisconnect)
 	dispatcher.Handle(protocol.TypeError, c.onError)
 	return dispatcher

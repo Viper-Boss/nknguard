@@ -89,6 +89,8 @@ type clientUI struct {
 	disconnect    *flatButton
 	openNAS       *flatButton
 	copyIP        *flatButton
+	retryDirect   *flatButton
+	scopeLabel    *walk.Label
 	installWG     *flatButton
 	animating     bool
 	animationTick int
@@ -234,6 +236,24 @@ func (u *clientUI) create() error {
 	}
 	u.connect = u.newButton("连接 NAS", true, 132, u.onConnect)
 	u.disconnect = u.newButton("断开", false, 96, u.onDisconnect)
+	u.retryDirect = u.newButton("重试直连", false, 112, func() {
+		u.retryDirect.SetEnabled(false)
+		go func() {
+			cfg, _, err := loadConfig(u.w.globals)
+			if err == nil {
+				client := app.NewClient(cfg.Paths.Socket)
+				peers, readErr := client.Peers()
+				err = readErr
+				for _, peer := range peers {
+					if err == nil {
+						err = client.Reconnect(peer.DeviceID)
+					}
+				}
+			}
+			u.keepError(err)
+			u.mw.Synchronize(func() { u.render(u.w.snapshot()) })
+		}()
+	})
 	u.pairButton = u.newButton("请求 NAS 配对", true, 148, u.onPair)
 	copyNAS := u.newButton("复制", false, 68, func() { u.copyText(u.nasAddress.Text()) })
 	copyLocal := u.newButton("复制", false, 68, func() { u.copyText(u.localAddress.Text()) })
@@ -282,7 +302,7 @@ func (u *clientUI) create() error {
 						),
 						ui.Label{Font: font(10, false), AssignTo: &u.stateCopy, Text: "正在读取这台电脑的连接信息。", TextColor: colorMuted, EllipsisMode: ui.EllipsisEnd},
 						ui.VSpacer{Size: 4},
-						row(u.connect.decl(), u.disconnect.decl(), ui.HSpacer{}),
+						row(u.connect.decl(), u.disconnect.decl(), u.retryDirect.decl(), ui.HSpacer{}),
 						row(u.openNAS.decl(), u.copyIP.decl(), export.decl(), ui.HSpacer{}),
 						row(u.installWG.decl(), muted("缺少依赖时安装官方 WireGuard，完成后即可连接。")),
 						ui.TextEdit{AssignTo: &u.errText, Font: font(10, false), ReadOnly: true, Visible: false, VScroll: true, MinSize: ui.Size{Height: 44}, TextColor: colorBad},
@@ -302,6 +322,7 @@ func (u *clientUI) create() error {
 								ui.Label{AssignTo: &u.virtualIP, Text: "—", Font: font(10, true), TextColor: colorText, ColumnSpan: 2},
 								ui.Label{Font: font(10, false), Text: "NAS 虚拟 IP", TextColor: colorText},
 								ui.Label{AssignTo: &u.nasIP, Text: "—", Font: font(10, true), TextColor: colorText, ColumnSpan: 2},
+								ui.Label{AssignTo: &u.scopeLabel, Text: "仅连接已授权 NAS；不提供互联网出口。", Font: font(9, false), TextColor: colorMuted, ColumnSpan: 3},
 							},
 						},
 					),
@@ -834,6 +855,12 @@ func (u *clientUI) render(state map[string]any) {
 	setText(u.localAddress, orDefault(stateText(state, "local_nkn_address"), "连接后显示"))
 	setText(u.virtualIP, orDash(stateText(state, "virtual_ip")))
 	setText(u.nasIP, orDash(stateText(state, "nas_ip")))
+	scope := "接管网段：" + orDash(stateText(state, "route_cidr")) + "；仅允许 NAS " + orDash(stateText(state, "allowed_cidr"))
+	if stateText(state, "path") == "nkn-relay" {
+		scope += "；后台自动重试直连（最长间隔 2 分钟）"
+	}
+	setText(u.scopeLabel, scope)
+	u.retryDirect.SetEnabled(connected && !disconnecting && stateText(state, "path") != "direct-wg")
 
 	u.pairCard.SetVisible(!paired)
 	u.pairButton.SetEnabled(!paired && !pairing)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/backoff"
+	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
@@ -27,9 +28,11 @@ type Prepared struct {
 	MTU         int    `json:"mtu"`
 	NASID       string `json:"nas_id"`
 	NASAddress  string `json:"nas_address"`
+	RouteCIDR   string `json:"route_cidr"`
 }
 
 var errRevoked = errors.New("本机授权已被 NAS 撤销，请重新配对")
+var mobileDiscovery func(context.Context, *session) (discovery.Discovery, error)
 
 func (a *Agent) pairedProfile() (Profile, error) {
 	profile, paired, err := loadProfile(a.StateDir)
@@ -61,9 +64,11 @@ func (a *Agent) prepare() (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	route := nasRoute(profile.NASVirtualIP)
 	return Prepared{
 		VirtualIP: virtual.String(), PrefixBits: OverlayCIDR.Bits(), OverlayCIDR: OverlayCIDR.String(),
 		MTU: TunnelMTU, NASID: profile.NASID, NASAddress: profile.NASAddress,
+		RouteCIDR: route,
 	}, nil
 }
 
@@ -222,6 +227,17 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 		s.setPhase(PhaseError, err.Error())
 		return
 	}
+	if mobileDiscovery != nil {
+		if backend, err := mobileDiscovery(ctx, s); err == nil {
+			controller.Discovery = backend
+			defer backend.Close()
+		} else {
+			a.Logger.Warn("DHT unavailable; continuing with NKN", "error", err)
+		}
+	}
+	s.mu.Lock()
+	s.controller = controller
+	s.mu.Unlock()
 	cacheCtx, cacheCancel := context.WithCancel(ctx)
 	cacheDone := make(chan struct{})
 	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
@@ -277,7 +293,10 @@ func (s *session) prepareController(ctx context.Context) (*mesh.Controller, erro
 		return nil, err
 	}
 	store := a.store()
-	runtime, _ := store.LoadRuntime()
+	runtime, err := store.LoadRuntime()
+	if err != nil {
+		return nil, err
+	}
 
 	controller := mesh.New()
 	if a.Timing != nil {
@@ -294,20 +313,15 @@ func (s *session) prepareController(ctx context.Context) (*mesh.Controller, erro
 	controller.Membership = key
 	controller.Logger = a.Logger
 	controller.SetSequence(runtime.Sequence)
+	controller.ReserveSequence = store.ReserveSequence
 	controller.SetVirtualIP(s.virtual)
 	controller.WireGuard = s.wg
 	if a.Candidates != nil {
 		controller.Candidates = a.Candidates
 	} else {
-		controller.Candidates = &nat.WireGuardGatherer{
-			STUNServers: a.stunList(),
-			ListenPort: func(ctx context.Context) (int, error) {
-				if port := s.wg.Status(ctx).ListenPort; port > 0 {
-					return port, nil
-				}
-				return 0, errors.New("wireguard listen port not yet known")
-			},
-			Inner: nat.Gatherer{Interfaces: a.interfaceAddrs},
+		controller.Candidates = &userspace.CandidateSource{
+			Manager:  s.wg,
+			Gatherer: nat.Gatherer{STUNServers: a.stunList(), Interfaces: a.interfaceAddrs},
 		}
 	}
 	controller.Direct = &mesh.WireGuardStrategy{WireGuard: s.wg, Nudge: s.wg.Nudge}
@@ -318,10 +332,6 @@ func (s *session) prepareController(ctx context.Context) (*mesh.Controller, erro
 			s.markRevoked()
 		}
 	}
-
-	s.mu.Lock()
-	s.controller = controller
-	s.mu.Unlock()
 
 	cached, _ := store.LoadPeerCache()
 	for _, record := range cached {
@@ -358,7 +368,7 @@ func (s *session) runController(ctx context.Context, plane *Plane, controller *m
 	persistDone := make(chan struct{})
 	go func() {
 		defer close(persistDone)
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
@@ -407,6 +417,14 @@ func (s *session) persist(controller *mesh.Controller) {
 		s.agent.Logger.Warn("saving runtime state failed", "component", "state", "error", err)
 	}
 	_ = store.SavePeerCache(controller.Records())
+	for _, peer := range controller.Peers() {
+		if peer.DeviceID == s.profile.NASID && peer.VirtualIP != "" && peer.VirtualIP != s.profile.NASVirtualIP {
+			if profile, paired, err := loadProfile(s.agent.StateDir); err == nil && paired && profile.NASID == s.profile.NASID && profile.RevokedAt == nil && profile.NASVirtualIP != peer.VirtualIP {
+				profile.NASVirtualIP = peer.VirtualIP
+				_ = saveProfile(s.agent.StateDir, profile)
+			}
+		}
+	}
 	previous, _ := store.LoadLinkHints()
 	hints := make([]state.LinkHint, 0, 1)
 	for _, hint := range previous {
@@ -467,4 +485,11 @@ func (s *session) statusLoop(ctx context.Context) {
 			last, lastSent = current, time.Now()
 		}
 	}
+}
+
+func nasRoute(value string) string {
+	if ip, err := netip.ParseAddr(value); err == nil && ip.Is4() && OverlayCIDR.Contains(ip) {
+		return netip.PrefixFrom(ip, 32).String()
+	}
+	return OverlayCIDR.String()
 }

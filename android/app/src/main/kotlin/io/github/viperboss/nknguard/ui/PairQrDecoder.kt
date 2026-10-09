@@ -30,6 +30,22 @@ internal object PairQrDecoder {
                 finally { reader.reset() }
             }
         }
+        // A saved, tightly framed QR can defeat finder-pattern detection at
+        // high versions. ZXing's pure decoder still verifies QR checksums.
+        if (source.width == source.height) {
+            var pixels = source.matrix
+            val size = source.width
+            repeat(4) {
+                val rotated = PlanarYUVLuminanceSource(pixels, size, size, 0, 0, size, size, false)
+                for (candidate in listOf(rotated, rotated.invert())) {
+                    try {
+                        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(candidate)), hints + (DecodeHintType.PURE_BARCODE to true)).text.trim()
+                    } catch (_: ReaderException) { }
+                }
+                val previous = pixels
+                pixels = ByteArray(previous.size) { i -> previous[(size - 1 - i % size) * size + i / size] }
+            }
+        }
         return null
     }
 }

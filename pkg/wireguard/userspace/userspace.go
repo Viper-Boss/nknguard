@@ -48,6 +48,7 @@ type Manager struct {
 
 	mu      sync.Mutex
 	dev     *device.Device
+	stun    *stunBind
 	config  wireguard.InterfaceConfig
 	peers   map[string]wireguard.PeerConfig
 	lastErr string
@@ -157,7 +158,8 @@ func (m *Manager) EnsureInterface(_ context.Context, cfg wireguard.InterfaceConf
 				return err
 			}
 		}
-		dev := device.NewDevice(tunDevice, portBind{bind}, m.deviceLogger())
+		shared := &stunBind{Bind: bind}
+		dev := device.NewDevice(tunDevice, portBind{shared}, m.deviceLogger())
 		if err := dev.IpcSet(fmt.Sprintf("private_key=%s\nlisten_port=%d\n", private, port)); err != nil {
 			dev.Close()
 			m.lastErr = err.Error()
@@ -169,6 +171,7 @@ func (m *Manager) EnsureInterface(_ context.Context, cfg wireguard.InterfaceConf
 			return fmt.Errorf("wireguard: bring device up: %w", err)
 		}
 		m.dev = dev
+		m.stun = shared
 		m.config = cfg
 		m.lastErr = ""
 		return nil

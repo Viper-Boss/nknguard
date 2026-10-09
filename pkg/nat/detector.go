@@ -101,6 +101,12 @@ func (g *Gatherer) Gather(ctx context.Context, conn net.PacketConn) ([]EndpointC
 	for _, host := range g.hostAddresses(local.Port()) {
 		candidates = append(candidates, NewCandidate(CandidateHost, host, CandidateLifetime, now))
 	}
+	// Docker bridges and IPv6 interfaces must not fill the entire bounded
+	// list before the public mappings are appended.
+	SortCandidates(candidates)
+	if len(candidates) > MaxCandidates-4 {
+		candidates = candidates[:MaxCandidates-4]
+	}
 
 	observed := make([]netip.AddrPort, 0, len(g.STUNServers))
 	for _, server := range g.STUNServers {

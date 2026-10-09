@@ -30,5 +30,5 @@ for abi in $abis; do
   esac
   mkdir -p "$out/$abi"
   echo "building $abi ($env)"
-  env CGO_ENABLED=0 $env go build -tags nknsdk -trimpath -ldflags "$flags" -o "$out/$abi/libnkgcore.so" .
+  env CGO_ENABLED=0 $env go build -tags "nknsdk libp2pdht" -trimpath -ldflags "$flags" -o "$out/$abi/libnkgcore.so" .
 done
