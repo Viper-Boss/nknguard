@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,6 +151,29 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 // DiscoveryStatus is local telemetry, never a count of the global network.
 func (b *Backend) DiscoveryStatus() (int, int) {
 	return len(b.host.Network().Peers()), b.kad.RoutingTable().Size()
+}
+
+// DiscoveryLANPeers counts each connected peer once, even with multiple links.
+func (b *Backend) DiscoveryLANPeers() int {
+	count := 0
+	for _, id := range b.host.Network().Peers() {
+		for _, conn := range b.host.Network().ConnsToPeer(id) {
+			address := conn.RemoteMultiaddr()
+			raw, err := address.ValueForProtocol(multiaddr.P_IP4)
+			if err != nil {
+				raw, err = address.ValueForProtocol(multiaddr.P_IP6)
+			}
+			if err != nil {
+				continue
+			}
+			ip, err := netip.ParseAddr(raw)
+			if err == nil && (ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+				count++
+				break
+			}
+		}
+	}
+	return count
 }
 
 func parse(address string) (peer.AddrInfo, error) {

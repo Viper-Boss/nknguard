@@ -385,6 +385,7 @@ func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 	}
 	status.OverlayCIDR = d.Config.OverlayPrefix().String()
 	status.DHTEnabled, status.DHTPeers, status.DHTRoutes = d.Controller.DiscoveryStatus()
+	status.DHTLANPeers = d.Controller.DiscoveryLANPeers()
 	return status
 }
 

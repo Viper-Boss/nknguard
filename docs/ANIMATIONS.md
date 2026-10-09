@@ -1,16 +1,21 @@
 # NAS 网络动画
 
-地球和网状连接的几何及绘制代码由项目所有者提供的 NasSimHub 本地源码迁移而来：
-`web/src/components/networkGlobeGeometry.ts`、`networkGlobePainter.ts`、
-`dhtMeshField.ts`、`dhtMeshPainter.ts`。按所有者要求随 NKNGuard 源码发布。
-原始 TypeScript 与去除类型后的浏览器 JavaScript 都保留在
-`internal/app/dashboard/animations/`。不引入远程脚本或在线地图。
+按项目所有者要求，从其 NasSimHub 源码直接迁移两张网络卡片：
 
-动画只画示意；DHT 节点数来自本机 libp2p 连接和路由表，不是全网规模。
-网状图沿用 NasSimHub 的多跳连线、渐隐光尾和到达节点光晕。DHT 启用但暂无节点时，
-蓝色流光表示发现过程的示意；有真实连接节点时改为黄色。禁用后停止流光，节点数量始终来自实时状态。
-地球上增加连接弧线和流光：绿色表示有直连，黄色表示中继，蓝色虚线表示等待连接。
-这些光点的位置、路径和移动速度都是示意，不代表真实地理位置或实时流量。
-NKN 地址存在时显示“身份地址已就绪”，
-只有观察到可用的 NKN 中继路径才显示“中继可用”。
-页面隐藏或切换出总览时停止绘制；最多每秒 20 帧，支持减少动态效果设置。
+- `web/src/components/NetworkGlobeCard.vue`、`DHTMeshCard.vue` 的模板。
+- `networkCard.css` 的完整共享样式及两张卡片的画布配色。
+- `web/src/i18n/networkCardNotes.ts` 与中文语言包中的标签及底部说明。
+- `networkGlobeGeometry.ts`、`networkGlobePainter.ts`、`dhtMeshField.ts`、`dhtMeshPainter.ts` 的原始绘制代码。
+
+原始 TypeScript 与去除类型后的浏览器 JavaScript 都保留在
+`internal/app/dashboard/animations/`，按所有者要求随 NKNGuard 源码发布。
+没有引入远程脚本、地图或新的动画绘图库。
+
+保留原版的点阵地球、呼吸光晕、标记脉冲、漂移网格与黄色多跳信号。
+画布尺寸、密度、旋转速度、色彩和卡片间距沿用原组件。
+移除了后加的地球弧线、绿色流光和孤立状态下的蓝色流光。
+
+只将 Vue 数据绑定适配为 NKNGuard 的状态事件：活跃数使用既有 NKN 匿名订阅统计；
+DHT 连接与路由数使用本机状态。接口未提供的数字显示原版的 `—`，不编造计数。
+黄色信号只在 DHT 有真实连接节点时展示。所有动画路径仍是示意，不表示真实地理位置或流量。
+隐藏页面、滚出可视区域或切换出总览时暂停绘制，支持系统减少动态效果设置。

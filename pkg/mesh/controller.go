@@ -559,6 +559,18 @@ func (c *Controller) SetDiscovery(backend discovery.Discovery) {
 	c.Discovery = backend
 }
 
+// DiscoveryLANPeers reports the local DHT's connected private-address peers.
+// A backend that does not provide this metric leaves it unknown.
+func (c *Controller) DiscoveryLANPeers() *int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if backend, ok := c.Discovery.(interface{ DiscoveryLANPeers() int }); ok {
+		count := backend.DiscoveryLANPeers()
+		return &count
+	}
+	return nil
+}
+
 // Records returns the latest verified record for every peer, for the on-disk
 // cache that lets a restart survive a discovery outage.
 func (c *Controller) Records() []discovery.PeerRecord {

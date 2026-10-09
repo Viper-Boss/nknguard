@@ -31,6 +31,7 @@ type Status struct {
 	DHTEnabled  bool      `json:"dht_enabled"`
 	DHTPeers    int       `json:"dht_peers"`
 	DHTRoutes   int       `json:"dht_routes"`
+	DHTLANPeers *int      `json:"dht_lan_peers,omitempty"`
 
 	NKNAddress string        `json:"nkn_address,omitempty"`
 	NAT        nat.Behaviour `json:"nat_behaviour"`
