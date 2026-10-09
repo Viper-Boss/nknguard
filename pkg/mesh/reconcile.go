@@ -110,6 +110,13 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		}
 
 		seen := observed[record.WireGuardPublicKey]
+		// An attempt may finish after the shared snapshot above. Read again
+		// while owning the endpoint so its temporary candidate and the old
+		// relay handshake cannot be interpreted after the worker releases it.
+		endpointOwned := peer.endpointMu.TryLock()
+		if endpointOwned {
+			seen = c.observe(ctx)[record.WireGuardPublicKey]
+		}
 		peer.NoteHandshake(seen.handshake)
 		peer.NoteObservedEndpoint(seen.endpoint)
 		fresh := !seen.handshake.IsZero() && now.Sub(seen.handshake) < wireguard.HandshakeFreshness
@@ -122,12 +129,12 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		// An attempt temporarily assigns unproven endpoints. The last
 		// handshake may belong to the relay; never promote it to direct or
 		// tear down the working bridge while the worker owns the endpoint.
-		if peer.Attempting() {
+		if !endpointOwned || peer.Attempting() {
 			silent := peer.NoteReceive(seen.rxBytes, now)
 			// Incoming authenticated relay packets can prove the fallback
 			// while probes are ongoing. Only direct promotion is forbidden.
 			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
-				if peer.SelectPath(Observation{Now: now, RelayOpen: true}) == PathNKNRelay {
+				if peer.SelectPath(Observation{Now: now, RelayOpen: true, RelayActive: true}) == PathNKNRelay {
 					_, _ = peer.Apply(EventRelayOpen, now)
 				}
 			}
@@ -136,6 +143,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 				direct++
 			case PathNKNRelay:
 				relayed++
+			}
+			if endpointOwned {
+				peer.endpointMu.Unlock()
 			}
 			continue
 		}
@@ -165,7 +175,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			Now:           now,
 			DirectHealthy: fresh && !viaBridge,
 			RelayOpen:     bridge != nil && fresh && viaBridge,
+			RelayActive:   bridge != nil && fresh && viaBridge,
 		})
+		peer.endpointMu.Unlock()
 		if path != before {
 			switches++
 			c.logger().Info("path changed", "component", "mesh", "peer", peer.DeviceID(), "from", before, "to", path)

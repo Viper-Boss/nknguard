@@ -80,3 +80,17 @@ func TestFailedChecksReconnectOnlyAfterTwoRoundsAndResetOnRecovery(t *testing.T)
 		t.Fatal("recovery did not reset failure history")
 	}
 }
+
+func TestHealthFailureReasonClearsAfterVerifiedRecovery(t *testing.T) {
+	var h healthState
+	h.init("self")
+	now := time.Now()
+	h.failWithError("reconnecting", now, "probe send: connection reset")
+	if h.status.LastError != "probe send: connection reset" {
+		t.Fatal("failure reason lost")
+	}
+	packet := h.begin(bytes.Repeat([]byte{1}, 32), now)
+	if !h.accept("self", packet, now.Add(time.Second)) || h.status.LastError != "" {
+		t.Fatal("stale error survived verified recovery")
+	}
+}

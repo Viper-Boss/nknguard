@@ -12,6 +12,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -66,6 +68,10 @@ func run(stateDir, fdSocket, level string) error {
 	}
 	mobile.InstallResolver()
 	logger, ring := app.NewLogger(os.Stderr, level)
+	// SDK network errors use the standard logger, not slog. Include them in
+	// the same bounded, redacted memory ring exported by diagnostics.
+	log.SetOutput(io.MultiWriter(os.Stderr, ring))
+	log.SetPrefix("component=nkn-sdk ")
 	receiver, err := mobile.ListenFD(fdSocket)
 	if err != nil {
 		return err

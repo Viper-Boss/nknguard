@@ -3,6 +3,7 @@ package mobile
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -181,6 +182,18 @@ func (a *Agent) diagnostics() string {
 	fmt.Fprintf(&out, "nkn: connected=%t address=%s\n", status.NKNConnected, redact(status.NKNAddress))
 	if c := status.NKNConnection; c != nil {
 		fmt.Fprintf(&out, "nkn_check: state=%s last_success=%s latency_ms=%d\n", c.State, c.LastSuccess.UTC().Format(time.RFC3339), c.LatencyMS)
+		if c.LastError != "" {
+			fmt.Fprintf(&out, "nkn_check_error: %s\n", redact(c.LastError))
+		}
+		for _, node := range c.Nodes {
+			fmt.Fprintf(&out, "nkn_node: subclient=%d endpoint=%s closed=%t\n", node.ClientID, node.Endpoint, node.Closed)
+		}
+	}
+	a.mu.Lock()
+	addresses := append([]netip.Addr(nil), a.localAddrs...)
+	a.mu.Unlock()
+	for _, address := range addresses {
+		fmt.Fprintf(&out, "underlying_address: %s\n", address)
 	}
 	fmt.Fprintf(&out, "wireguard: peer_state=%s endpoint=%s last_handshake=%d fresh=%t rx=%d tx=%d relay_fallbacks=%d\n",
 		status.PeerState, status.Endpoint, status.LastHandshake, status.HandshakeOK, status.RxBytes, status.TxBytes, status.RelayFallback)

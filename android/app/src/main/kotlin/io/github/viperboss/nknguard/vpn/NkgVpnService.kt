@@ -86,6 +86,9 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun connect() {
         if (connected) return
         app.ensureCore()
+        // The core may have been started on a previous Wi-Fi/mobile network
+        // while the VPN was disconnected. Refresh before candidate gathering.
+        app.core.call("network", NetworkInfo.describe(this))
         val prepared = app.core.call("prepare")
         val overlay = prepared.getString("route_cidr")
         val (routeAddress, routeBits) = overlay.split("/").let { it[0] to it[1].toInt() }
@@ -164,16 +167,19 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun watchNetwork() {
         val manager = getSystemService(ConnectivityManager::class.java) ?: return
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = changed(network)
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) = changed(network)
-            override fun onLost(network: Network) = changed(null)
+            override fun onAvailable(network: Network) = changed()
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) = changed()
+            override fun onLost(network: Network) = changed()
 
-            private fun changed(network: Network?) {
+            private fun changed() {
                 if (stopping) return
                 runCatching { executor.execute {
                     if (!connected) return@execute
-                    setUnderlyingNetworks(network?.let { arrayOf(it) })
-                    runCatching { app.core.call("network", NetworkInfo.describe(this@NkgVpnService, network)) }
+                    // A queued event may describe an old network or the VPN.
+                    // Use the current physical network for both operations.
+                    val physical = NetworkInfo.underlying(this@NkgVpnService)
+                    setUnderlyingNetworks(physical?.let { arrayOf(it) })
+                    runCatching { app.core.call("network", NetworkInfo.describe(this@NkgVpnService, physical)) }
                 } }
             }
         }

@@ -64,6 +64,10 @@ type Observation struct {
 	DirectHealthy bool
 	// RelayOpen means a relayed session exists and is usable.
 	RelayOpen bool
+	// RelayActive means WireGuard is receiving authenticated packets through
+	// the relay endpoint now. The direct-loss grace cannot describe that
+	// already completed data-plane switch as continued direct traffic.
+	RelayActive bool
 }
 
 // Current is the path in use.
@@ -83,6 +87,9 @@ func (s *Selector) Select(observation Observation) PathType {
 			s.directBadAt = now
 		}
 		s.directGoodAt = time.Time{}
+	}
+	if observation.RelayActive && observation.RelayOpen && !observation.DirectHealthy {
+		s.current = PathNKNRelay
 	}
 
 	switch s.current {
