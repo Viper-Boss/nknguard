@@ -342,13 +342,38 @@ func (s *session) prepareController(ctx context.Context) (*mesh.Controller, erro
 		}
 	}
 	hints, _ := store.LoadLinkHints()
+	a.mu.Lock()
+	localAddresses := append([]netip.Addr(nil), a.localAddrs...)
+	a.mu.Unlock()
 	for _, hint := range hints {
-		if hint.DeviceID == s.profile.NASID && controller.RestoreLinkHint(hint.DeviceID, hint.PublicKey, hint.Endpoint, hint.SeenAt) {
+		if hint.DeviceID == s.profile.NASID && cachedEndpointFitsNetwork(hint.Endpoint, localAddresses) && controller.RestoreLinkHint(hint.DeviceID, hint.PublicKey, hint.Endpoint, hint.SeenAt) {
 			a.Logger.Info("trying last verified direct endpoint first", "component", "session")
 		}
 	}
 
 	return controller, nil
+}
+
+func cachedEndpointFitsNetwork(endpoint string, local []netip.Addr) bool {
+	target, err := netip.ParseAddrPort(endpoint)
+	if err != nil {
+		return false
+	}
+	addr := target.Addr().Unmap()
+	if !addr.IsPrivate() {
+		return !addr.Is4() || !netip.MustParsePrefix("100.64.0.0/10").Contains(addr)
+	}
+	bits := 24
+	if addr.Is6() {
+		bits = 64
+	}
+	for _, own := range local {
+		own = own.Unmap()
+		if own.BitLen() == addr.BitLen() && netip.PrefixFrom(own, bits).Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *session) runController(ctx context.Context, plane *Plane, controller *mesh.Controller) {

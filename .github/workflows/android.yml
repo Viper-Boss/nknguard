@@ -10,6 +10,7 @@ on:
       - "Makefile"
       - "go.mod"
       - "go.sum"
+      - "third_party/**"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - "Makefile"
       - "go.mod"
       - "go.sum"
+      - "third_party/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -40,7 +42,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: protocol core tests
-        run: go test -race ./internal/mobile/... ./internal/vectors/... ./pkg/wireguard/... ./pkg/mesh/...
+        run: go test -race ./internal/mobile/... ./internal/vectors/... ./pkg/wireguard/... ./pkg/mesh/... github.com/nknorg/nkn-sdk-go
       - name: vet Android core
         working-directory: android/core
         run: |
@@ -116,7 +118,7 @@ jobs:
       - name: tests with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: build release binaries
-        run: make release VERSION=0.2.11-preview
+        run: make release VERSION=0.2.12-preview
       - uses: actions/upload-artifact@v4
         with:
           name: nknguard-nas-linux

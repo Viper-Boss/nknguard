@@ -57,7 +57,8 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 		return nil, fmt.Errorf("nknclient: account: %w", err)
 	}
 	config := &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(SeedRPCList(options.SeedRPC)...),
-		RPCTimeout: 5000, RPCConcurrency: 3, WsHandshakeTimeout: 6000,
+		RemoteSubClients: SubClients,
+		RPCTimeout:       5000, RPCConcurrency: 3, WsHandshakeTimeout: 6000,
 		ConnectRetries: 1, MinReconnectInterval: 1000, MaxReconnectInterval: 8000}
 	// SDK construction itself connects to nodes; include that in the bound.
 	timer := time.NewTimer(ConnectTimeout)

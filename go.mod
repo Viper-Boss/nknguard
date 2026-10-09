@@ -2,6 +2,9 @@ module github.com/Viper-Boss/nknguard
 
 go 1.25.7
 
+// Bounded cross-subclient bootstrap for asymmetric node reachability.
+replace github.com/nknorg/nkn-sdk-go => ./third_party/nkn-sdk-go
+
 // The nknsdk and libp2pdht build tags enable the NKN and private DHT
 // adapters. The local dashboard uses go-qrcode in every build.
 
