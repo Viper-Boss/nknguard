@@ -11,35 +11,48 @@
   <link rel="stylesheet" href="/security.css">
   <link rel="stylesheet" href="/usage.css">
   <link rel="stylesheet" href="/network-animation.css">
+  <link rel="stylesheet" href="/shell.css">
   <script src="/app.js" defer></script>
   <script src="/network-animation.js" type="module"></script>
 </head>
 <body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs><symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol><symbol id="icon-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8m-4-5v5"/></symbol><symbol id="icon-pair" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3"/><path d="M8 8h3v3H8zm5 5h3v3h-3zm-5 1h2m4-6h2"/></symbol><symbol id="icon-paths" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h7a4 4 0 0 1 0 8h-4a2 2 0 0 0 0 4h7"/></symbol><symbol id="icon-logs" viewBox="0 0 24 24"><path d="M8 3h7l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6M8 13h8m-8 4h6"/></symbol><symbol id="icon-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></symbol><symbol id="icon-direct" viewBox="0 0 24 24"><path d="M5 19 19 5M8 5h11v11"/></symbol><symbol id="icon-relay" viewBox="0 0 24 24"><path d="M3 7h17m-5-5 5 5-5 5M21 17H4m5-5-5 5 5 5"/></symbol><symbol id="icon-network" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol><symbol id="icon-server" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01m5-11h5m-5 11h5"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol></defs></svg>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">N<span>✦</span></div><div><strong>NKNGuard</strong><small>为你的 NAS 打开一条路</small></div></div>
-      <div class="side-label">工作空间</div>
+      <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18V6l14 12V6M3 12h4m10 0h4"/></svg></div><div><strong>NKNGuard</strong><small>你的私人连接空间</small></div></div>
+      <div class="side-label">控制台</div>
       <nav aria-label="主导航">
-        <button class="nav-item active" data-view="overview"><span>▦</span> 总览</button>
-        <button class="nav-item" data-view="devices"><span>▣</span> 设备</button>
-        <button class="nav-item" data-view="pairing"><span>◎</span> 配对与授权</button>
-        <button class="nav-item" data-view="paths"><span>⌁</span> 链路</button>
-        <button class="nav-item" data-view="logs"><span>≡</span> 日志</button>
-        <button class="nav-item" data-view="security"><span>⚿</span> 安全设置</button>
+        <button class="nav-item active" data-view="overview"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-dashboard"/></svg></span> 总览</button>
+        <button class="nav-item" data-view="devices"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-devices"/></svg></span> 设备</button>
+        <button class="nav-item" data-view="pairing"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-pairing"/></svg></span> 配对与授权</button>
+        <button class="nav-item" data-view="paths"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-paths"/></svg></span> 链路</button>
+        <button class="nav-item" data-view="logs"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-logs"/></svg></span> 日志</button>
+        <button class="nav-item" data-view="security"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-shield"/></svg></span> 安全设置</button>
       </nav>
-      <div class="side-bottom"><span class="live-dot"></span><span>NAS 服务常驻运行</span><small id="side-version">—</small></div>
+      <div class="side-bottom"><span class="live-dot"></span><span id="nkn-sidebar-state">正在验证 NKN</span><small id="side-version">—</small></div>
     </aside>
     <main class="main">
-      <header class="topbar"><div><span class="eyebrow">私有连接空间</span><h1 id="page-title">连接总览</h1></div><div class="top-actions"><span class="update-label" id="updated">等待状态…</span><button id="refresh" class="icon-button" title="刷新状态" aria-label="刷新状态">↻</button><div class="avatar">N</div></div></header>
+      <header class="topbar"><div><span class="eyebrow">设备管理 · NAS</span><h1 id="page-title">连接总览</h1></div><div class="top-actions"><span class="update-label" id="updated">等待状态…</span><button id="refresh" class="icon-button" title="刷新状态" aria-label="刷新状态">↻</button><div class="avatar">N</div></div></header>
 
       <section id="overview" class="view active">
         <div class="hero">
-          <div class="hero-copy"><span class="hero-kicker">NKN · WireGuard · DHT</span><h2>你的 NAS，<br><em>随时触手可及。</em></h2><p>信标发现对端，优先建立 WireGuard 直连。直连受阻时，自动切换至 NKN 加密中继。</p><div class="hero-tags"><span>● 端到端加密</span><span>● 无需公网 IP</span><span>● 自动回退</span></div></div>
-          <div class="network-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="link link-a"></div><div class="link link-b"></div><div class="link link-c"></div><div class="node node-main">⌂<small>NAS</small></div><div class="node node-one">▣</div><div class="node node-two">▤</div><div class="node node-three">▥</div><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span></div>
+          <div class="hero-copy">
+            <span class="hero-kicker">属于你的连接空间</span>
+            <h2 id="hero-device-name">我的飞牛 NAS</h2>
+            <p>随时访问家里的文件与应用。优先直连，受阻时自动使用加密中继。</p>
+            <div class="hero-actions"><button class="primary-button" data-go="pairing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-plus"/></svg>添加设备</button><button class="secondary-button" data-go="paths">查看连接链路</button></div>
+          </div>
+          <div class="nas-access" aria-label="飞牛连接地址">
+            <div class="access-top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-server"/></svg><span>飞牛客户端 · 连接地址</span></div>
+            <code id="overview-fnos-address">正在读取…</code>
+            <p>先连接 NKNGuard，再把这个地址填入飞牛客户端。</p>
+            <div class="access-bottom"><small>虚拟 IP <span id="overview-nas-ip">—</span><br>私有网段 <span id="overview-cidr">—</span></small><button class="secondary-button" id="copy-fnos-address" disabled>复制地址</button></div>
+            <p>5666 为默认端口，使用其他端口时请替换。</p>
+          </div>
         </div>
         <section class="nas-identity" aria-label="NAS NKN 地址"><div><span class="identity-kicker">这台 NAS 的 NKN 地址</span><p>首次启动生成，重启后保持不变。配对时可对照地址首尾字符。</p><code id="overview-nkn-address">正在读取…</code></div><button class="secondary-button" id="copy-nkn-address" disabled>复制地址</button></section>
-        <div class="section-head"><div><h2>连接状态</h2><p>来自 NAS 守护进程的实时状态</p></div><span id="overall-pill" class="pill neutral"><i></i>正在读取</span></div>
-        <div class="stat-grid"><article class="stat-card"><span class="stat-icon blue">⌘</span><small>在线设备</small><strong id="online-count">—</strong><span class="stat-note" id="total-count">等待设备数据</span></article><article class="stat-card"><span class="stat-icon mint">↗</span><small>WireGuard 直连</small><strong id="direct-count">—</strong><span class="stat-note">低延迟优先</span></article><article class="stat-card"><span class="stat-icon purple">⇄</span><small>NKN 中继</small><strong id="relay-count">—</strong><span class="stat-note">无法直连时接管</span></article><article class="stat-card"><span class="stat-icon amber">◇</span><small>NAT 环境</small><strong class="text-stat" id="nat-state">—</strong><span class="stat-note">自动探测</span></article></div>
+        <div class="section-head"><div><h2>连接状态</h2><p>设备、传输路径与网络环境</p></div><span id="overall-pill" class="pill neutral"><i></i>正在读取</span></div>
+        <div class="stat-grid"><article class="stat-card"><span class="stat-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-devices"/></svg></span><small>在线设备</small><strong id="online-count">—</strong><span class="stat-note" id="total-count">等待设备数据</span></article><article class="stat-card"><span class="stat-icon mint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-direct"/></svg></span><small>WireGuard 直连</small><strong id="direct-count">—</strong><span class="stat-note">低延迟优先</span></article><article class="stat-card"><span class="stat-icon purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-relay"/></svg></span><small>NKN 中继</small><strong id="relay-count">—</strong><span class="stat-note">无法直连时接管</span></article><article class="stat-card"><span class="stat-icon amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-network"/></svg></span><small>NAT 环境</small><strong class="text-stat" id="nat-state">—</strong><span class="stat-note" id="nat-note">等待自动探测</span></article></div>
         <section class="network-animations" id="network-animations" aria-labelledby="network-services-title">
   <h3 id="network-services-title">NAS 全局服务</h3>
   <div class="network-card-grid">
@@ -172,7 +185,6 @@
   </article>
   </div>
 </section>
-        <section class="nas-identity" aria-label="飞牛连接地址"><div><span class="identity-kicker">飞牛客户端填写这个地址</span><code id="overview-fnos-address">正在读取…</code><p>先在手机或电脑连接 NKNGuard，再在飞牛客户端填写此地址。5666 是飞牛默认端口，改过端口请自行替换。</p><small>NAS 虚拟 IP：<span id="overview-nas-ip">—</span> · 私有网段：<span id="overview-cidr">—</span> · NKN 地址用于配对，不能填进飞牛客户端。</small></div><button class="secondary-button" id="copy-fnos-address" disabled>复制飞牛地址</button></section>
         <section class="panel usage-panel" aria-label="NKNGuard 使用人数"><div class="panel-head"><div><h3>NKNGuard 使用人数</h3><p>最近一段时间内运行过 NKNGuard 的设备数，来自 NKN 链上的匿名订阅</p></div><button class="secondary-button" id="refresh-usage">刷新</button></div><div class="usage-grid"><div><small>24 小时</small><strong id="usage-day">—</strong></div><div><small>30 天</small><strong id="usage-month">—</strong></div><div><small>90 天</small><strong id="usage-quarter">—</strong></div></div><p class="usage-note" id="usage-note">正在读取…</p></section>
         <div class="content-grid"><section class="panel device-panel"><div class="panel-head"><div><h3>最近设备</h3><p>在线路径由真实 WireGuard 握手确认</p></div><button class="text-button" data-go="devices">查看全部 →</button></div><div id="recent-devices" class="device-list"><div class="empty">正在查找设备…</div></div></section><section class="panel connection-panel"><div class="panel-head"><div><h3>连接方式</h3><p>直连优先，失败后走 NKN</p></div><span class="connection-symbol">⌁</span></div><div class="route-visual"><div class="route-end"><span>⌂</span><small>这台 NAS</small></div><div class="route-lines"><div class="route-line direct"><span class="route-dot"></span><b>WireGuard 直连</b></div><div class="route-line relay"><span class="route-dot"></span><b>NKN 加密中继</b></div></div><div class="route-end client"><span>▣</span><small>你的设备</small></div></div><div class="route-footer"><span><i class="legend direct-color"></i>直连 <b id="route-direct">0</b></span><span><i class="legend relay-color"></i>中继 <b id="route-relay">0</b></span><span><i class="legend idle-color"></i>等待 <b id="route-idle">0</b></span></div></section></div>
         <div class="info-strip"><span>✧</span><p><strong>连接提示</strong> 手机或电脑连接时会同时尝试上次可用路径和最新信标信息。停止使用后，客户端可主动断开；NAS 会继续在线等待下次连接。</p></div>

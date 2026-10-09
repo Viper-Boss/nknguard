@@ -12,6 +12,7 @@ package nknsignal
 import (
 	"context"
 	"sync"
+	"time"
 
 	nkn "github.com/nknorg/nkn-sdk-go"
 
@@ -33,10 +34,12 @@ type Transport struct {
 	addresses map[string]string // device id -> NKN address
 	devices   map[string]string // NKN address -> device id
 
-	inbox     chan signaling.Inbound
-	done      chan struct{}
-	closeOnce sync.Once
-	wg        sync.WaitGroup
+	inbox      chan signaling.Inbound
+	done       chan struct{}
+	closeOnce  sync.Once
+	wg         sync.WaitGroup
+	health     healthState
+	healthOnce sync.Once
 }
 
 // New wraps a connected client and starts the receive pump.
@@ -48,6 +51,7 @@ func New(client *nkn.MultiClient) *Transport {
 		inbox:     make(chan signaling.Inbound, 256),
 		done:      make(chan struct{}),
 	}
+	transport.health.init(nknclient.NormaliseAddress(client.Address()))
 	transport.wg.Add(1)
 	go transport.pump()
 	return transport
@@ -129,6 +133,9 @@ func (t *Transport) pump() {
 			if message == nil || !message.Encrypted || len(message.Data) > protocol.MaxEnvelopeBytes {
 				continue
 			}
+			if t.health.accept(nknclient.NormaliseAddress(message.Src), message.Data, time.Now()) {
+				continue
+			}
 			envelope, err := protocol.Unmarshal(message.Data)
 			if err != nil {
 				continue
@@ -148,6 +155,7 @@ func (t *Transport) Close() error {
 	var err error
 	t.closeOnce.Do(func() {
 		close(t.done)
+		t.health.failed("closed", time.Now())
 		err = t.client.Close()
 		t.wg.Wait()
 	})

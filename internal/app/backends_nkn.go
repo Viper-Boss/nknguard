@@ -49,6 +49,7 @@ func openNKN(ctx context.Context, cfg config.Config, keystore *identity.Keystore
 		return nil, err
 	}
 	transport := nknsignal.New(client)
+	transport.StartHealthMonitor()
 	sources := rendezvous.Multi{rendezvous.Static(cfg.Discovery.StaticPeers)}
 	if cfg.Discovery.NKNTopic {
 		sources = append(sources, nkntopic.New(client, key.Rendezvous(), nknclient.SeedRPCList(cfg.NKN.SeedRPC)))

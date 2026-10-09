@@ -14,6 +14,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
 
@@ -33,8 +34,10 @@ type Status struct {
 	DHTRoutes   int       `json:"dht_routes"`
 	DHTLANPeers *int      `json:"dht_lan_peers,omitempty"`
 
-	NKNAddress string        `json:"nkn_address,omitempty"`
-	NAT        nat.Behaviour `json:"nat_behaviour"`
+	NKNAddress    string                     `json:"nkn_address,omitempty"`
+	NKNConnected  bool                       `json:"nkn_connected"`
+	NKNConnection nknclient.ConnectionStatus `json:"nkn_connection"`
+	NAT           nat.Behaviour              `json:"nat_behaviour"`
 
 	WireGuard wireguard.Status `json:"wireguard"`
 	Peers     []mesh.Snapshot  `json:"peers"`
