@@ -463,7 +463,7 @@ func (s *session) persist(controller *mesh.Controller) {
 		}
 	}
 	for _, peer := range controller.Peers() {
-		if peer.DeviceID == s.profile.NASID && peer.Path == mesh.PathDirectWG && peer.Endpoint != "" {
+		if peer.DeviceID == s.profile.NASID && peer.Path == mesh.PathDirectWG && peer.DirectTransport != "ice-udp" && peer.Endpoint != "" {
 			hints = []state.LinkHint{{DeviceID: peer.DeviceID, PublicKey: peer.WireGuardPublicKey, Endpoint: peer.Endpoint, SeenAt: time.Now()}}
 		}
 	}

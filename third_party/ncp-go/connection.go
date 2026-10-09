@@ -97,7 +97,12 @@ func (conn *Connection) ReceiveAck(sequenceID uint32, isSentByMe bool) {
 }
 
 func (conn *Connection) waitForSendWindow(ctx context.Context) error {
-	for float64(conn.SendWindowUsed()) >= conn.windowSize {
+	full := func() bool {
+		conn.RLock()
+		defer conn.RUnlock()
+		return float64(len(conn.timeSentSeq)) >= conn.windowSize
+	}
+	for full() {
 		select {
 		case <-conn.sendWindowUpdate:
 		case <-time.After(maxWait):
@@ -151,7 +156,7 @@ func (conn *Connection) tx() error {
 			continue
 		}
 
-		err = conn.session.sendWith(conn.localClientID, conn.remoteClientID, buf, conn.retransmissionTimeout)
+		err = conn.session.sendWith(conn.localClientID, conn.remoteClientID, buf, conn.RetransmissionTimeout())
 		if err != nil {
 			if conn.session.IsClosed() {
 				return ErrSessionClosed
@@ -239,7 +244,7 @@ func (conn *Connection) sendAck() error {
 			continue
 		}
 
-		err = conn.session.sendWith(conn.localClientID, conn.remoteClientID, buf, conn.retransmissionTimeout)
+		err = conn.session.sendWith(conn.localClientID, conn.remoteClientID, buf, conn.RetransmissionTimeout())
 		if err != nil {
 			if err == ErrConnClosed {
 				return err
@@ -261,8 +266,8 @@ func (conn *Connection) checkTimeout() error {
 			return conn.session.context.Err()
 		}
 
-		threshold := time.Now().Add(-conn.retransmissionTimeout)
 		conn.Lock()
+		threshold := time.Now().Add(-conn.retransmissionTimeout)
 		newResend := false
 		for seq, t := range conn.timeSentSeq {
 			if _, ok := conn.resentSeq[seq]; ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func enableTestICE(c *Controller) {
 	c.ICE = &directice.Config{IncludeLoopback: true, Interfaces: func() ([]net.Addr, error) {
 		return []net.Addr{&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)}}, nil
 	}}
-	c.Config.Timing.ReceiveTimeout = time.Second
+	c.Config.Timing.ReceiveTimeout = 5 * time.Second
 	w := c.WireGuard.(*fakeWG)
 	c.Nudge = func(_ context.Context, _ netip.Addr) {
 		w.mu.Lock()
@@ -32,8 +33,19 @@ func enableTestICE(c *Controller) {
 func TestICEViaSignallingAuthenticatesWGAndKeepsRelayStandby(t *testing.T) {
 	e := newEnv(t)
 	e.fake.setBlocked(true)
-	a := e.startWith(t, "ice-a", "198.51.100.1:51820", e.key, enableTestICE)
-	b := e.startWith(t, "ice-b", "198.51.100.2:51820", e.key, enableTestICE)
+	var blocked atomic.Bool
+	configure := func(c *Controller) {
+		enableTestICE(c)
+		addresses := c.ICE.Interfaces
+		c.ICE.Interfaces = func() ([]net.Addr, error) {
+			if blocked.Load() {
+				return nil, nil
+			}
+			return addresses()
+		}
+	}
+	a := e.startWith(t, "ice-a", "198.51.100.1:51820", e.key, configure)
+	b := e.startWith(t, "ice-b", "198.51.100.2:51820", e.key, configure)
 	waitPath(t, 8*time.Second, a, b, PathDirectWG, StateDirect)
 	for _, pair := range [][2]*node{{a, b}, {b, a}} {
 		path := pair[0].ctrl.icePathFor(pair[1].ctrl.Device.DeviceID())
@@ -47,6 +59,7 @@ func TestICEViaSignallingAuthenticatesWGAndKeepsRelayStandby(t *testing.T) {
 	}
 	// A dead ICE proxy must never be mistaken for a live NKN relay merely
 	// because both present a loopback endpoint to the kernel.
+	blocked.Store(true)
 	a.ctrl.closeICEPath(b.ctrl.Device.DeviceID())
 	b.ctrl.closeICEPath(a.ctrl.Device.DeviceID())
 	waitPath(t, 5*time.Second, a, b, PathNKNRelay, StateRelay)

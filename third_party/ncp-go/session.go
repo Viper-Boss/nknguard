@@ -433,12 +433,20 @@ func (session *Session) flushSendBuffer() error {
 }
 
 func (session *Session) sendHandshakePacket(writeTimeout time.Duration) error {
+	session.RLock()
+	localIDs := append([]string(nil), session.localClientIDs...)
+	remoteIDs := append([]string(nil), session.remoteClientIDs...)
+	connections := make([]*Connection, 0, len(session.connections))
+	for _, connection := range session.connections {
+		connections = append(connections, connection)
+	}
 	buf, err := proto.Marshal(&pb.Packet{
 		Handshake:  true,
 		ClientIds:  session.localClientIDs,
 		WindowSize: session.recvWindowSize,
 		Mtu:        session.recvMtu,
 	})
+	session.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -448,8 +456,8 @@ func (session *Session) sendHandshakePacket(writeTimeout time.Duration) error {
 	var errMsg []string
 	success := make(chan struct{}, 1)
 	fail := make(chan struct{}, 1)
-	if len(session.connections) > 0 {
-		for _, connection := range session.connections {
+	if len(connections) > 0 {
+		for _, connection := range connections {
 			wg.Add(1)
 			go func(connection *Connection) {
 				defer wg.Done()
@@ -467,11 +475,11 @@ func (session *Session) sendHandshakePacket(writeTimeout time.Duration) error {
 			}(connection)
 		}
 	} else {
-		for i, localClientID := range session.localClientIDs {
+		for i, localClientID := range localIDs {
 			wg.Add(1)
 			remoteClientID := localClientID
-			if len(session.remoteClientIDs) > 0 {
-				remoteClientID = session.remoteClientIDs[i%len(session.remoteClientIDs)]
+			if len(remoteIDs) > 0 {
+				remoteClientID = remoteIDs[i%len(remoteIDs)]
 			}
 			go func(localClientID, remoteClientID string) {
 				defer wg.Done()
