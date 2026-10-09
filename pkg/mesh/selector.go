@@ -50,7 +50,7 @@ func DefaultSelector() *Selector {
 		DirectLossGrace:     10 * time.Second,
 		DirectRecoveryHold:  5 * time.Second,
 		DirectRetryInterval: 30 * time.Second,
-		DirectRetryMax:      10 * time.Minute,
+		DirectRetryMax:      2 * time.Minute,
 		current:             PathNone,
 	}
 }

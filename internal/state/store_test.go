@@ -1,12 +1,59 @@
 package state
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/identity"
 )
+
+func TestSequenceReservationSurvivesCrashBeforeCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	if err := store.ReserveSequence(1); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(filepath.Join(dir, "sequence.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReserveSequence(512); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(filepath.Join(dir, "sequence.json"))
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("reservation rewritten inside reserved range")
+	}
+	restarted, err := New(dir).LoadRuntime()
+	if err != nil || restarted.Sequence < 513 {
+		t.Fatalf("restart reused a signed sequence: %+v %v", restarted, err)
+	}
+	if err := store.ReserveSequence(514); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err = New(dir).LoadRuntime()
+	if err != nil || restarted.Sequence < 1026 {
+		t.Fatalf("reservation did not advance: %+v %v", restarted, err)
+	}
+}
+
+func TestUnchangedStateDoesNotRewriteDisk(t *testing.T) {
+	store := New(t.TempDir())
+	if err := store.SavePeerCache(nil); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.Stat(store.path("peers.json"))
+	if err := store.SavePeerCache(nil); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(store.path("peers.json"))
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("identical state rewritten")
+	}
+}
 
 func TestSequenceNeverGoesBackwardsAcrossRestart(t *testing.T) {
 	store := New(t.TempDir())

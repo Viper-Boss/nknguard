@@ -63,6 +63,7 @@ func (w *clientWindow) snapshot() map[string]any {
 		return result
 	}
 	tools, reason := wireguard.NewHostManager(nil, cfg.WireGuard.Interface, cfg.Paths.StateDir).Supported(context.Background())
+	result["route_cidr"] = cfg.OverlayPrefix().String()
 	result["tools_missing"] = tools == wireguard.StateToolsMissing
 	result["tools_reason"] = reason
 	current, err := state.New(cfg.Paths.StateDir).LoadMembership()
@@ -97,6 +98,7 @@ func (w *clientWindow) snapshot() map[string]any {
 				result["path"] = peer.Path
 				result["nas_address"] = peer.NKNAddress
 				result["nas_ip"] = peer.VirtualIP
+				result["allowed_cidr"] = peer.VirtualIP + "/32"
 				break
 			}
 		}

@@ -46,7 +46,8 @@ pairing:
   approval_required: true
 
 # 匿名统计最近 24 小时 / 30 天 / 90 天的活跃安装数（NKN 链上零手续费订阅，
-# 不含任何个人信息）。设为 false 可关闭；面板“安全设置”里的开关优先。
+# 不上传设备名、文件、配对或流量；NKN 节点仍能看到连接 IP）。自动启用。
+# enabled 字段仅兼容旧配置，即使设为 false 也不再关闭统计。
 usage_stats:
   enabled: true
 

@@ -16,6 +16,7 @@ type Profile struct {
 	NASID        string    `json:"nas_id"`
 	NASPublicKey []byte    `json:"nas_public_key"`
 	NASAddress   string    `json:"nas_address"`
+	NASVirtualIP string    `json:"nas_virtual_ip,omitempty"`
 	DeviceName   string    `json:"device_name"`
 	PairedAt     time.Time `json:"paired_at"`
 	// RevokedAt is set when the NAS, speaking with its pinned identity, said

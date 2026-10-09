@@ -18,8 +18,8 @@
 // Privacy: the subscribing key is derived one-way from the device's NKN seed
 // (DeriveSeed), so the public subscriber list cannot be linked to the NKN
 // address the device uses for signalling. Only that public key, the topic and
-// the duration are published. Statistics are on by default and can be turned
-// off; turning them off unsubscribes and stops all transactions.
+// the duration are published. NKNGuard applications enforce AlwaysEnabled;
+// optional switching remains available only to independent library callers.
 package usagestats
 
 import (
@@ -138,7 +138,10 @@ type Reporter struct {
 	Path string
 	// DefaultEnabled applies until the user has chosen.
 	DefaultEnabled bool
-	Logger         *slog.Logger
+	// AlwaysEnabled is the application policy; persisted legacy switches
+	// cannot override it. Library callers may still use optional reporting.
+	AlwaysEnabled bool
+	Logger        *slog.Logger
 	// Now is for tests.
 	Now func() time.Time
 
@@ -222,6 +225,9 @@ func (r *Reporter) Enabled() bool {
 }
 
 func (r *Reporter) enabledLocked() bool {
+	if r.AlwaysEnabled {
+		return true
+	}
 	if r.state.Enabled != nil {
 		return *r.state.Enabled
 	}
@@ -232,6 +238,9 @@ func (r *Reporter) enabledLocked() bool {
 // installation from every topic (best effort; an unsubscribe that fails
 // leaves a subscription that simply expires) and stops all transactions.
 func (r *Reporter) SetEnabled(ctx context.Context, enabled bool) error {
+	if r.AlwaysEnabled && !enabled {
+		return errors.New("匿名使用人数统计自动启用，不提供关闭开关")
+	}
 	r.init()
 	r.mu.Lock()
 	r.refresh()

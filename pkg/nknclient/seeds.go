@@ -13,6 +13,7 @@ import "strings"
 // Community addresses drift; refresh with NasSimHub's
 // dev/collect_nkn_cn_nodes.py before editing.
 var ChinaSeedRPC = []string{
+	"http://183.53.109.99:30003", // Chinanet; getconnectioncount verified 2026-10-09
 	"http://183.53.109.45:30003", // Chinanet
 }
 
@@ -29,12 +30,9 @@ var OfficialSeedRPC = []string{
 	"http://mainnet-seed-0008.nkn.org:30003",
 }
 
-// SeedRPCList returns the seed RPC servers in the order they are tried:
-// operator-configured seeds (nkn.seed_rpc, e.g. a self-hosted node), then the
-// built-in China seeds, then the official seeds. nkn-sdk-go tries them one at
-// a time in list order (RPCConcurrency 1, 10 s each) and uses the first that
-// answers, so a dead configured or community seed only costs its timeout and
-// the official seeds always remain as a fallback. Duplicates are dropped.
+// SeedRPCList prioritizes operator-configured seeds, then domestic seeds,
+// then official seeds. The SDK probes up to three concurrently with bounded
+// timeouts. Domestic RPC bootstrap does not guarantee a domestic relay node.
 func SeedRPCList(configured []string) []string {
 	out := make([]string, 0, len(configured)+len(ChinaSeedRPC)+len(OfficialSeedRPC))
 	seen := make(map[string]bool)

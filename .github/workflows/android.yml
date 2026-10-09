@@ -44,15 +44,15 @@ jobs:
       - name: vet Android core
         working-directory: android/core
         run: |
-          go vet -tags nknsdk .
-          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go vet -tags nknsdk .
+          go vet -tags "nknsdk libp2pdht" .
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go vet -tags "nknsdk libp2pdht" .
       - name: build Android core (all ABIs)
         run: android/core/build.sh
         env:
           NKG_VERSION: ${{ github.sha }}
       - name: build debug APK
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug -PskipGoCore=true
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug -PskipGoCore=true
       - name: check packaged core
         run: |
           apk=android/app/build/outputs/apk/debug/app-debug.apk
@@ -86,7 +86,7 @@ jobs:
       - name: tests with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: build release binaries
-        run: make release
+        run: make release VERSION=0.2.4-preview
       - uses: actions/upload-artifact@v4
         with:
           name: nknguard-nas-linux

@@ -87,7 +87,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
         if (connected) return
         app.ensureCore()
         val prepared = app.core.call("prepare")
-        val overlay = prepared.getString("overlay_cidr")
+        val overlay = prepared.getString("route_cidr")
         val (routeAddress, routeBits) = overlay.split("/").let { it[0] to it[1].toInt() }
         val builder = Builder()
             .setSession("NKNGuard")

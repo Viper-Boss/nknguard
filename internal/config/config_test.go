@@ -85,13 +85,15 @@ func TestRenderRoundTrips(t *testing.T) {
 
 func TestInvalidConfigsAreRefused(t *testing.T) {
 	cases := map[string]string{
-		"bad version":  "version: 9\n",
-		"bad cidr":     "version: 1\nnetwork:\n  cidr: nope\n",
-		"ipv6 overlay": "version: 1\nnetwork:\n  cidr: fd00::/64\n",
-		"tiny overlay": "version: 1\nnetwork:\n  cidr: 10.0.0.0/31\n",
-		"bad acl":      "version: 1\nacl:\n  default: maybe\n",
-		"tab indent":   "version: 1\ndevice:\n\tname: x\n",
-		"bad port":     "version: 1\nwireguard:\n  listen_port: 70000\n",
+		"bad version":   "version: 9\n",
+		"bad cidr":      "version: 1\nnetwork:\n  cidr: nope\n",
+		"ipv6 overlay":  "version: 1\nnetwork:\n  cidr: fd00::/64\n",
+		"tiny overlay":  "version: 1\nnetwork:\n  cidr: 10.0.0.0/31\n",
+		"default route": "version: 1\nnetwork:\n  cidr: 0.0.0.0/0\n",
+		"public range":  "version: 1\nnetwork:\n  cidr: 8.8.8.0/24\n",
+		"bad acl":       "version: 1\nacl:\n  default: maybe\n",
+		"tab indent":    "version: 1\ndevice:\n\tname: x\n",
+		"bad port":      "version: 1\nwireguard:\n  listen_port: 70000\n",
 	}
 	for name, source := range cases {
 		if _, err := Parse(source); err == nil {

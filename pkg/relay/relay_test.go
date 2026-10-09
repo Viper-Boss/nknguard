@@ -56,6 +56,11 @@ func TestBridgeCarriesDatagramsBothWays(t *testing.T) {
 	if err != nil || string(buffer[:read]) != "handshake-resp" {
 		t.Fatalf("A got %q: %v", buffer[:read], err)
 	}
+	// The reader can receive before the sender goroutine updates accounting.
+	deadline := time.Now().Add(time.Second)
+	for bridgeA.Stats().BytesSent != int64(len("handshake-init")) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if bridgeA.Stats().BytesSent != int64(len("handshake-init")) {
 		t.Fatalf("accounting: %+v", bridgeA.Stats())
 	}

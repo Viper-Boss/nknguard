@@ -333,6 +333,8 @@ type Snapshot struct {
 	PunchRounds        int          `json:"punch_rounds"`
 	LastError          string       `json:"last_error,omitempty"`
 	History            []Transition `json:"history,omitempty"`
+	DirectAttempting   bool         `json:"direct_attempting"`
+	NextDirectRetry    time.Time    `json:"next_direct_retry,omitempty"`
 }
 
 // Snapshot renders the peer.
@@ -351,6 +353,10 @@ func (p *Peer) Snapshot() Snapshot {
 		PunchRounds:        p.punchRounds,
 		LastError:          p.lastError,
 		History:            append([]Transition(nil), p.history...),
+		DirectAttempting:   p.attempting,
+	}
+	if p.path != PathDirectWG && !p.selector.lastDirectTry.IsZero() {
+		snapshot.NextDirectRetry = p.selector.lastDirectTry.Add(p.selector.retryInterval())
 	}
 	if p.virtualIP.IsValid() {
 		snapshot.VirtualIP = p.virtualIP.String()

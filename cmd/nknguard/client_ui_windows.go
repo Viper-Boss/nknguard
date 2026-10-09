@@ -89,6 +89,8 @@ type clientUI struct {
 	disconnect    *flatButton
 	openNAS       *flatButton
 	copyIP        *flatButton
+	retryDirect   *flatButton
+	scopeLabel    *walk.Label
 	installWG     *flatButton
 	animating     bool
 	animationTick int
@@ -109,8 +111,6 @@ type clientUI struct {
 	usageMonth   *walk.Label
 	usageQuarter *walk.Label
 	usageNote    *walk.Label
-	usageCheck   *walk.CheckBox
-	usageLoading bool
 
 	buttons []*flatButton
 }
@@ -236,6 +236,24 @@ func (u *clientUI) create() error {
 	}
 	u.connect = u.newButton("连接 NAS", true, 132, u.onConnect)
 	u.disconnect = u.newButton("断开", false, 96, u.onDisconnect)
+	u.retryDirect = u.newButton("重试直连", false, 112, func() {
+		u.retryDirect.SetEnabled(false)
+		go func() {
+			cfg, _, err := loadConfig(u.w.globals)
+			if err == nil {
+				client := app.NewClient(cfg.Paths.Socket)
+				peers, readErr := client.Peers()
+				err = readErr
+				for _, peer := range peers {
+					if err == nil {
+						err = client.Reconnect(peer.DeviceID)
+					}
+				}
+			}
+			u.keepError(err)
+			u.mw.Synchronize(func() { u.render(u.w.snapshot()) })
+		}()
+	})
 	u.pairButton = u.newButton("请求 NAS 配对", true, 148, u.onPair)
 	copyNAS := u.newButton("复制", false, 68, func() { u.copyText(u.nasAddress.Text()) })
 	copyLocal := u.newButton("复制", false, 68, func() { u.copyText(u.localAddress.Text()) })
@@ -284,7 +302,7 @@ func (u *clientUI) create() error {
 						),
 						ui.Label{Font: font(10, false), AssignTo: &u.stateCopy, Text: "正在读取这台电脑的连接信息。", TextColor: colorMuted, EllipsisMode: ui.EllipsisEnd},
 						ui.VSpacer{Size: 4},
-						row(u.connect.decl(), u.disconnect.decl(), ui.HSpacer{}),
+						row(u.connect.decl(), u.disconnect.decl(), u.retryDirect.decl(), ui.HSpacer{}),
 						row(u.openNAS.decl(), u.copyIP.decl(), export.decl(), ui.HSpacer{}),
 						row(u.installWG.decl(), muted("缺少依赖时安装官方 WireGuard，完成后即可连接。")),
 						ui.TextEdit{AssignTo: &u.errText, Font: font(10, false), ReadOnly: true, Visible: false, VScroll: true, MinSize: ui.Size{Height: 44}, TextColor: colorBad},
@@ -304,6 +322,7 @@ func (u *clientUI) create() error {
 								ui.Label{AssignTo: &u.virtualIP, Text: "—", Font: font(10, true), TextColor: colorText, ColumnSpan: 2},
 								ui.Label{Font: font(10, false), Text: "NAS 虚拟 IP", TextColor: colorText},
 								ui.Label{AssignTo: &u.nasIP, Text: "—", Font: font(10, true), TextColor: colorText, ColumnSpan: 2},
+								ui.Label{AssignTo: &u.scopeLabel, Text: "仅连接已授权 NAS；不提供互联网出口。", Font: font(9, false), TextColor: colorMuted, ColumnSpan: 3},
 							},
 						},
 					),
@@ -333,14 +352,7 @@ func (u *clientUI) create() error {
 							usageColumn("90 天", &u.usageQuarter, walk.RGB(0x7a, 0x4d, 0xd8)),
 							ui.HSpacer{},
 						),
-						ui.CheckBox{
-							AssignTo:         &u.usageCheck,
-							Font:             font(10, false),
-							Text:             "参与匿名使用人数统计",
-							Enabled:          false,
-							OnCheckedChanged: u.onUsageToggled,
-						},
-						muted("开启后每天最多提交 3 个零手续费 NKN 链上订阅，只公开一个与本机 NKN 地址\n无关的匿名公钥，不含设备名、配对或流量信息。关闭后退订。"),
+						muted("自动参与匿名使用人数统计，每天最多提交 3 个零手续费 NKN 链上订阅。\n使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。"),
 						row(
 							ui.Label{Font: font(10, false), AssignTo: &u.usageNote, Text: "正在读取…", TextColor: colorMuted, EllipsisMode: ui.EllipsisEnd},
 							ui.HSpacer{},
@@ -843,6 +855,12 @@ func (u *clientUI) render(state map[string]any) {
 	setText(u.localAddress, orDefault(stateText(state, "local_nkn_address"), "连接后显示"))
 	setText(u.virtualIP, orDash(stateText(state, "virtual_ip")))
 	setText(u.nasIP, orDash(stateText(state, "nas_ip")))
+	scope := "接管网段：" + orDash(stateText(state, "route_cidr")) + "；仅允许 NAS " + orDash(stateText(state, "allowed_cidr"))
+	if stateText(state, "path") == "nkn-relay" {
+		scope += "；后台自动重试直连（最长间隔 2 分钟）"
+	}
+	setText(u.scopeLabel, scope)
+	u.retryDirect.SetEnabled(connected && !disconnecting && stateText(state, "path") != "direct-wg")
 
 	u.pairCard.SetVisible(!paired)
 	u.pairButton.SetEnabled(!paired && !pairing)
@@ -938,31 +956,6 @@ func (u *clientUI) refreshUsage(force bool) {
 	u.mw.Synchronize(func() { u.renderUsage(status) })
 }
 
-func (u *clientUI) onUsageToggled() {
-	if u.usageLoading || u.w.usage == nil {
-		return
-	}
-	enabled := u.usageCheck.Checked()
-	u.usageCheck.SetEnabled(false)
-	if enabled {
-		setText(u.usageNote, "正在开启…")
-	} else {
-		setText(u.usageNote, "正在关闭并退订…")
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		err := u.w.usage.SetEnabled(ctx, enabled)
-		status := u.w.usage.Status(ctx, false)
-		u.mw.Synchronize(func() {
-			u.renderUsage(status)
-			if err != nil {
-				setText(u.usageNote, "操作失败："+err.Error())
-			}
-		})
-	}()
-}
-
 func (u *clientUI) renderUsage(status usagestats.Status) {
 	count := func(value *int) string {
 		if value == nil {
@@ -973,10 +966,6 @@ func (u *clientUI) renderUsage(status usagestats.Status) {
 	setText(u.usageDay, count(status.Counts.Day))
 	setText(u.usageMonth, count(status.Counts.Month))
 	setText(u.usageQuarter, count(status.Counts.Quarter))
-	u.usageLoading = true
-	u.usageCheck.SetChecked(status.Enabled)
-	u.usageLoading = false
-	u.usageCheck.SetEnabled(true)
 	var note string
 	switch {
 	case !status.Enabled:

@@ -5,6 +5,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+StandardOutput=null
+StandardError=null
 Type=simple
 ExecStart=/usr/local/bin/nknguard --config /etc/nknguard/config.yaml daemon
 ExecStop=/usr/local/bin/nknguard --config /etc/nknguard/config.yaml down

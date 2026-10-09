@@ -35,6 +35,7 @@ type PairInvite struct {
 	NASID        string    `json:"nas_id"`
 	NASPublicKey []byte    `json:"nas_public_key"`
 	NASAddress   string    `json:"nas_address"`
+	NASVirtualIP string    `json:"nas_virtual_ip,omitempty"`
 	Token        string    `json:"token"`
 	ExpiresAt    time.Time `json:"expires_at"`
 }
@@ -126,6 +127,9 @@ func (p *Pairing) NewInvite() (PairInvite, error) {
 		NASID: p.node.Device.DeviceID(), NASPublicKey: p.node.Device.PublicKey(),
 		NASAddress: p.transport.LocalAddress(),
 		Token:      base64.RawURLEncoding.EncodeToString(token), ExpiresAt: time.Now().Add(inviteLifetime),
+	}
+	if ip := p.mesh.VirtualIP(); ip.IsValid() {
+		p.invite.NASVirtualIP = ip.String()
 	}
 	return p.invite, nil
 }

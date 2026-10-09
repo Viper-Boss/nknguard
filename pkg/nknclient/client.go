@@ -50,7 +50,9 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("nknclient: account: %w", err)
 	}
-	config := &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(SeedRPCList(options.SeedRPC)...)}
+	config := &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(SeedRPCList(options.SeedRPC)...),
+		RPCTimeout: 5000, RPCConcurrency: 3, WsHandshakeTimeout: 6000,
+		MinReconnectInterval: 1000, MaxReconnectInterval: 8000}
 	client, err := nkn.NewMultiClient(account, Identifier, SubClients, false, config)
 	if err != nil {
 		return nil, fmt.Errorf("nknclient: create: %w", err)

@@ -28,7 +28,7 @@ import (
 var Version = "0.1.0-dev"
 
 // PersistInterval is how often runtime state and the peer cache are written.
-const PersistInterval = 30 * time.Second
+const PersistInterval = 5 * time.Minute
 
 // Daemon is a running node.
 type Daemon struct {
@@ -126,6 +126,7 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	controller.Policy = cfg.ACL
 	controller.Logger = logger
 	controller.SetSequence(runtime.Sequence)
+	controller.ReserveSequence = node.State.ReserveSequence
 
 	virtual, err := restoreVirtualIP(controller, runtime, cfg.OverlayPrefix())
 	if err != nil {
@@ -137,6 +138,9 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 		Address:    netip.PrefixFrom(virtual, cfg.OverlayPrefix().Bits()).String(),
 		ListenPort: cfg.WireGuard.ListenPort,
 		MTU:        cfg.WireGuard.MTU,
+	}
+	if err := node.State.SaveRuntime(state.Runtime{Sequence: controller.Sequence(), ProtocolVersion: protocol.Version, VirtualIP: virtual.String()}); err != nil {
+		return err
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -253,7 +257,7 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 			// logged, not fatal.
 			logger.Warn("DHT discovery unavailable", "component", "discovery", "error", err)
 		} else {
-			controller.Discovery = backend
+			controller.SetDiscovery(backend)
 			defer func() { _ = backend.Close() }()
 		}
 	}
@@ -379,6 +383,8 @@ func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 	if virtual := d.Controller.VirtualIP(); virtual.IsValid() {
 		status.VirtualIP = virtual.String()
 	}
+	status.OverlayCIDR = d.Config.OverlayPrefix().String()
+	status.DHTEnabled, status.DHTPeers, status.DHTRoutes = d.Controller.DiscoveryStatus()
 	return status
 }
 

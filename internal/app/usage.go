@@ -10,7 +10,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 )
 
-// UsageStatsFile holds the statistics switch and last check-ins (no secrets).
+// UsageStatsFile holds legacy preferences and last check-ins (no secrets).
 const UsageStatsFile = "usage-stats.json"
 
 // usageSeed returns the device's NKN seed; set by the nknsdk build.
@@ -22,7 +22,8 @@ var usageSeed func(keystore *identity.Keystore) ([]byte, error)
 func NewUsageReporter(cfg config.Config, keystore *identity.Keystore, logger *slog.Logger) *usagestats.Reporter {
 	reporter := &usagestats.Reporter{
 		Path:           filepath.Join(cfg.Paths.StateDir, UsageStatsFile),
-		DefaultEnabled: cfg.UsageStats.Enabled,
+		DefaultEnabled: true,
+		AlwaysEnabled:  true,
 		Logger:         logger,
 	}
 	if usageSeed == nil {

@@ -103,8 +103,10 @@ const SequenceLoadMargin = 16
 
 // Store is the state directory.
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	dir              string
+	mu               sync.Mutex
+	sequenceMu       sync.Mutex
+	reservedSequence uint64
 }
 
 // New returns a store rooted at dir.
@@ -137,14 +139,43 @@ func (s *Store) SaveMembership(membership Membership) error {
 func (s *Store) LoadRuntime() (Runtime, error) {
 	var runtime Runtime
 	err := s.readJSON("runtime.json", &runtime)
-	if errors.Is(err, fs.ErrNotExist) {
-		return Runtime{}, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Runtime{}, err
 	}
-	runtime.Sequence += SequenceLoadMargin
+	if err == nil {
+		runtime.Sequence += SequenceLoadMargin
+	}
+	var reservation struct {
+		Until uint64 `json:"until"`
+	}
+	if err := s.readJSON("sequence.json", &reservation); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Runtime{}, err
+	}
+	if reservation.Until > runtime.Sequence {
+		runtime.Sequence = reservation.Until
+	}
 	return runtime, nil
+}
+
+// ReserveSequence writes once per 512 signed publications rather than once
+// per publication. A restart skips unused numbers; it never reuses them.
+func (s *Store) ReserveSequence(next uint64) error {
+	s.sequenceMu.Lock()
+	defer s.sequenceMu.Unlock()
+	if next <= s.reservedSequence {
+		return nil
+	}
+	if next > ^uint64(0)-512 {
+		return errors.New("state: sequence exhausted")
+	}
+	until := next + 512
+	if err := s.writeJSON("sequence.json", struct {
+		Until uint64 `json:"until"`
+	}{until}); err != nil {
+		return err
+	}
+	s.reservedSequence = until
+	return nil
 }
 
 // SaveRuntime writes the runtime bookkeeping.
@@ -205,6 +236,9 @@ func (s *Store) writeJSON(name string, value any) error {
 	raw, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return fmt.Errorf("state: encode %s: %w", name, err)
+	}
+	if previous, err := os.ReadFile(s.path(name)); err == nil && string(previous) == string(raw) {
+		return nil
 	}
 	temporary, err := os.CreateTemp(s.dir, "."+name+".*")
 	if err != nil {

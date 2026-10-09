@@ -224,7 +224,7 @@ class LogRing(private val capacity: Int) {
     @Synchronized
     fun add(line: String) {
         if (lines.size == capacity) lines.removeFirst()
-        lines.addLast(line)
+        lines.addLast(line.take(4096))
     }
 
     @Synchronized

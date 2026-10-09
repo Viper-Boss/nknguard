@@ -220,6 +220,6 @@ func (a *Agent) savePairing(invite app.PairInvite, device *identity.DeviceIdenti
 	}
 	return saveProfile(a.StateDir, Profile{
 		NetworkID: invite.NetworkID, NASID: invite.NASID, NASPublicKey: invite.NASPublicKey,
-		NASAddress: invite.NASAddress, DeviceName: name, PairedAt: time.Now().UTC(),
+		NASAddress: invite.NASAddress, NASVirtualIP: invite.NASVirtualIP, DeviceName: name, PairedAt: time.Now().UTC(),
 	})
 }
