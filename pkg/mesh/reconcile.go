@@ -119,7 +119,14 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		// handshake may belong to the relay; never promote it to direct or
 		// tear down the working bridge while the worker owns the endpoint.
 		if peer.Attempting() {
-			peer.NoteReceive(seen.rxBytes, now)
+			silent := peer.NoteReceive(seen.rxBytes, now)
+			// Incoming authenticated relay packets can prove the fallback
+			// while probes are ongoing. Only direct promotion is forbidden.
+			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
+				if peer.SelectPath(Observation{Now: now, RelayOpen: true}) == PathNKNRelay {
+					_, _ = peer.Apply(EventRelayOpen, now)
+				}
+			}
 			switch peer.Path() {
 			case PathDirectWG:
 				direct++

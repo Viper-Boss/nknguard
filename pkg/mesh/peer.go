@@ -308,7 +308,7 @@ func (p *Peer) NoteError(message string) {
 func (p *Peer) SelectPath(observation Observation) PathType {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.attempting {
+	if p.attempting && (observation.DirectHealthy || !observation.RelayOpen || p.path == PathDirectWG) {
 		return p.path
 	}
 	chosen := p.selector.Select(observation)
