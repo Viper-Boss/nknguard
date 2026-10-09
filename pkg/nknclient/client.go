@@ -52,13 +52,40 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 	}
 	config := &nkn.ClientConfig{SeedRPCServerAddr: nkn.NewStringArray(SeedRPCList(options.SeedRPC)...),
 		RPCTimeout: 5000, RPCConcurrency: 3, WsHandshakeTimeout: 6000,
-		MinReconnectInterval: 1000, MaxReconnectInterval: 8000}
-	client, err := nkn.NewMultiClient(account, Identifier, SubClients, false, config)
-	if err != nil {
-		return nil, fmt.Errorf("nknclient: create: %w", err)
-	}
+		ConnectRetries: 1, MinReconnectInterval: 1000, MaxReconnectInterval: 8000}
+	// SDK construction itself connects to nodes; include that in the bound.
 	timer := time.NewTimer(ConnectTimeout)
 	defer timer.Stop()
+	type result struct {
+		client *nkn.MultiClient
+		err    error
+	}
+	created := make(chan result, 1)
+	go func() {
+		c, e := nkn.NewMultiClient(account, Identifier, SubClients, false, config)
+		created <- result{c, e}
+	}()
+	var client *nkn.MultiClient
+	lateClose := func() {
+		go func() {
+			if out := <-created; out.client != nil {
+				_ = out.client.Close()
+			}
+		}()
+	}
+	select {
+	case out := <-created:
+		if out.err != nil {
+			return nil, fmt.Errorf("nknclient: create: %w", out.err)
+		}
+		client = out.client
+	case <-timer.C:
+		lateClose()
+		return nil, fmt.Errorf("nknclient: connect timed out after %s", ConnectTimeout)
+	case <-ctx.Done():
+		lateClose()
+		return nil, ctx.Err()
+	}
 	select {
 	case <-client.OnConnect.C:
 		return client, nil

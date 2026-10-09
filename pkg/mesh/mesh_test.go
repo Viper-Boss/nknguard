@@ -433,8 +433,8 @@ func TestTwoNodesDiscoverAndGoDirect(t *testing.T) {
 	if ab.VirtualIP != b.ctrl.VirtualIP().String() {
 		t.Fatalf("peer overlay address %s, peer says %s", ab.VirtualIP, b.ctrl.VirtualIP())
 	}
-	if metrics := a.ctrl.Metrics(); metrics.RelayFallbacks != 0 {
-		t.Fatalf("relay was used on a path that works directly: %+v", metrics)
+	if bridge := a.ctrl.bridgeFor(b.ctrl.Device.DeviceID()); bridge != nil && !bridge.Standby() {
+		t.Fatal("relay still forwarding on direct path")
 	}
 	a.wg.mu.Lock()
 	installed := a.wg.peers[b.wg.key]
@@ -466,8 +466,9 @@ func TestRelayFallbackThenRecoverToDirect(t *testing.T) {
 	// their own and move off the relay.
 	e.fake.setBlocked(false)
 	waitPath(t, 15*time.Second, a, b, PathDirectWG, StateDirect)
-	waitFor(t, 5*time.Second, "relay bridges closed", func() bool {
-		return a.ctrl.bridgeFor(b.ctrl.Device.DeviceID()) == nil && b.ctrl.bridgeFor(a.ctrl.Device.DeviceID()) == nil
+	waitFor(t, 5*time.Second, "relay bridges on standby", func() bool {
+		ab, ba := a.ctrl.bridgeFor(b.ctrl.Device.DeviceID()), b.ctrl.bridgeFor(a.ctrl.Device.DeviceID())
+		return ab != nil && ba != nil && ab.Standby() && ba.Standby()
 	})
 }
 

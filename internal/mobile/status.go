@@ -9,6 +9,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
 
@@ -16,33 +17,36 @@ import (
 // field is observed: Phase is "direct" or "relay" only while WireGuard has a
 // fresh handshake with the NAS on that path.
 type Status struct {
-	Phase            string    `json:"phase"`
-	Connected        bool      `json:"connected"`
-	Paired           bool      `json:"paired"`
-	Revoked          bool      `json:"revoked"`
-	NASID            string    `json:"nas_id,omitempty"`
-	NASName          string    `json:"nas_name,omitempty"`
-	NASAddress       string    `json:"nas_address,omitempty"`
-	NASVirtualIP     string    `json:"nas_virtual_ip,omitempty"`
-	VirtualIP        string    `json:"virtual_ip,omitempty"`
-	NKNAddress       string    `json:"nkn_address,omitempty"`
-	NKNConnected     bool      `json:"nkn_connected"`
-	Path             string    `json:"path"`
-	PeerState        string    `json:"peer_state,omitempty"`
-	Endpoint         string    `json:"endpoint,omitempty"`
-	LastHandshake    int64     `json:"last_handshake_unix,omitempty"`
-	HandshakeOK      bool      `json:"handshake_fresh"`
-	RxBytes          int64     `json:"rx_bytes"`
-	TxBytes          int64     `json:"tx_bytes"`
-	RelayFallback    int       `json:"relay_fallbacks"`
-	LastError        string    `json:"last_error,omitempty"`
-	Since            int64     `json:"since_unix,omitempty"`
-	RouteCIDR        string    `json:"route_cidr,omitempty"`
-	AllowedCIDR      string    `json:"allowed_cidr,omitempty"`
-	DirectAttempting bool      `json:"direct_attempting"`
-	NextDirectRetry  time.Time `json:"next_direct_retry,omitempty"`
-	DHTEnabled       bool      `json:"dht_enabled"`
-	DHTPeers         int       `json:"dht_peers"`
+	Phase            string                      `json:"phase"`
+	Connected        bool                        `json:"connected"`
+	Paired           bool                        `json:"paired"`
+	Revoked          bool                        `json:"revoked"`
+	NASID            string                      `json:"nas_id,omitempty"`
+	NASName          string                      `json:"nas_name,omitempty"`
+	NASAddress       string                      `json:"nas_address,omitempty"`
+	NASVirtualIP     string                      `json:"nas_virtual_ip,omitempty"`
+	VirtualIP        string                      `json:"virtual_ip,omitempty"`
+	NKNAddress       string                      `json:"nkn_address,omitempty"`
+	NKNConnected     bool                        `json:"nkn_connected"`
+	NKNConnection    *nknclient.ConnectionStatus `json:"nkn_connection,omitempty"`
+	Path             string                      `json:"path"`
+	PeerState        string                      `json:"peer_state,omitempty"`
+	Endpoint         string                      `json:"endpoint,omitempty"`
+	LastHandshake    int64                       `json:"last_handshake_unix,omitempty"`
+	HandshakeOK      bool                        `json:"handshake_fresh"`
+	RxBytes          int64                       `json:"rx_bytes"`
+	TxBytes          int64                       `json:"tx_bytes"`
+	RelayFallback    int                         `json:"relay_fallbacks"`
+	LastError        string                      `json:"last_error,omitempty"`
+	Since            int64                       `json:"since_unix,omitempty"`
+	RouteCIDR        string                      `json:"route_cidr,omitempty"`
+	AllowedCIDR      string                      `json:"allowed_cidr,omitempty"`
+	DirectAttempting bool                        `json:"direct_attempting"`
+	NextDirectRetry  time.Time                   `json:"next_direct_retry,omitempty"`
+	DHTEnabled       bool                        `json:"dht_enabled"`
+	DHTPeers         int                         `json:"dht_peers"`
+	RelayReady       bool                        `json:"relay_ready"`
+	RelayStandby     bool                        `json:"relay_standby"`
 }
 
 func (a *Agent) status() Status {
@@ -74,11 +78,20 @@ func (a *Agent) status() Status {
 	status.LastError = current.lastError
 	status.NKNAddress = current.nknAddress
 	status.NKNConnected = current.nknAddress != ""
+	health := current.nknHealth
 	status.VirtualIP = current.virtual.String()
 	status.Since = current.started.Unix()
 	status.RouteCIDR = nasRoute(current.profile.NASVirtualIP)
 	revoked := current.revoked
 	current.mu.Unlock()
+	if health != nil {
+		connection := health()
+		status.NKNConnection = &connection
+		status.NKNConnected = connection.State == "connected"
+		if !status.NKNConnected && status.Phase == PhaseWaiting {
+			status.Phase = PhaseNKN
+		}
+	}
 	status.Connected = true
 	if revoked {
 		status.Revoked = true
@@ -98,6 +111,9 @@ func (a *Agent) status() Status {
 	status.NASName = nas.Name
 	status.NASVirtualIP = nas.VirtualIP
 	status.DirectAttempting = nas.DirectAttempting
+	if nas.Relay != nil {
+		status.RelayReady, status.RelayStandby = nas.Relay.Open, nas.Relay.Standby
+	}
 	status.NextDirectRetry = nas.NextDirectRetry
 	status.DHTEnabled, status.DHTPeers, _ = controller.DiscoveryStatus()
 	if nas.VirtualIP != "" {
@@ -163,6 +179,9 @@ func (a *Agent) diagnostics() string {
 	fmt.Fprintf(&out, "nas: %s  nas_address: %s\n", status.NASID, redact(status.NASAddress))
 	fmt.Fprintf(&out, "virtual_ip: %s  nas_virtual_ip: %s  mtu: %d\n", status.VirtualIP, status.NASVirtualIP, TunnelMTU)
 	fmt.Fprintf(&out, "nkn: connected=%t address=%s\n", status.NKNConnected, redact(status.NKNAddress))
+	if c := status.NKNConnection; c != nil {
+		fmt.Fprintf(&out, "nkn_check: state=%s last_success=%s latency_ms=%d\n", c.State, c.LastSuccess.UTC().Format(time.RFC3339), c.LatencyMS)
+	}
 	fmt.Fprintf(&out, "wireguard: peer_state=%s endpoint=%s last_handshake=%d fresh=%t rx=%d tx=%d relay_fallbacks=%d\n",
 		status.PeerState, status.Endpoint, status.LastHandshake, status.HandshakeOK, status.RxBytes, status.TxBytes, status.RelayFallback)
 	if status.LastError != "" {

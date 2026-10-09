@@ -486,7 +486,12 @@ func (c *Controller) Peers() []Snapshot {
 	c.mu.RUnlock()
 	out := make([]Snapshot, 0, len(peers))
 	for _, peer := range peers {
-		out = append(out, peer.Snapshot())
+		snapshot := peer.Snapshot()
+		if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil {
+			stats := bridge.Stats()
+			snapshot.Relay = &stats
+		}
+		out = append(out, snapshot)
 	}
 	return out
 }
@@ -1210,8 +1215,11 @@ func (c *Controller) newDispatcher() *signaling.Dispatcher {
 		OnRejected: func(inbound signaling.Inbound, err error) {
 			c.mu.Lock()
 			c.metrics.EnvelopesRejected++
+			rejected := c.metrics.EnvelopesRejected
 			c.mu.Unlock()
-			c.logger().Debug("control message rejected", "component", "signaling", "from", inbound.Envelope.FromDeviceID, "type", inbound.Envelope.Type, "error", err)
+			if rejected <= 5 || rejected%100 == 0 {
+				c.logger().Warn("control message rejected", "component", "signaling", "from", inbound.Envelope.FromDeviceID, "type", inbound.Envelope.Type, "error", err)
+			}
 		},
 	}
 	dispatcher.Handle(protocol.TypePeerInfo, c.onPeerInfo)

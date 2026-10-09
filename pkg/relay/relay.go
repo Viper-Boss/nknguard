@@ -30,6 +30,7 @@ var ErrNoRelay = errors.New("relay: no relay transport available")
 // Stats is what the mesh reports about a relayed peer.
 type Stats struct {
 	Open      bool      `json:"open"`
+	Standby   bool      `json:"standby"`
 	OpenedAt  time.Time `json:"opened_at,omitempty"`
 	BytesSent int64     `json:"bytes_sent"`
 	BytesRecv int64     `json:"bytes_received"`

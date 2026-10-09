@@ -26,6 +26,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/membership"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
@@ -47,6 +48,7 @@ type Plane struct {
 	Signaling signaling.Transport
 	Relay     relay.Relay
 	Close     func() error
+	Health    func() nknclient.ConnectionStatus
 }
 
 // PlaneFactory connects to NKN with the device's NKN seed.

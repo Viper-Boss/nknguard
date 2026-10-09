@@ -14,6 +14,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
 	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
@@ -105,6 +106,7 @@ type session struct {
 	mu         sync.Mutex
 	controller *mesh.Controller
 	nknAddress string
+	nknHealth  func() nknclient.ConnectionStatus
 	phase      string
 	lastError  string
 	revoked    bool
@@ -357,6 +359,7 @@ func (s *session) runController(ctx context.Context, plane *Plane, controller *m
 	}
 	s.mu.Lock()
 	s.nknAddress = plane.Signaling.LocalAddress()
+	s.nknHealth = plane.Health
 	s.phase = PhaseWaiting
 	s.mu.Unlock()
 	s.agent.Logger.Info("connected to NKN", "component", "session", "nkn_address", redact(plane.Signaling.LocalAddress()))

@@ -30,6 +30,8 @@ type Bridge struct {
 
 	sent     atomic.Int64
 	received atomic.Int64
+	standby  atomic.Bool
+	gate     sync.RWMutex
 	openedAt time.Time
 
 	closeOnce sync.Once
@@ -52,6 +54,16 @@ func NewBridge(stream net.Conn, wireguard netip.AddrPort) (*Bridge, error) {
 // relay carries it.
 func (b *Bridge) LocalAddr() netip.AddrPort { return b.udp.LocalAddr().(*net.UDPAddr).AddrPort() }
 
+// SetStandby drains but discards relay datagrams while direct is selected.
+// Inbound stragglers must not make WireGuard roam back to loopback.
+func (b *Bridge) SetStandby(standby bool) {
+	b.gate.Lock()
+	b.standby.Store(standby)
+	b.gate.Unlock()
+}
+
+func (b *Bridge) Standby() bool { return b.standby.Load() }
+
 // Stats reports the traffic moved.
 func (b *Bridge) Stats() Stats {
 	open := true
@@ -60,7 +72,7 @@ func (b *Bridge) Stats() Stats {
 		open = false
 	default:
 	}
-	return Stats{Open: open, OpenedAt: b.openedAt, BytesSent: b.sent.Load(), BytesRecv: b.received.Load()}
+	return Stats{Open: open, Standby: b.Standby(), OpenedAt: b.openedAt, BytesSent: b.sent.Load(), BytesRecv: b.received.Load()}
 }
 
 // Done is closed when the bridge stops.
@@ -108,8 +120,26 @@ func (b *Bridge) udpToStream() error {
 		if from.Addr().Unmap() != b.wg.Addr().Unmap() || from.Port() != b.wg.Port() {
 			continue
 		}
+		if b.Standby() {
+			continue
+		}
 		binary.BigEndian.PutUint16(buffer[:2], uint16(read))
-		if _, err := b.stream.Write(buffer[:2+read]); err != nil {
+		// A stalled stream must not hold the UDP pump indefinitely.
+		if err := b.stream.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
+			return err
+		}
+		frame := buffer[:2+read]
+		for len(frame) > 0 {
+			n, err := b.stream.Write(frame)
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				return io.ErrShortWrite
+			}
+			frame = frame[n:]
+		}
+		if err := b.stream.SetWriteDeadline(time.Time{}); err != nil {
 			return err
 		}
 		b.sent.Add(int64(read))
@@ -130,7 +160,14 @@ func (b *Bridge) streamToUDP() error {
 		if _, err := io.ReadFull(b.stream, buffer[:size]); err != nil {
 			return err
 		}
-		if _, err := b.udp.WriteToUDPAddrPort(buffer[:size], b.wg); err != nil {
+		b.gate.RLock()
+		if b.Standby() {
+			b.gate.RUnlock()
+			continue
+		}
+		_, err := b.udp.WriteToUDPAddrPort(buffer[:size], b.wg)
+		b.gate.RUnlock()
+		if err != nil {
 			return err
 		}
 		b.received.Add(int64(size))

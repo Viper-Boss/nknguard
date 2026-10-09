@@ -53,7 +53,9 @@ func (r *Relay) Open(ctx context.Context, peer relay.Peer) (net.Conn, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		session, err := r.client.Dial(peer.Address)
+		// SDK's default dial has no timeout. Bound the SDK operation itself,
+		// as well as our caller's wait, so failed opens do not leak workers.
+		session, err := r.client.DialWithConfig(peer.Address, &nkn.DialConfig{DialTimeout: 30000})
 		if err != nil {
 			done <- result{err: err}
 			return
@@ -94,6 +96,11 @@ func (r *Relay) Accept(ctx context.Context) (relay.Session, error) {
 		select {
 		case out = <-done:
 		case <-ctx.Done():
+			go func() {
+				if late := <-done; late.conn != nil {
+					_ = late.conn.Close()
+				}
+			}()
 			return relay.Session{}, ctx.Err()
 		}
 		if out.err != nil {
