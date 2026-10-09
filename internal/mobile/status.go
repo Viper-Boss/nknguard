@@ -33,6 +33,8 @@ type Status struct {
 	Path             string                      `json:"path"`
 	PeerState        string                      `json:"peer_state,omitempty"`
 	Endpoint         string                      `json:"endpoint,omitempty"`
+	DirectTransport  string                      `json:"direct_transport,omitempty"`
+	DirectEndpoint   string                      `json:"direct_endpoint,omitempty"`
 	LastHandshake    int64                       `json:"last_handshake_unix,omitempty"`
 	HandshakeOK      bool                        `json:"handshake_fresh"`
 	RxBytes          int64                       `json:"rx_bytes"`
@@ -112,6 +114,7 @@ func (a *Agent) status() Status {
 	status.NASName = nas.Name
 	status.NASVirtualIP = nas.VirtualIP
 	status.DirectAttempting = nas.DirectAttempting
+	status.DirectTransport, status.DirectEndpoint = nas.DirectTransport, nas.DirectEndpoint
 	if nas.Relay != nil {
 		status.RelayReady, status.RelayStandby = nas.Relay.Open, nas.Relay.Standby
 	}
@@ -197,6 +200,9 @@ func (a *Agent) diagnostics() string {
 	}
 	fmt.Fprintf(&out, "wireguard: peer_state=%s endpoint=%s last_handshake=%d fresh=%t rx=%d tx=%d relay_fallbacks=%d\n",
 		status.PeerState, status.Endpoint, status.LastHandshake, status.HandshakeOK, status.RxBytes, status.TxBytes, status.RelayFallback)
+	if status.DirectTransport != "" {
+		fmt.Fprintf(&out, "direct_transport: %s endpoint=%s\n", status.DirectTransport, status.DirectEndpoint)
+	}
 	if status.LastError != "" {
 		fmt.Fprintf(&out, "last_error: %s\n", redact(status.LastError))
 	}

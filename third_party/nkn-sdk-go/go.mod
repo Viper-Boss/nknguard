@@ -2,6 +2,8 @@ module github.com/nknorg/nkn-sdk-go
 
 go 1.18
 
+replace github.com/nknorg/ncp-go => ../ncp-go
+
 require (
 	github.com/golang/protobuf v1.5.2
 	github.com/gorilla/websocket v1.4.2

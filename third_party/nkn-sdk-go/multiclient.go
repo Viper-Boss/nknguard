@@ -592,6 +592,14 @@ func (m *MultiClient) PublishText(topic string, data string, config *MessageConf
 }
 
 func (m *MultiClient) newSession(remoteAddr string, sessionID []byte, config *ncp.Config) (*ncp.Session, error) {
+	if m.config.RemoteSubClients > 0 {
+		merged, err := ncp.MergeConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		merged.FullMesh = true
+		config = merged
+	}
 	rawClients := m.GetClients()
 	clientIDs := make([]string, 0, len(rawClients))
 	clients := make(map[string]*Client, len(rawClients))

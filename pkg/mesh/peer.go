@@ -339,6 +339,8 @@ type Snapshot struct {
 	Path               PathType     `json:"path"`
 	VirtualIP          string       `json:"virtual_ip,omitempty"`
 	Endpoint           string       `json:"endpoint,omitempty"`
+	DirectTransport    string       `json:"direct_transport,omitempty"`
+	DirectEndpoint     string       `json:"direct_endpoint,omitempty"`
 	WireGuardPublicKey string       `json:"wireguard_public_key,omitempty"`
 	NKNAddress         string       `json:"nkn_address,omitempty"`
 	LastHandshake      time.Time    `json:"last_handshake,omitempty"`

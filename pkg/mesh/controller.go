@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/acl"
+	"github.com/Viper-Boss/nknguard/pkg/directice"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/identity"
 	"github.com/Viper-Boss/nknguard/pkg/membership"
@@ -58,6 +59,7 @@ type Controller struct {
 	WireGuard  wireguard.Manager
 	Relay      relay.Relay
 	Direct     DirectStrategy
+	ICE        *directice.Config
 	Candidates CandidateSource
 	// Rendezvous supplies transport addresses that might be members. Each
 	// gets a signed PEER_INFO introduction; see pkg/rendezvous.
@@ -79,10 +81,13 @@ type Controller struct {
 	// the process. Hosts can batch reservations to reduce flash writes.
 	ReserveSequence func(uint64) error
 
-	mu       sync.RWMutex
-	peers    map[string]*Peer
-	admitted map[string]struct{}
-	bridges  map[string]*relay.Bridge
+	mu            sync.RWMutex
+	peers         map[string]*Peer
+	admitted      map[string]struct{}
+	bridges       map[string]*relay.Bridge
+	icePaths      map[string]*icePath
+	icePending    map[string]*icePending
+	iceOperations map[string]*iceOperation
 	// lastReconcile is when the reconcile loop last ran, to notice a host
 	// that was suspended.
 	lastReconcile time.Time
@@ -185,6 +190,9 @@ func New() *Controller {
 		peers:           make(map[string]*Peer),
 		admitted:        make(map[string]struct{}),
 		bridges:         make(map[string]*relay.Bridge),
+		icePaths:        make(map[string]*icePath),
+		icePending:      make(map[string]*icePending),
+		iceOperations:   make(map[string]*iceOperation),
 		introduced:      make(map[string]time.Time),
 		refused:         make(map[string]time.Time),
 		cachedEndpoints: make(map[string]netip.AddrPort),
@@ -379,6 +387,7 @@ func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) ([]strin
 	members := append([]string(nil), filtered...)
 	c.mu.Unlock()
 	c.closeBridge(deviceID)
+	c.closeICEPath(deviceID)
 	if peer != nil && c.WireGuard != nil {
 		if key := peer.Record().WireGuardPublicKey; key != "" {
 			return members, c.RemoveRevokedKey(ctx, key)
@@ -487,6 +496,13 @@ func (c *Controller) Peers() []Snapshot {
 	out := make([]Snapshot, 0, len(peers))
 	for _, peer := range peers {
 		snapshot := peer.Snapshot()
+		if path := c.icePathFor(peer.DeviceID()); path != nil {
+			snapshot.DirectTransport = "ice-udp"
+			snapshot.DirectEndpoint = path.remote.String()
+			if snapshot.Path == PathDirectWG {
+				snapshot.Endpoint = path.remote.String()
+			}
+		}
 		if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil {
 			stats := bridge.Stats()
 			snapshot.Relay = &stats
@@ -780,7 +796,14 @@ func (c *Controller) RefreshCandidates(ctx context.Context) {
 func (c *Controller) NetworkChanged(ctx context.Context) {
 	c.mu.Lock()
 	c.selfCands = nil // mappings from the previous network are no longer valid
+	var cancelChecks []context.CancelFunc
+	for _, operation := range c.iceOperations {
+		cancelChecks = append(cancelChecks, operation.cancel)
+	}
 	c.mu.Unlock()
+	for _, cancel := range cancelChecks {
+		cancel()
+	}
 	c.mu.RLock()
 	peers := make([]*Peer, 0, len(c.peers))
 	for _, peer := range c.peers {
@@ -792,6 +815,17 @@ func (c *Controller) NetworkChanged(ctx context.Context) {
 			continue
 		}
 		c.Reconnect(peer.DeviceID())
+		if c.icePathFor(peer.DeviceID()) != nil {
+			c.closeICEPath(peer.DeviceID())
+			peer.endpointMu.Lock()
+			peer.mu.Lock()
+			peer.path, peer.selector.current = PathNone, PathNone
+			peer.mu.Unlock()
+			peer.endpointMu.Unlock()
+			if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil {
+				c.activateBridge(ctx, peer, bridge)
+			}
+		}
 		c.nudgePeer(ctx, peer)
 	}
 	c.gatherCandidates(ctx)
@@ -848,7 +882,7 @@ func (c *Controller) buildRecord(ctx context.Context) (discovery.PeerRecord, err
 		}
 	}
 
-	capabilities := protocol.DefaultCapabilities()
+	capabilities := c.capabilities()
 	for _, tag := range c.Config.DeviceTags {
 		capabilities = append(capabilities, "tag:"+tag)
 	}
@@ -1230,6 +1264,8 @@ func (c *Controller) newDispatcher() *signaling.Dispatcher {
 	dispatcher.Handle(protocol.TypeCandidate, c.onCandidate)
 	dispatcher.Handle(protocol.TypePunchRequest, c.onPunchRequest)
 	dispatcher.Handle(protocol.TypePunchAck, c.onPunchAck)
+	dispatcher.Handle(protocol.TypeICEOffer, c.onICEOffer)
+	dispatcher.Handle(protocol.TypeICEAnswer, c.onICEAnswer)
 	dispatcher.Handle(protocol.TypeWGReady, c.onWGReady)
 	dispatcher.Handle(protocol.TypeKeepalive, func(ctx context.Context, envelope protocol.Envelope) error {
 		if len(envelope.Payload) == 0 {
@@ -1262,7 +1298,7 @@ func (c *Controller) send(ctx context.Context, deviceID string, messageType prot
 func (c *Controller) sendHello(ctx context.Context, peer *Peer) {
 	hello := protocol.Hello{
 		Versions:     protocol.LocalVersionRange(),
-		Capabilities: protocol.DefaultCapabilities(),
+		Capabilities: c.capabilities(),
 		DeviceName:   c.Config.DeviceName,
 	}
 	if err := c.send(ctx, peer.DeviceID(), protocol.TypeHello, hello); err != nil {

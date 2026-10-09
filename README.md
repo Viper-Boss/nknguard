@@ -30,7 +30,7 @@ Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/re
 | 🗄️ **NAS / Linux** (ARM64, incl. ARM fnOS) | `nknguard-linux-arm64` | Needs root and `wireguard-tools`; see [Install the NAS](#1-install-the-nas) |
 | 🗄️ **NAS / Linux** (x86_64) | `nknguard-linux-amd64` | Same as above |
 | 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
-| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview, not yet tested on real devices; uninstall the previous build before upgrading |
+| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview; maintainer-signed builds with the same certificate upgrade in place and preserve pairing |
 
 Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview builds are not code-signed.
 
@@ -53,6 +53,7 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
 
 - 🔐 **WireGuard is the data plane.** All traffic is WireGuard-encrypted; NKNGuard never touches packet cryptography.
 - 🛰️ **NKN is the control plane — no server of ours.** Devices find each other and exchange signed records over NKN; control messages are end-to-end encrypted.
+- 🔗 **ICE direct paths with NKN standby.** Upgraded NAS and clients check IPv4/IPv6 UDP candidates independently of an active relay, then authenticate the selected path with WireGuard. See [ICE + NKN](docs/ICE-NKN.md) (Chinese).
 - ⚡ **Direct first, relay second.** NAT is punched with WireGuard's own handshake. If that fails, **WireGuard ciphertext** rides an NKN session while the direct path keeps being retried, and traffic moves back as soon as it works.
 - 📱 **Scan to pair, owner approves.** The QR holds only the NAS public key and a one-time request token — never the network secret. Every new device needs the six-digit code confirmed and approved on the NAS. Single devices can be revoked; a revoked phone gets a signed notice and disconnects at once.
 - 🇨🇳 **Built-in China seed.** A mainland-China community NKN seed is tried before the overseas official seeds; add your own node in the config.

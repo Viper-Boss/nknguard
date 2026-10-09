@@ -47,14 +47,15 @@ func TestRelayHandshakeCannotPromoteUnprovenAttempt(t *testing.T) {
 
 type endpointHandoffWG struct {
 	revokeWG
-	calls int
+	calls          int
+	bridgeEndpoint string
 }
 
 func (w *endpointHandoffWG) Stats(context.Context) ([]wireguard.PeerStats, error) {
 	w.calls++
 	endpoint := "198.51.100.2:51820"
 	if w.calls > 1 {
-		endpoint = "127.0.0.1:51821"
+		endpoint = w.bridgeEndpoint
 	}
 	return []wireguard.PeerStats{{PublicKey: "key", Endpoint: endpoint, LastHandshake: time.Now().Unix(), TransferRxBytes: 100}}, nil
 }
@@ -68,7 +69,8 @@ func TestReconcileRefreshesEndpointAfterProbeHandoff(t *testing.T) {
 	p.selector.DirectRecoveryHold = 0
 	// The shared snapshot saw an unproven candidate just before the worker
 	// restored the relay. That old endpoint must not become direct evidence.
-	c.WireGuard = &endpointHandoffWG{}
+	w := &endpointHandoffWG{}
+	c.WireGuard = w
 	a, b := net.Pipe()
 	defer b.Close()
 	bridge, err := relay.NewBridge(a, netip.MustParseAddrPort("127.0.0.1:51820"))
@@ -76,6 +78,7 @@ func TestReconcileRefreshesEndpointAfterProbeHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer bridge.Close()
+	w.bridgeEndpoint = bridge.LocalAddr().String()
 	c.bridges[p.DeviceID()] = bridge
 	c.reconcileOnce(context.Background())
 	if p.Path() != PathNKNRelay || c.Metrics().PeersDirect != 0 || bridge.Standby() {
