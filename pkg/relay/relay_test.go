@@ -2,11 +2,68 @@ package relay
 
 import (
 	"context"
+	"encoding/binary"
 	"net"
 	"net/netip"
 	"testing"
 	"time"
 )
+
+func TestStandbyDiscardsInboundAndOutboundUntilActivated(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wg.Close()
+	local, remote := net.Pipe()
+	defer remote.Close()
+	b, err := NewBridge(local, wg.LocalAddr().(*net.UDPAddr).AddrPort())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	b.SetStandby(true)
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	frame := make([]byte, 6)
+	binary.BigEndian.PutUint16(frame, 4)
+	copy(frame[2:], "data")
+	_ = remote.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := remote.Write(frame); err != nil {
+		t.Fatal(err)
+	}
+	_ = wg.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if _, _, err := wg.ReadFromUDPAddrPort(make([]byte, 32)); err == nil {
+		t.Fatal("standby packet reached WireGuard and could cause roaming")
+	}
+	_, _ = wg.WriteToUDPAddrPort([]byte("data"), b.LocalAddr())
+	_ = remote.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if _, err := remote.Read(make([]byte, 32)); err == nil {
+		t.Fatal("standby sent user traffic")
+	}
+	if b.Stats().BytesSent != 0 || b.Stats().BytesRecv != 0 {
+		t.Fatal("standby forwarded data")
+	}
+	b.SetStandby(false)
+	_ = remote.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := remote.Write(frame); err != nil {
+		t.Fatal(err)
+	}
+	_ = wg.SetReadDeadline(time.Now().Add(time.Second))
+	buf := make([]byte, 32)
+	n, _, err := wg.ReadFromUDPAddrPort(buf)
+	if err != nil || string(buf[:n]) != "data" {
+		t.Fatalf("activation: %q %v", buf[:n], err)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("standby pump leaked")
+	}
+}
 
 // Two fake "WireGuard" sockets talk to each other through two bridges joined
 // by a hub stream — the full relay data path, minus NKN.

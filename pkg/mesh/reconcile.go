@@ -115,6 +115,10 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		fresh := !seen.handshake.IsZero() && now.Sub(seen.handshake) < wireguard.HandshakeFreshness
 		viaBridge := isLoopbackEndpoint(seen.endpoint)
 		bridge := c.bridgeFor(peer.DeviceID())
+		// Prepare the fallback concurrently, including while direct is up.
+		if bridge == nil && c.Relay != nil && c.Signaling != nil && c.initiator(peer) {
+			c.spawn(func() { c.openRelay(ctx, peer, "prepare standby") })
+		}
 		// An attempt temporarily assigns unproven endpoints. The last
 		// handshake may belong to the relay; never promote it to direct or
 		// tear down the working bridge while the worker owns the endpoint.
@@ -146,9 +150,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			// replies even if the other side has persistent keepalive off.
 			c.spawn(func() { c.nudgePeer(ctx, peer) })
 		}
-		if fresh && receiveTimeout > 0 && silent >= receiveTimeout {
+		if receiveTimeout > 0 && silent >= receiveTimeout {
 			fresh = false
-			if viaBridge && bridge != nil {
+			if viaBridge && bridge != nil && !bridge.Standby() {
 				// The relayed stream stopped delivering. Drop it so the
 				// initiator opens a new one.
 				c.dropBridge(peer.DeviceID(), "no packets received")
@@ -171,10 +175,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		case PathDirectWG:
 			direct++
 			_, _ = peer.Apply(EventHandshakeOK, now)
-			// WireGuard has already roamed onto the direct endpoint by itself;
-			// the bridge is now idle and can go.
+			// Keep the session ready, but stop forwarding relay stragglers.
 			if bridge != nil && fresh && !viaBridge {
-				c.closeBridge(peer.DeviceID())
+				bridge.SetStandby(true)
 			}
 			continue
 		case PathNKNRelay:
@@ -184,6 +187,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			if peer.State() == StateDirect {
 				_, _ = peer.Apply(EventHandshakeStale, now)
 			}
+		}
+		if bridge != nil && bridge.Standby() && !fresh {
+			c.activateBridge(ctx, peer, bridge)
 		}
 
 		c.progress(ctx, peer, now, bridge)
@@ -294,6 +300,7 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		// so a failed direct attempt costs seconds of relay traffic and not
 		// the relay itself.
 		if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil && record.WireGuardPublicKey != "" {
+			bridge.SetStandby(false)
 			_ = c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String())
 		} else if initiator && c.Relay != nil && ctx.Err() == nil {
 			c.spawn(func() { c.openRelay(ctx, peer, "direct attempt failed") })
@@ -301,6 +308,9 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		return
 	}
 	peer.SetEndpoint(endpoint)
+	if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil {
+		bridge.SetStandby(true)
+	}
 	peer.resetReceive(time.Now())
 	peer.EndAttempt(true)
 	c.mu.Lock()
@@ -378,7 +388,7 @@ func (c *Controller) wireGuardLoopback(ctx context.Context) (netip.AddrPort, err
 // openRelay is the initiator's fallback: open a relayed stream and point the
 // peer's WireGuard endpoint at a local bridge into it.
 func (c *Controller) openRelay(ctx context.Context, peer *Peer, reason string) {
-	relayCtx, cancel := context.WithCancel(ctx)
+	relayCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	stop := context.AfterFunc(peer.lifetime, cancel)
 	defer func() { stop(); cancel() }()
 	if !peer.beginRelay(time.Now()) {
@@ -388,7 +398,9 @@ func (c *Controller) openRelay(ctx context.Context, peer *Peer, reason string) {
 	if c.bridgeFor(peer.DeviceID()) != nil {
 		return
 	}
-	_, _ = peer.Apply(EventRelayOpening, time.Now())
+	if peer.Path() != PathDirectWG {
+		_, _ = peer.Apply(EventRelayOpening, time.Now())
+	}
 	record := peer.Record()
 	stream, err := c.Relay.Open(relayCtx, relay.Peer{DeviceID: peer.DeviceID(), Address: record.NKNAddress})
 	if err != nil {
@@ -428,7 +440,9 @@ func (c *Controller) relayAcceptLoop(ctx context.Context, acceptor relay.Accepto
 			continue
 		}
 		c.ensureWireGuardPeer(ctx, peer)
-		_, _ = peer.Apply(EventRelayOpening, time.Now())
+		if peer.Path() != PathDirectWG {
+			_, _ = peer.Apply(EventRelayOpening, time.Now())
+		}
 		c.attachBridge(ctx, peer, session.Conn)
 	}
 }
@@ -445,11 +459,8 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 	seen := c.observe(ctx)[peer.Record().WireGuardPublicKey]
 	now := time.Now()
 	confirmed := peer.Path() == PathDirectWG || peer.Endpoint().String() == seen.endpoint
-	if confirmed && !isLoopbackEndpoint(seen.endpoint) && !seen.handshake.IsZero() &&
-		now.Sub(seen.handshake) < wireguard.HandshakeFreshness && peer.NoteReceive(seen.rxBytes, now) < c.receiveTimeout() {
-		_ = stream.Close()
-		return false
-	}
+	standby := confirmed && !isLoopbackEndpoint(seen.endpoint) && !seen.handshake.IsZero() &&
+		now.Sub(seen.handshake) < wireguard.HandshakeFreshness && (c.receiveTimeout() == 0 || peer.NoteReceive(seen.rxBytes, now) < c.receiveTimeout())
 	local, err := c.wireGuardLoopback(ctx)
 	if err != nil {
 		peer.NoteError(err.Error())
@@ -462,6 +473,7 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 		_ = stream.Close()
 		return false
 	}
+	bridge.SetStandby(standby)
 	c.mu.Lock()
 	if existing := c.bridges[peer.DeviceID()]; existing != nil {
 		c.mu.Unlock()
@@ -470,6 +482,23 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 	}
 	c.bridges[peer.DeviceID()] = bridge
 	c.mu.Unlock()
+	// Start draining before endpoint updates or nudges. A blocked setup step
+	// must not leave a bound UDP socket with no reader.
+	c.spawn(func() {
+		err := bridge.Run(ctx)
+		if ctx.Err() == nil && err != nil {
+			c.logger().Warn("relay stream stopped", "peer", peer.DeviceID(), "error", err)
+		}
+		c.mu.Lock()
+		if c.bridges[peer.DeviceID()] == bridge {
+			delete(c.bridges, peer.DeviceID())
+		}
+		c.mu.Unlock()
+	})
+	if standby {
+		c.logger().Info("relay standby ready", "peer", peer.DeviceID())
+		return true
+	}
 	// The previous path's silence is not evidence about this new stream.
 	// Allow its first round trip before applying the receive timeout.
 	peer.resetReceive(time.Now())
@@ -495,15 +524,27 @@ func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Co
 			c.Nudge(ctx, addr)
 		}
 	}
-	c.spawn(func() {
-		_ = bridge.Run(ctx)
-		c.mu.Lock()
-		if c.bridges[peer.DeviceID()] == bridge {
-			delete(c.bridges, peer.DeviceID())
-		}
-		c.mu.Unlock()
-	})
 	return true
+}
+
+// activateBridge reuses the prepared session after direct stops receiving.
+func (c *Controller) activateBridge(ctx context.Context, peer *Peer, bridge *relay.Bridge) {
+	if !peer.endpointMu.TryLock() {
+		return
+	}
+	defer peer.endpointMu.Unlock()
+	if peer.Revoked() || c.bridgeFor(peer.DeviceID()) != bridge || !bridge.Standby() {
+		return
+	}
+	bridge.SetStandby(false)
+	if err := c.WireGuard.UpdateEndpoint(ctx, peer.Record().WireGuardPublicKey, bridge.LocalAddr().String()); err != nil {
+		peer.NoteError("activate relay: " + err.Error())
+		c.dropBridge(peer.DeviceID(), "endpoint update failed")
+		return
+	}
+	peer.resetReceive(time.Now())
+	c.nudgePeer(ctx, peer)
+	c.logger().Info("activated prepared relay", "peer", peer.DeviceID())
 }
 
 func (c *Controller) closeBridge(deviceID string) {

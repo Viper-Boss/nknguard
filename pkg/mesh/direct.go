@@ -68,7 +68,7 @@ type WireGuardStrategy struct {
 func (s *WireGuardStrategy) Attempt(ctx context.Context, attempt DirectAttempt) (netip.AddrPort, error) {
 	perCandidate := s.PerCandidate
 	if perCandidate <= 0 {
-		perCandidate = 3 * time.Second
+		perCandidate = 6 * time.Second
 	}
 	poll := s.PollInterval
 	if poll <= 0 {
@@ -206,11 +206,14 @@ func (s *WireGuardStrategy) handshakeAfter(ctx context.Context, publicKey string
 // handshake to deliver it — that is the whole purpose; the byte itself is
 // thrown away at the far end.
 func UDPNudge(ctx context.Context, virtualIP netip.Addr) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "udp", netip.AddrPortFrom(virtualIP, 9).String())
 	if err != nil {
 		return
 	}
+	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, _ = conn.Write([]byte{0})
 	_ = conn.Close()
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/nat"
+	"github.com/Viper-Boss/nknguard/pkg/relay"
 )
 
 // maxTransitionHistory is how many state changes are kept per peer. Enough to
@@ -331,6 +332,7 @@ func (p *Peer) ShouldRetryDirect(now time.Time) bool {
 // beyond public keys, which is what lets the diagnostics bundle include it
 // verbatim.
 type Snapshot struct {
+	Relay              *relay.Stats `json:"relay,omitempty"`
 	DeviceID           string       `json:"device_id"`
 	Name               string       `json:"name,omitempty"`
 	State              PeerState    `json:"state"`

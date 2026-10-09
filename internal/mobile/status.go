@@ -43,6 +43,8 @@ type Status struct {
 	NextDirectRetry  time.Time `json:"next_direct_retry,omitempty"`
 	DHTEnabled       bool      `json:"dht_enabled"`
 	DHTPeers         int       `json:"dht_peers"`
+	RelayReady       bool      `json:"relay_ready"`
+	RelayStandby     bool      `json:"relay_standby"`
 }
 
 func (a *Agent) status() Status {
@@ -98,6 +100,9 @@ func (a *Agent) status() Status {
 	status.NASName = nas.Name
 	status.NASVirtualIP = nas.VirtualIP
 	status.DirectAttempting = nas.DirectAttempting
+	if nas.Relay != nil {
+		status.RelayReady, status.RelayStandby = nas.Relay.Open, nas.Relay.Standby
+	}
 	status.NextDirectRetry = nas.NextDirectRetry
 	status.DHTEnabled, status.DHTPeers, _ = controller.DiscoveryStatus()
 	if nas.VirtualIP != "" {
