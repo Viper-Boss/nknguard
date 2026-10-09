@@ -28,6 +28,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import io.github.viperboss.nknguard.NkgApp
+import io.github.viperboss.nknguard.core.StatusRecovery
 import io.github.viperboss.nknguard.vpn.NkgVpnService
 import org.json.JSONObject
 import java.time.OffsetDateTime
@@ -138,6 +139,10 @@ class MainActivity : Activity(), NkgApp.Listener {
     // ---- actions ------------------------------------------------------------------
 
     private fun onConnectClicked() {
+        if (status.optString("phase") == "core_unavailable" && (!status.optBoolean("paired") || status.optBoolean("revoked"))) {
+            background { app.ensureCore(); app.refreshStatus() }
+            return
+        }
         if (status.optBoolean("connected")) {
             NkgVpnService.disconnect(this)
             return
@@ -335,7 +340,7 @@ class MainActivity : Activity(), NkgApp.Listener {
         deviceLine.text = app.info.optString("device_id").let { if (it.isEmpty()) "正在启动核心…" else "本机设备 ID：$it" }
         statusTitle.text = Text.phaseTitle(status)
         val error = status.optString("last_error")
-        statusHint.text = listOf(Text.phaseHint(status), if (phase == "waiting" || phase == "error" || phase == "connecting_nkn") error else "")
+        statusHint.text = listOf(Text.phaseHint(status), if (phase in setOf("waiting", "error", "connecting_nkn", "core_unavailable")) error else "")
             .filter { it.isNotEmpty() }.joinToString("\n")
         (statusDot.background as GradientDrawable).setColor(
             when {
@@ -346,8 +351,8 @@ class MainActivity : Activity(), NkgApp.Listener {
             },
         )
 
-        connectButton.visibility = if (paired && !revoked) View.VISIBLE else View.GONE
-        connectButton.text = if (connected) "断开" else "连接"
+        connectButton.visibility = if ((paired && !revoked) || phase == "core_unavailable") View.VISIBLE else View.GONE
+        connectButton.text = if (connected) "断开" else if (phase == "core_unavailable" && (!paired || revoked)) "重试启动" else "连接"
         style(connectButton, primary = !connected)
         connectButton.isEnabled = !busy
         retryButton.visibility = if (connected && !revoked && status.optString("phase") != "direct") View.VISIBLE else View.GONE
@@ -355,7 +360,7 @@ class MainActivity : Activity(), NkgApp.Listener {
         retryButton.text = if (status.optBoolean("direct_attempting")) "正在尝试直连…" else "重试直连"
 
         val pairingActive = pairing != null
-        scanButton.visibility = if ((!paired || revoked) && !pairingActive) View.VISIBLE else View.GONE
+        scanButton.visibility = if (StatusRecovery.canPair(status) && !pairingActive) View.VISIBLE else View.GONE
         pasteButton.visibility = scanButton.visibility
         forgetButton.visibility = if (paired || revoked) View.VISIBLE else View.GONE
 

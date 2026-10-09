@@ -43,6 +43,7 @@ class CoreProcess(
     private val generationCounter = AtomicLong(0)
 
     val logs = LogRing(300)
+    val generation: Long get() = generationCounter.get()
 
     /** Where the core listens for the VPN file descriptor. */
     val fdSocket: File get() = File(context.filesDir, "run/tun.sock")

@@ -25,8 +25,8 @@ android {
         applicationId = "io.github.viperboss.nknguard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.2.8"
+        versionCode = 10
+        versionName = "0.2.9"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -70,6 +70,7 @@ dependencies {
     // scanning works on phones sold in mainland China.
     implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
 
 tasks.named("preBuild") {

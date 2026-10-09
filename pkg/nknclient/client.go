@@ -26,9 +26,11 @@ import (
 const Identifier = "nknguard"
 
 // SubClients is how many parallel NKN node connections the MultiClient keeps.
-// Two is NasSimHub's production value: enough that one flaky node does not
-// stall signalling, few enough for an ARM NAS.
-const SubClients = 2
+// Each sub-client identifier maps to a different position in the NKN ring.
+// Recreating only the same two identifiers kept retrying the same unreachable
+// nodes on mobile networks. Keep four paths on both ends; IDs 0 and 1 remain
+// compatible with older peers, and the public base address stays unchanged.
+const SubClients = 4
 
 // ConnectTimeout bounds the initial connection to the NKN network.
 const ConnectTimeout = 30 * time.Second

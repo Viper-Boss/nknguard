@@ -44,6 +44,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "nkg-vpn").apply { isDaemon = true } }
     @Volatile private var connected = false
     @Volatile private var stopping = false
+    private var sessionGeneration: Long = -1
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
@@ -86,6 +87,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun connect() {
         if (connected) return
         app.ensureCore()
+        sessionGeneration = app.core.generation
         // The core may have been started on a previous Wi-Fi/mobile network
         // while the VPN was disconnected. Refresh before candidate gathering.
         app.core.call("network", NetworkInfo.describe(this))
@@ -140,7 +142,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun disconnect(): Boolean {
         stopping = true
         unwatchNetwork()
-        if (app.core.isRunning) {
+        if (app.core.isRunning && app.core.generation == sessionGeneration) {
             try {
                 app.core.call("disconnect", timeoutMillis = 15_000)
             } catch (error: Exception) {
@@ -154,6 +156,8 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             }
         }
         connected = false
+        // Reinitialize a terminated fallback core without starting a VPN.
+        // This restores the Connect button from authoritative saved state.
         runCatching { app.refreshStatus() }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -174,7 +178,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             private fun changed() {
                 if (stopping) return
                 runCatching { executor.execute {
-                    if (!connected) return@execute
+                    if (!connected || stopping) return@execute
                     // A queued event may describe an old network or the VPN.
                     // Use the current physical network for both operations.
                     val physical = NetworkInfo.underlying(this@NkgVpnService)
@@ -216,7 +220,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     // ---- state from the core -------------------------------------------------
 
     override fun onStatus(status: JSONObject) {
-        if (!connected) return
+        if (!connected || stopping) return
         if (!status.optBoolean("connected")) {
             // The core ended the session itself (for example after a
             // revocation); follow it.
@@ -237,7 +241,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     }
 
     override fun onCoreProblem(message: String) {
-        if (!connected) return
+        if (!connected || stopping) return
         connected = false
         executor.execute {
             val stopped = disconnect()

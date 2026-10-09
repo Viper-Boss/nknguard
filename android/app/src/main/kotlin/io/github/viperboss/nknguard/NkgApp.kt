@@ -8,6 +8,7 @@ import io.github.viperboss.nknguard.core.CoreException
 import io.github.viperboss.nknguard.core.CoreProcess
 import io.github.viperboss.nknguard.core.NetworkInfo
 import io.github.viperboss.nknguard.core.SecretVault
+import io.github.viperboss.nknguard.core.StatusRecovery
 import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
@@ -37,6 +38,7 @@ class NkgApp : Application() {
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val initLock = Any()
     @Volatile private var initialized = false
+    @Volatile private var deliberateStop = false
 
     @Volatile var info: JSONObject = JSONObject()
         private set
@@ -48,13 +50,15 @@ class NkgApp : Application() {
     override fun onCreate() {
         super.onCreate()
         vault = SecretVault(this)
-        core = CoreProcess(this, ::handleEvent) {
-            // A spurious reset only costs one extra, idempotent init.
+        core = CoreProcess(this, ::handleEvent) { generation ->
+            if (generation != core.generation) return@CoreProcess
             initialized = false
-            status = JSONObject().put("phase", "idle")
-            main.post { listeners.forEach { it.onCoreProblem("NKNGuard 核心已退出") } }
+            publishUnavailable("NKNGuard 核心已退出，可点击连接恢复")
+            if (!deliberateStop) main.post {
+                if (generation == core.generation) listeners.forEach { it.onCoreProblem("NKNGuard 核心已退出") }
+            }
         }
-        worker.execute { runCatching { ensureCore() } }
+        worker.execute { runCatching { ensureCore() }.onFailure { publishUnavailable(it.message ?: "核心启动失败") } }
     }
 
     fun addListener(listener: Listener) = listeners.add(listener)
@@ -63,9 +67,14 @@ class NkgApp : Application() {
     /** Stops a stuck VPN core; serialize with initialization/restart. */
     fun stopCore() {
         synchronized(initLock) {
-            core.stop()
-            initialized = false
-            publishStatus(JSONObject().put("phase", "idle").put("connected", false))
+            deliberateStop = true
+            try {
+                core.stop()
+                initialized = false
+                publishUnavailable("连接已断开，正在恢复核心")
+            } finally {
+                deliberateStop = false
+            }
         }
     }
 
@@ -95,7 +104,7 @@ class NkgApp : Application() {
                 .put("device_name", defaultDeviceName)
             info = core.call("init", args)
             initialized = true
-            refreshStatus()
+            publishStatus(core.call("status", timeoutMillis = 5_000))
             return info
         }
     }
@@ -103,9 +112,10 @@ class NkgApp : Application() {
     /** Asks the core for its status and publishes it. Blocking. */
     fun refreshStatus(): JSONObject {
         val current = try {
+            if (!core.isRunning || !initialized) ensureCore()
             core.call("status", timeoutMillis = 5_000)
         } catch (error: CoreException) {
-            JSONObject().put("phase", "error").put("last_error", error.message)
+            StatusRecovery.unavailable(status, error.message ?: "核心暂时无法响应")
         }
         publishStatus(current)
         return current
@@ -115,6 +125,8 @@ class NkgApp : Application() {
         status = current
         main.post { listeners.forEach { it.onStatus(current) } }
     }
+
+    private fun publishUnavailable(message: String) = publishStatus(StatusRecovery.unavailable(status, message))
 
     private fun handleEvent(name: String, data: JSONObject) {
         when (name) {
@@ -152,6 +164,11 @@ class NkgApp : Application() {
             append("NKNGuard Android $version\n")
             append("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ${Build.SUPPORTED_ABIS.firstOrNull()}\n")
             append(core)
+            append("\ncore_process: running=${this@NkgApp.core.isRunning} generation=${this@NkgApp.core.generation}\n")
+            // Only fixed lifecycle records with a numeric exit code. Do not
+            // export arbitrary stderr, which could contain sensitive data.
+            this@NkgApp.core.logs.snapshot().filter { it.matches(Regex("core exited with status -?[0-9]+")) }
+                .takeLast(5).forEach { append(it).append('\n') }
         }
     }
 }

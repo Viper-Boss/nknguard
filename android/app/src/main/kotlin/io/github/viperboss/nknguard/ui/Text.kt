@@ -10,6 +10,7 @@ object Text {
     fun phaseTitle(status: JSONObject): String = when (status.optString("phase")) {
         "not_paired" -> "未配对"
         "idle" -> "未连接"
+        "core_unavailable" -> "连接已停止"
         "connecting" -> "正在建立 VPN…"
         "connecting_nkn" -> "正在连接 NKN 网络…"
         "waiting" -> when {
@@ -28,6 +29,7 @@ object Text {
     fun phaseHint(status: JSONObject): String = when (status.optString("phase")) {
         "not_paired" -> "在 NAS 面板“配对与授权”中生成二维码，然后扫码或粘贴配对内容。"
         "idle" -> if (status.optBoolean("revoked")) "NAS 已撤销本机授权，请重新配对。" else "点击“连接”后才会启动 VPN。"
+        "core_unavailable" -> "核心暂时无法响应，点击按钮恢复。已有配对信息会保留。"
         "connecting", "connecting_nkn" -> "VPN 只接管 NAS 覆盖网络地址，普通上网不受影响。"
         "waiting" -> if (status.optString("nas_virtual_ip").isEmpty()) "NKN 已连接，正在获取 NAS 的连接信息。" else "正在验证 NAS 隧道；直连与备用中继同时准备，握手成功后才显示已连接。"
         "direct" -> "WireGuard 与 NAS 直接握手成功，流量不经过第三方。"
