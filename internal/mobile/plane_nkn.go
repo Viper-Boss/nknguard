@@ -22,9 +22,11 @@ func openNKN(ctx context.Context, seed []byte, seedRPC []string) (*Plane, error)
 		return nil, err
 	}
 	transport := nknsignal.New(client)
+	transport.StartHealthMonitor()
 	return &Plane{
 		Signaling: transport,
 		Relay:     nknrelay.New(client, transport.DeviceFor),
 		Close:     transport.Close,
+		Health:    transport.ConnectionStatus,
 	}, nil
 }

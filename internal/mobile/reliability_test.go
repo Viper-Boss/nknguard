@@ -10,10 +10,30 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
+	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
+
+func TestNKNStatusRequiresRecentDeliveryAndKeepsDirectPhase(t *testing.T) {
+	for _, phase := range []string{PhaseWaiting, PhaseDirect} {
+		for _, state := range []string{"checking", "reconnecting", "closed", "connected"} {
+			a := &Agent{StateDir: t.TempDir()}
+			a.session = &session{phase: phase, nknAddress: "nknguard.public", started: time.Now(), nknHealth: func() nknclient.ConnectionStatus { return nknclient.ConnectionStatus{State: state} }}
+			status := a.status()
+			if status.NKNConnected != (state == "connected") {
+				t.Fatalf("address mistaken for delivery: %+v", status)
+			}
+			if phase == PhaseDirect && status.Phase != PhaseDirect {
+				t.Fatal("control check stopped direct phase")
+			}
+			if phase == PhaseWaiting && state != "connected" && status.Phase != PhaseNKN {
+				t.Fatal("unhealthy control path still displayed waiting for NAS")
+			}
+		}
+	}
+}
 
 func TestInitializationRequiresSavedIdentity(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

@@ -12,7 +12,12 @@ object Text {
         "idle" -> "未连接"
         "connecting" -> "正在建立 VPN…"
         "connecting_nkn" -> "正在连接 NKN 网络…"
-        "waiting" -> "等待与 NAS 握手…"
+        "waiting" -> when {
+            status.optBoolean("direct_attempting") -> "正在验证直连…"
+            status.optBoolean("relay_ready") -> "正在验证中继隧道…"
+            status.optString("nas_virtual_ip").isEmpty() -> "正在获取 NAS 连接信息…"
+            else -> "正在建立 NAS 连接…"
+        }
         "direct" -> "已连接 · 直连"
         "relay" -> "已连接 · NKN 中继"
         "revoked" -> "授权已失效"
