@@ -45,6 +45,44 @@ func TestRelayHandshakeCannotPromoteUnprovenAttempt(t *testing.T) {
 	}
 }
 
+type endpointHandoffWG struct {
+	revokeWG
+	calls int
+}
+
+func (w *endpointHandoffWG) Stats(context.Context) ([]wireguard.PeerStats, error) {
+	w.calls++
+	endpoint := "198.51.100.2:51820"
+	if w.calls > 1 {
+		endpoint = "127.0.0.1:51821"
+	}
+	return []wireguard.PeerStats{{PublicKey: "key", Endpoint: endpoint, LastHandshake: time.Now().Unix(), TransferRxBytes: 100}}, nil
+}
+
+func TestReconcileRefreshesEndpointAfterProbeHandoff(t *testing.T) {
+	c := New()
+	p := c.peerFor("remote")
+	p.record = discovery.PeerRecord{DeviceID: "remote", WireGuardPublicKey: "key"}
+	p.markInstalled("key")
+	p.path, p.selector.current = PathNKNRelay, PathNKNRelay
+	p.selector.DirectRecoveryHold = 0
+	// The shared snapshot saw an unproven candidate just before the worker
+	// restored the relay. That old endpoint must not become direct evidence.
+	c.WireGuard = &endpointHandoffWG{}
+	a, b := net.Pipe()
+	defer b.Close()
+	bridge, err := relay.NewBridge(a, netip.MustParseAddrPort("127.0.0.1:51820"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bridge.Close()
+	c.bridges[p.DeviceID()] = bridge
+	c.reconcileOnce(context.Background())
+	if p.Path() != PathNKNRelay || c.Metrics().PeersDirect != 0 || bridge.Standby() {
+		t.Fatal("snapshot from the completed probe promoted relay handshake to direct")
+	}
+}
+
 func TestDirectProbeBudgetIncludesPublicCandidate(t *testing.T) {
 	now := time.Now()
 	var remote []nat.EndpointCandidate

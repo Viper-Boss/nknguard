@@ -98,6 +98,12 @@ func (a *Agent) pair(ctx context.Context, args pairArgs) (any, error) {
 			status.Error = pairError(pairCtx, err)
 			a.Logger.Info("pairing did not complete", "component", "pairing", "error", status.Error)
 			a.emit("pair_status", status)
+		} else {
+			// The approved event allows the UI to connect immediately. Clear
+			// the pairing claim before publishing that readiness promise.
+			status.Stage = PairApproved
+			a.emit("pair_status", status)
+			a.Logger.Info("pairing approved", "component", "pairing", "nas", invite.NASID)
 		}
 	}()
 	return status, nil
@@ -195,9 +201,6 @@ func (a *Agent) runPairing(ctx context.Context, invite app.PairInvite, device *i
 			if err := a.savePairing(invite, device, name, approval.JoinSecret); err != nil {
 				return err
 			}
-			status.Stage = PairApproved
-			a.emit("pair_status", status)
-			a.Logger.Info("pairing approved", "component", "pairing", "nas", invite.NASID)
 			return nil
 		}
 	}
