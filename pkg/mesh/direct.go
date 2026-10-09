@@ -134,16 +134,20 @@ func directCandidates(remote, local []nat.EndpointCandidate, limit int) []nat.En
 		if err != nil {
 			return 0
 		}
-		if candidate.Type == nat.CandidateReflexive {
-			return 9000
-		}
 		if addr.Is6() && addr.IsGlobalUnicast() && !addr.IsPrivate() {
 			return 8000
 		}
-		if addr.Is4() && addr.IsPrivate() {
+		if addr.IsPrivate() {
+			bits := 24
+			if addr.Is6() {
+				bits = 64
+			}
 			for _, own := range local {
 				ip, err := netip.ParseAddr(own.IP)
-				if err == nil && own.Type == nat.CandidateHost && ip.Is4() && netip.PrefixFrom(ip, 24).Contains(addr) {
+				if err == nil && own.Type == nat.CandidateHost && ip.BitLen() == addr.BitLen() && netip.PrefixFrom(ip, bits).Contains(addr) {
+					if addr.Is6() {
+						return 8000
+					}
 					return 10000
 				}
 			}
@@ -152,7 +156,12 @@ func directCandidates(remote, local []nat.EndpointCandidate, limit int) []nat.En
 		if addr.Is4() && netip.MustParsePrefix("100.64.0.0/10").Contains(addr) {
 			return 0
 		}
-		return 7000
+		// Prefer usable IPv4 mappings before IPv6, retaining IPv6 as a
+		// fallback when NAT or filtering prevents an IPv4 handshake.
+		if addr.Is4() {
+			return 9000
+		}
+		return 8000
 	}
 	filtered := out[:0]
 	for _, candidate := range out {

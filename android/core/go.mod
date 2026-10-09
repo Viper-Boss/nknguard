@@ -136,6 +136,8 @@ require (
 // The Android core is built from this repository's sources.
 replace github.com/Viper-Boss/nknguard => ../..
 
+replace github.com/nknorg/nkn-sdk-go => ../../third_party/nkn-sdk-go
+
 // nkn-sdk-go imports golang.org/x/mobile/asset only to keep gomobile in its
 // module graph. That package needs cgo on Android, which this pure-Go build
 // does not use, so a stub stands in for it. Nothing calls it.

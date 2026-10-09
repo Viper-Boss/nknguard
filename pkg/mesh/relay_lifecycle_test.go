@@ -126,6 +126,25 @@ func TestPrivateCandidatesRequireSharedHostNetwork(t *testing.T) {
 	}
 }
 
+func TestIPv4PreferredAndUnrelatedIPv6ULARejected(t *testing.T) {
+	now := time.Now()
+	v4 := nat.NewCandidate(nat.CandidateReflexive, netip.MustParseAddrPort("198.51.100.2:51820"), time.Minute, now)
+	v6 := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("[2001:db8::2]:51820"), time.Minute, now)
+	ula := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("[fd7a:115c:a1e0::2]:51820"), time.Minute, now)
+	local := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("[2001:db8:1::1]:1234"), time.Minute, now)
+	got := directCandidates([]nat.EndpointCandidate{ula, v6, v4}, []nat.EndpointCandidate{local}, 4)
+	if len(got) != 2 || got[0].IP != v4.IP || got[1].IP != v6.IP {
+		t.Fatalf("invalid IPv4 preference / ULA filtering: %+v", got)
+	}
+	if got := directCandidates([]nat.EndpointCandidate{v6}, []nat.EndpointCandidate{local}, 4); len(got) != 1 {
+		t.Fatal("IPv6 fallback lost")
+	}
+	localULA := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("[fd7a:115c:a1e0::3]:1234"), time.Minute, now)
+	if got := directCandidates([]nat.EndpointCandidate{ula}, []nat.EndpointCandidate{localULA}, 4); len(got) != 1 {
+		t.Fatal("shared IPv6 LAN lost")
+	}
+}
+
 func TestLateRelayCannotReplaceReceivingDirectEndpoint(t *testing.T) {
 	c := New()
 	p := c.peerFor("remote")

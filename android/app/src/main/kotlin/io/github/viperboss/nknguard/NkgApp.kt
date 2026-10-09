@@ -9,6 +9,7 @@ import io.github.viperboss.nknguard.core.CoreProcess
 import io.github.viperboss.nknguard.core.NetworkInfo
 import io.github.viperboss.nknguard.core.SecretVault
 import io.github.viperboss.nknguard.core.StatusRecovery
+import io.github.viperboss.nknguard.core.CrashReport
 import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
@@ -169,6 +170,11 @@ class NkgApp : Application() {
             // export arbitrary stderr, which could contain sensitive data.
             this@NkgApp.core.logs.snapshot().filter { it.matches(Regex("core exited with status -?[0-9]+")) }
                 .takeLast(5).forEach { append(it).append('\n') }
+            val crash = CrashReport.extract(this@NkgApp.core.logs.snapshot())
+            if (crash.isNotEmpty()) {
+                append("\nlast core crash (redacted, memory only):\n")
+                crash.forEach { append(it).append('\n') }
+            }
         }
     }
 }
