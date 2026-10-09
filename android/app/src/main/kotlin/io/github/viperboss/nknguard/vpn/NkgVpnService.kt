@@ -86,6 +86,9 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun connect() {
         if (connected) return
         app.ensureCore()
+        // The core may have been started on a previous Wi-Fi/mobile network
+        // while the VPN was disconnected. Refresh before candidate gathering.
+        app.core.call("network", NetworkInfo.describe(this))
         val prepared = app.core.call("prepare")
         val overlay = prepared.getString("route_cidr")
         val (routeAddress, routeBits) = overlay.split("/").let { it[0] to it[1].toInt() }

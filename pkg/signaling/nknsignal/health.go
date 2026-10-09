@@ -5,6 +5,7 @@ package nknsignal
 import (
 	"bytes"
 	"crypto/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -69,6 +70,15 @@ func (h *healthState) failed(state string, now time.Time) {
 	h.failures++
 }
 
+func (h *healthState) failWithError(state string, now time.Time, reason string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.nonce = nil
+	h.status.State, h.status.CheckedAt = state, now
+	h.status.LatencyMS, h.status.LastError = 0, reason
+	h.failures++
+}
+
 // Wait for two failed checks before changing nodes; one delayed message
 // should not disturb otherwise usable NKN sessions.
 func (h *healthState) reconnectDue() bool {
@@ -95,6 +105,14 @@ func (t *Transport) ConnectionStatus() nknclient.ConnectionStatus {
 	if status.State == "connected" && time.Since(status.LastSuccess) > healthInterval+healthTimeout {
 		status.State = "reconnecting"
 	}
+	if t.client != nil {
+		for id, client := range t.client.GetClients() {
+			if node := client.GetNode(); node != nil {
+				status.Nodes = append(status.Nodes, nknclient.NodeStatus{ClientID: id, Endpoint: node.Addr, Closed: client.IsClosed()})
+			}
+		}
+		sort.Slice(status.Nodes, func(i, j int) bool { return status.Nodes[i].ClientID < status.Nodes[j].ClientID })
+	}
 	return status
 }
 
@@ -114,7 +132,7 @@ func (t *Transport) StartHealthMonitor() {
 				}
 				nonce := make([]byte, 32)
 				if _, err := rand.Read(nonce); err != nil {
-					t.health.failed("reconnecting", time.Now())
+					t.health.failWithError("reconnecting", time.Now(), "probe nonce: "+err.Error())
 					return
 				}
 				select {
@@ -125,7 +143,7 @@ func (t *Transport) StartHealthMonitor() {
 				payload := t.health.begin(nonce, started)
 				_, err := t.client.Send(nkn.NewStringArray(t.health.self), payload, &nkn.MessageConfig{NoReply: true, MaxHoldingSeconds: 0})
 				if err != nil {
-					t.health.failed("reconnecting", time.Now())
+					t.health.failWithError("reconnecting", time.Now(), "probe send: "+err.Error())
 				} else {
 					timer := time.NewTimer(time.Until(started.Add(healthTimeout)))
 					select {
@@ -135,7 +153,7 @@ func (t *Transport) StartHealthMonitor() {
 					case <-t.health.replies:
 						timer.Stop()
 					case <-timer.C:
-						t.health.failed("reconnecting", time.Now())
+						t.health.failWithError("reconnecting", time.Now(), "self-message receive timed out")
 					}
 				}
 				if t.health.reconnectDue() {

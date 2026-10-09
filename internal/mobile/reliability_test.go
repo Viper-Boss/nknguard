@@ -4,17 +4,49 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
+	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
+
+func TestNetworkJSONFeedsLANHostCandidatesWithoutNetlink(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p := startPhone(t, ctx, signaling.NewSwitch(), relay.NewHub())
+	p.must("init", map[string]any{"network_handle": "wifi", "local_addresses": []string{"192.168.120.196", "10.88.2.245"}}, nil)
+	socket, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer socket.Close()
+	g := nat.Gatherer{Interfaces: p.agent.interfaceAddrs}
+	candidates, _, err := g.Gather(ctx, socket)
+	if err != nil || len(candidates) != 1 || candidates[0].Type != nat.CandidateHost || candidates[0].IP != "192.168.120.196" {
+		t.Fatalf("physical LAN address missing or overlay advertised: %+v %v", candidates, err)
+	}
+	// An idempotent init after pairing must not clear the network report.
+	p.must("init", nil, nil)
+	candidates, _, err = g.Gather(ctx, socket)
+	if err != nil || len(candidates) != 1 || candidates[0].IP != "192.168.120.196" {
+		t.Fatal("empty init erased physical address")
+	}
+	var report struct {
+		Text string `json:"text"`
+	}
+	p.must("diagnostics", nil, &report)
+	if !strings.Contains(report.Text, "underlying_address: 192.168.120.196") {
+		t.Fatal("network report missing from diagnostics")
+	}
+}
 
 func TestNKNStatusRequiresRecentDeliveryAndKeepsDirectPhase(t *testing.T) {
 	for _, phase := range []string{PhaseWaiting, PhaseDirect} {

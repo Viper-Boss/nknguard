@@ -11,7 +11,9 @@
 package nknclient
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"strings"
 	"time"
@@ -46,6 +48,8 @@ type Options struct {
 
 // Open connects and waits for the first node connection.
 func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
+	ctx, cancel := context.WithTimeout(ctx, ConnectTimeout)
+	defer cancel()
 	account, err := nkn.NewAccount(options.Seed)
 	if err != nil {
 		return nil, fmt.Errorf("nknclient: account: %w", err)
@@ -88,6 +92,11 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 	}
 	select {
 	case <-client.OnConnect.C:
+		// Registration alone does not prove NKN can deliver a message.
+		if err := checkDelivery(ctx, client); err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("nknclient: initial delivery check: %w", err)
+		}
 		return client, nil
 	case <-timer.C:
 		_ = client.Close()
@@ -95,6 +104,48 @@ func Open(ctx context.Context, options Options) (*nkn.MultiClient, error) {
 	case <-ctx.Done():
 		_ = client.Close()
 		return nil, ctx.Err()
+	}
+}
+
+func checkDelivery(ctx context.Context, client *nkn.MultiClient) error {
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return err
+	}
+	payload := append([]byte("NKNGuard-bootstrap-v1:"), nonce...)
+	return waitDelivery(ctx, NormaliseAddress(client.Address()), payload, client.OnMessage.C, func() error {
+		_, err := client.Send(nkn.NewStringArray(client.Address()), payload, &nkn.MessageConfig{NoReply: true, MaxHoldingSeconds: 0})
+		return err
+	})
+}
+
+// Construction has no signalling consumer yet. Only an encrypted, fresh
+// self-message can prove delivery; an unrelated buffered message cannot.
+func waitDelivery(ctx context.Context, self string, payload []byte, messages <-chan *nkn.Message, send func() error) error {
+	sent := make(chan error, 1)
+	go func() { sent <- send() }()
+	select {
+	case err := <-sent:
+		if err != nil {
+			return fmt.Errorf("send: %w", err)
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case message, ok := <-messages:
+			if !ok {
+				return fmt.Errorf("receive channel closed")
+			}
+			if message != nil && message.Encrypted && NormaliseAddress(message.Src) == self && bytes.Equal(message.Data, payload) {
+				return nil
+			}
+		}
 	}
 }
 
