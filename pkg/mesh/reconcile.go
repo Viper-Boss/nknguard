@@ -134,7 +134,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			// Incoming authenticated relay packets can prove the fallback
 			// while probes are ongoing. Only direct promotion is forbidden.
 			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
-				if peer.SelectPath(Observation{Now: now, RelayOpen: true}) == PathNKNRelay {
+				if peer.SelectPath(Observation{Now: now, RelayOpen: true, RelayActive: true}) == PathNKNRelay {
 					_, _ = peer.Apply(EventRelayOpen, now)
 				}
 			}
@@ -175,6 +175,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			Now:           now,
 			DirectHealthy: fresh && !viaBridge,
 			RelayOpen:     bridge != nil && fresh && viaBridge,
+			RelayActive:   bridge != nil && fresh && viaBridge,
 		})
 		peer.endpointMu.Unlock()
 		if path != before {

@@ -83,6 +83,21 @@ func TestReconcileRefreshesEndpointAfterProbeHandoff(t *testing.T) {
 	}
 }
 
+func TestVerifiedRelayTrafficOverridesDirectLossGrace(t *testing.T) {
+	s := DefaultSelector()
+	now := time.Now()
+	s.Select(Observation{Now: now, DirectHealthy: true})
+	if got := s.Select(Observation{Now: now.Add(time.Millisecond), RelayOpen: true, RelayActive: true}); got != PathNKNRelay {
+		t.Fatal("actual relay traffic remained labelled direct during grace")
+	}
+	// A standby stream by itself remains subject to the normal grace.
+	s.Reset()
+	s.Select(Observation{Now: now, DirectHealthy: true})
+	if got := s.Select(Observation{Now: now.Add(time.Millisecond), RelayOpen: true}); got != PathDirectWG {
+		t.Fatal("unconfirmed standby stream bypassed direct loss grace")
+	}
+}
+
 func TestDirectProbeBudgetIncludesPublicCandidate(t *testing.T) {
 	now := time.Now()
 	var remote []nat.EndpointCandidate
