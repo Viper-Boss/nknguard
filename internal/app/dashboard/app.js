@@ -3,6 +3,11 @@ const setText = (id, value) => { byId(id).textContent = value ?? '—'; };
 const pathLabel = path => ({'direct-wg':'WireGuard 直连','nkn-relay':'NKN 中继','none':'等待连接'})[path] || '等待连接';
 const stateLabel = state => ({'DIRECT':'已直连','RELAY':'已中继','PUNCHING':'正在打洞','RELAY_CONNECTING':'建立中继','OFFLINE':'离线'})[state] || '连接中';
 let currentStatus = null;
+let currentUsage = null;
+window.addEventListener('nknguard-network-ready', () => {
+  if (currentStatus) window.dispatchEvent(new CustomEvent('nknguard-status', {detail:currentStatus}));
+  if (currentUsage) window.dispatchEvent(new CustomEvent('nknguard-usage', {detail:currentUsage}));
+});
 let lastUpdate = 0;
 let inviteURI = '';
 let firstPairCheck = true;
@@ -159,6 +164,8 @@ async function changePassword(event) {
 const countText = value => (typeof value === 'number' ? value.toLocaleString('zh-CN') : '—');
 
 function renderUsage(status) {
+  currentUsage = status;
+  window.dispatchEvent(new CustomEvent('nknguard-usage', {detail: status}));
   const counts = status.counts || {};
   setText('usage-day', countText(counts.day));
   setText('usage-month', countText(counts.month));
@@ -177,7 +184,11 @@ async function refreshUsage(force) {
     const response = await fetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     renderUsage(await response.json());
-  } catch (error) { setText('usage-note', '读取使用人数失败'); }
+  } catch (error) {
+    currentUsage = null;
+    window.dispatchEvent(new CustomEvent('nknguard-usage', {detail: {}}));
+    setText('usage-note', '读取使用人数失败');
+  }
 }
 
 async function postAction(route) {

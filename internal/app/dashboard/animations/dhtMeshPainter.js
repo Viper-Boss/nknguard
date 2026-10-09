@@ -3,7 +3,7 @@ import { defaultMeshOptions, hopGlow, signalHead } from './dhtMeshField.js';
 export function paintMesh(context, field, options) {
     const { palette, strength, time } = options;
     const mesh = options.mesh ?? defaultMeshOptions;
-    const live = strength > 0.999 || options.illustration === true;
+    const live = strength > 0.999;
     context.lineWidth = 0.8;
     for (const [a, b] of field.edges){
         const from = field.nodes[a];

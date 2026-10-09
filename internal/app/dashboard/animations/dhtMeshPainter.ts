@@ -54,8 +54,6 @@ export interface PaintOptions {
    * happened.
    */
   strength: number
-  /** Explicitly labelled discovery illustration while no peers are connected. */
-  illustration?: boolean
   mesh?: MeshOptions
 }
 
@@ -66,7 +64,7 @@ export function paintMesh(
 ): void {
   const { palette, strength, time } = options
   const mesh = options.mesh ?? defaultMeshOptions
-  const live = strength > 0.999 || options.illustration === true
+  const live = strength > 0.999
 
   // Strands first, so nodes sit on top of them.
   context.lineWidth = 0.8

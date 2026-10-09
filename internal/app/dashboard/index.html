@@ -40,10 +40,138 @@
         <section class="nas-identity" aria-label="NAS NKN 地址"><div><span class="identity-kicker">这台 NAS 的 NKN 地址</span><p>首次启动生成，重启后保持不变。配对时可对照地址首尾字符。</p><code id="overview-nkn-address">正在读取…</code></div><button class="secondary-button" id="copy-nkn-address" disabled>复制地址</button></section>
         <div class="section-head"><div><h2>连接状态</h2><p>来自 NAS 守护进程的实时状态</p></div><span id="overall-pill" class="pill neutral"><i></i>正在读取</span></div>
         <div class="stat-grid"><article class="stat-card"><span class="stat-icon blue">⌘</span><small>在线设备</small><strong id="online-count">—</strong><span class="stat-note" id="total-count">等待设备数据</span></article><article class="stat-card"><span class="stat-icon mint">↗</span><small>WireGuard 直连</small><strong id="direct-count">—</strong><span class="stat-note">低延迟优先</span></article><article class="stat-card"><span class="stat-icon purple">⇄</span><small>NKN 中继</small><strong id="relay-count">—</strong><span class="stat-note">无法直连时接管</span></article><article class="stat-card"><span class="stat-icon amber">◇</span><small>NAT 环境</small><strong class="text-stat" id="nat-state">—</strong><span class="stat-note">自动探测</span></article></div>
-        <section class="network-animations" id="network-animations" aria-label="NAS 全局服务">
-          <article class="network-card"><header><h3>NKN 地球网络</h3><span id="nkn-animation-state">等待 NKN</span></header><p class="eyebrow">GLOBAL CONNECTIVITY</p><canvas id="nkn-globe" aria-label="NKN 地球网络示意"></canvas><p>连线流光为网络示意：绿色代表直连，黄色代表中继，蓝色代表等待。不表示地理位置或实时流量，实际路径以连接状态为准。</p></article>
-          <article class="network-card"><header><h3>DHT 网状连接</h3><span id="dht-animation-state">正在读取</span></header><p class="eyebrow">SELF-ORGANIZING MESH</p><canvas id="dht-mesh" aria-label="DHT 网状连接示意"></canvas><div class="network-figures"><div><small>本机连接节点</small><strong id="dht-peer-count">0</strong></div><div><small>本机路由表节点</small><strong id="dht-route-count">0</strong></div></div><p>连线为局部拓扑示意：蓝色表示发现过程，连接节点后显示黄色。节点数量为实时数据。DHT 用于发现和同步地址，不承载用户文件。</p></article>
-        </section>
+        <section class="network-animations" id="network-animations" aria-labelledby="network-services-title">
+  <h3 id="network-services-title">NAS 全局服务</h3>
+  <div class="network-card-grid">
+<article class="net-card globe-card" data-state="offline">
+    <header class="net-card__head">
+      <div>
+        <div class="net-card__title">
+          <svg
+            class="net-card__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <ellipse cx="12" cy="12" rx="4" ry="9" />
+            <path d="M3 12h18M5 6.5h14M5 17.5h14" />
+          </svg>
+          <h4>NKN 地球网络</h4>
+        </div>
+        <p class="net-card__eyebrow">GLOBAL CONNECTIVITY</p>
+      </div>
+      <span class="net-card__badge"><span id="nkn-animation-state">未连接</span></span>
+    </header>
+
+    <div class="net-stage">
+      <canvas id="nkn-globe" aria-label="缓慢旋转的蓝色点阵地球，表示 NKN 全球连接" role="img"></canvas>
+      <!-- The caption follows the channel. The reference build had it fixed at
+           "worldwide · always on", which is a claim, and it sat on the card
+           unchanged while NKN was disconnected. -->
+      <p class="net-note">
+        <span id="nkn-visual-note">全球节点示意</span>
+      </p>
+    </div>
+
+    <div class="net-card__body">
+      <div class="net-row" >
+        <strong><i class="net-row__dot" aria-hidden="true"></i>NKN 主通路</strong>
+        <span><span id="nkn-path-state">等待连接</span></span>
+      </div>
+      <div class="net-row" >
+        <strong>
+          <i class="net-row__dot is-green" aria-hidden="true"></i>DHT 第二通路
+        </strong>
+        <span><span id="nkn-dht-state">第二通路尚未启用</span></span>
+      </div>
+
+      <dl class="net-stats">
+        <div class="net-stat">
+          <dt>24小时活跃</dt>
+          <dd><span id="nkn-active-day">—</span></dd>
+        </div>
+        <div class="net-stat">
+          <dt>30天活跃</dt>
+          <dd><span id="nkn-active-month">—</span></dd>
+        </div>
+        <div class="net-stat">
+          <dt>90天活跃</dt>
+          <dd><span id="nkn-active-quarter">—</span></dd>
+        </div>
+      </dl>
+
+      <p class="net-card__note">共享 Topic 中的近期活跃身份数。统计窗口以订阅与续期策略为准，不代表实时在线数。</p>
+    </div>
+  </article>
+<article class="net-card mesh-card" data-state="offline">
+    <header class="net-card__head">
+      <div>
+        <div class="net-card__title">
+          <svg
+            class="net-card__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            aria-hidden="true"
+          >
+            <circle cx="5" cy="12" r="2.5" />
+            <circle cx="18" cy="5" r="2.5" />
+            <circle cx="18" cy="19" r="2.5" />
+            <path d="m7 11 9-5M7 13l9 5M18 8v8" />
+          </svg>
+          <h4>DHT 网状连接</h4>
+        </div>
+        <p class="net-card__eyebrow">SELF-ORGANIZING MESH</p>
+      </div>
+      <span class="net-card__badge"><span id="dht-animation-state">未知</span></span>
+    </header>
+
+    <div class="net-stage">
+      <canvas id="dht-mesh" aria-label="铺满区域的 DHT 鱼网，节点缓慢漂移，黄色信号沿连线传递" role="img"></canvas>
+      <p class="net-note">局部连接示意</p>
+      <p id="dht-signal-note" hidden class="net-note net-note--right net-note--signal">
+        路由信号
+      </p>
+    </div>
+
+    <div class="net-card__body">
+      <div class="net-row" >
+        <strong>
+          <i class="net-row__dot" aria-hidden="true"></i>节点发现
+        </strong>
+        <span><span id="dht-discovery-state">节点发现已暂停</span></span>
+      </div>
+      <div class="net-row" >
+        <strong>
+          <i class="net-row__dot is-green" aria-hidden="true"></i>第二通路
+        </strong>
+        <span><span id="dht-second-state">未知</span></span>
+      </div>
+
+      <dl class="net-stats">
+        <div class="net-stat">
+          <dt>路由表节点</dt>
+          <dd><span id="dht-route-count">—</span></dd>
+        </div>
+        <div class="net-stat">
+          <dt>当前直连</dt>
+          <dd><span id="dht-peer-count">—</span></dd>
+        </div>
+        <div class="net-stat">
+          <dt>局域网内</dt>
+          <dd><span id="dht-lan-count">—</span></dd>
+        </div>
+      </dl>
+
+      <p class="net-card__note">动画为局部拓扑示意，节点的明暗与漂移都是装饰，不代表全网规模或真实地理位置。黄色信号是多跳寻址示意，只在 DHT 就绪时出现，路径本身不是任何一次真实查找；三个数字来自本机路由表。</p>
+    </div>
+  </article>
+  </div>
+</section>
         <section class="nas-identity" aria-label="飞牛连接地址"><div><span class="identity-kicker">飞牛客户端填写这个地址</span><code id="overview-fnos-address">正在读取…</code><p>先在手机或电脑连接 NKNGuard，再在飞牛客户端填写此地址。5666 是飞牛默认端口，改过端口请自行替换。</p><small>NAS 虚拟 IP：<span id="overview-nas-ip">—</span> · 私有网段：<span id="overview-cidr">—</span> · NKN 地址用于配对，不能填进飞牛客户端。</small></div><button class="secondary-button" id="copy-fnos-address" disabled>复制飞牛地址</button></section>
         <section class="panel usage-panel" aria-label="NKNGuard 使用人数"><div class="panel-head"><div><h3>NKNGuard 使用人数</h3><p>最近一段时间内运行过 NKNGuard 的设备数，来自 NKN 链上的匿名订阅</p></div><button class="secondary-button" id="refresh-usage">刷新</button></div><div class="usage-grid"><div><small>24 小时</small><strong id="usage-day">—</strong></div><div><small>30 天</small><strong id="usage-month">—</strong></div><div><small>90 天</small><strong id="usage-quarter">—</strong></div></div><p class="usage-note" id="usage-note">正在读取…</p></section>
         <div class="content-grid"><section class="panel device-panel"><div class="panel-head"><div><h3>最近设备</h3><p>在线路径由真实 WireGuard 握手确认</p></div><button class="text-button" data-go="devices">查看全部 →</button></div><div id="recent-devices" class="device-list"><div class="empty">正在查找设备…</div></div></section><section class="panel connection-panel"><div class="panel-head"><div><h3>连接方式</h3><p>直连优先，失败后走 NKN</p></div><span class="connection-symbol">⌁</span></div><div class="route-visual"><div class="route-end"><span>⌂</span><small>这台 NAS</small></div><div class="route-lines"><div class="route-line direct"><span class="route-dot"></span><b>WireGuard 直连</b></div><div class="route-line relay"><span class="route-dot"></span><b>NKN 加密中继</b></div></div><div class="route-end client"><span>▣</span><small>你的设备</small></div></div><div class="route-footer"><span><i class="legend direct-color"></i>直连 <b id="route-direct">0</b></span><span><i class="legend relay-color"></i>中继 <b id="route-relay">0</b></span><span><i class="legend idle-color"></i>等待 <b id="route-idle">0</b></span></div></section></div>
