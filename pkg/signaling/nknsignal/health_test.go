@@ -57,3 +57,26 @@ func TestConnectionStatusExpiresAndCloses(t *testing.T) {
 		t.Fatal("closed transport shown as connected")
 	}
 }
+
+func TestFailedChecksReconnectOnlyAfterTwoRoundsAndResetOnRecovery(t *testing.T) {
+	var h healthState
+	h.init("self")
+	now := time.Now()
+	h.failed("reconnecting", now)
+	if h.reconnectDue() {
+		t.Fatal("one delayed probe triggered reconnect")
+	}
+	h.failed("reconnecting", now.Add(30*time.Second))
+	if !h.reconnectDue() || h.reconnectDue() {
+		t.Fatal("failed rounds did not grant exactly one reconnect")
+	}
+	h.failed("reconnecting", now)
+	packet := h.begin(bytes.Repeat([]byte{1}, 32), now)
+	if !h.accept("self", packet, now.Add(time.Second)) {
+		t.Fatal("recovery failed")
+	}
+	h.failed("reconnecting", now.Add(30*time.Second))
+	if h.reconnectDue() {
+		t.Fatal("recovery did not reset failure history")
+	}
+}

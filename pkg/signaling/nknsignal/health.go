@@ -18,12 +18,13 @@ const healthInterval = 30 * time.Second
 var healthPrefix = []byte("NKNGuard-health-v1:")
 
 type healthState struct {
-	mu      sync.RWMutex
-	self    string
-	nonce   []byte
-	started time.Time
-	replies chan struct{}
-	status  nknclient.ConnectionStatus
+	mu       sync.RWMutex
+	self     string
+	nonce    []byte
+	started  time.Time
+	replies  chan struct{}
+	status   nknclient.ConnectionStatus
+	failures int
 }
 
 func (h *healthState) init(self string) {
@@ -50,6 +51,7 @@ func (h *healthState) accept(source string, data []byte, now time.Time) bool {
 	}
 	h.nonce = nil
 	h.status = nknclient.ConnectionStatus{State: "connected", CheckedAt: now, LastSuccess: now, LatencyMS: now.Sub(h.started).Milliseconds()}
+	h.failures = 0
 	select {
 	case h.replies <- struct{}{}:
 	default:
@@ -64,6 +66,19 @@ func (h *healthState) failed(state string, now time.Time) {
 	h.status.State = state
 	h.status.CheckedAt = now
 	h.status.LatencyMS = 0
+	h.failures++
+}
+
+// Wait for two failed checks before changing nodes; one delayed message
+// should not disturb otherwise usable NKN sessions.
+func (h *healthState) reconnectDue() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.failures < 2 || h.status.State == "closed" {
+		return false
+	}
+	h.failures = 0
+	return true
 }
 
 // ConnectionStatus never performs network I/O from a dashboard request.
@@ -122,6 +137,9 @@ func (t *Transport) StartHealthMonitor() {
 					case <-timer.C:
 						t.health.failed("reconnecting", time.Now())
 					}
+				}
+				if t.health.reconnectDue() {
+					t.client.Reconnect()
 				}
 				timer := time.NewTimer(time.Until(started.Add(healthInterval)))
 				select {

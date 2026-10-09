@@ -54,8 +54,22 @@ func TestDirectProbeBudgetIncludesPublicCandidate(t *testing.T) {
 	public := nat.NewCandidate(nat.CandidateReflexive, netip.MustParseAddrPort("198.51.100.2:41000"), time.Minute, now)
 	remote = append(remote, public)
 	selected := directCandidates(remote, nil, 4)
-	if len(selected) != 4 || selected[0].IP != public.IP || selected[0].Port != public.Port {
+	if len(selected) != 1 || selected[0].IP != public.IP || selected[0].Port != public.Port {
 		t.Fatalf("public mapping excluded by virtual interfaces: %+v", selected)
+	}
+}
+
+func TestPrivateCandidatesRequireSharedHostNetwork(t *testing.T) {
+	now := time.Now()
+	lan := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("192.168.120.190:51820"), time.Minute, now)
+	modem := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("10.55.0.1:51820"), time.Minute, now)
+	if got := directCandidates([]nat.EndpointCandidate{modem, lan}, nil, 4); len(got) != 0 {
+		t.Fatalf("cellular probe tried NAS local interfaces: %+v", got)
+	}
+	local := nat.NewCandidate(nat.CandidateHost, netip.MustParseAddrPort("192.168.120.50:1234"), time.Minute, now)
+	got := directCandidates([]nat.EndpointCandidate{modem, lan}, []nat.EndpointCandidate{local}, 4)
+	if len(got) != 1 || got[0].IP != lan.IP {
+		t.Fatalf("same LAN direct lost: %+v", got)
 	}
 }
 

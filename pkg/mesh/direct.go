@@ -143,20 +143,24 @@ func directCandidates(remote, local []nat.EndpointCandidate, limit int) []nat.En
 		if addr.Is4() && addr.IsPrivate() {
 			for _, own := range local {
 				ip, err := netip.ParseAddr(own.IP)
-				if err == nil && ip.Is4() && netip.PrefixFrom(ip, 24).Contains(addr) {
+				if err == nil && own.Type == nat.CandidateHost && ip.Is4() && netip.PrefixFrom(ip, 24).Contains(addr) {
 					return 10000
 				}
 			}
-			if netip.MustParsePrefix("192.168.0.0/16").Contains(addr) {
-				return 1000
-			}
-			return 100
+			return 0
 		}
 		if addr.Is4() && netip.MustParsePrefix("100.64.0.0/10").Contains(addr) {
-			return 50
+			return 0
 		}
 		return 7000
 	}
+	filtered := out[:0]
+	for _, candidate := range out {
+		if score(candidate) > 0 {
+			filtered = append(filtered, candidate)
+		}
+	}
+	out = filtered
 	sort.SliceStable(out, func(i, j int) bool { return score(out[i]) > score(out[j]) })
 	if len(out) > limit {
 		out = out[:limit]
