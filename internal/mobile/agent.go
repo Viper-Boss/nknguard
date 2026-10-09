@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -86,15 +88,16 @@ type Agent struct {
 	secretSequence uint64
 	secretWait     map[uint64]chan error
 
-	mu          sync.Mutex
-	device      *identity.DeviceIdentity
-	name        string
-	seedRPC     []string
-	localAddrs  []netip.Addr
-	stunServers []string
-	pairCancel  context.CancelFunc
-	pairDone    chan struct{}
-	session     *session
+	mu            sync.Mutex
+	device        *identity.DeviceIdentity
+	name          string
+	seedRPC       []string
+	localAddrs    []netip.Addr
+	networkHandle string
+	stunServers   []string
+	pairCancel    context.CancelFunc
+	pairDone      chan struct{}
+	session       *session
 }
 
 // Request is one command from the app.
@@ -335,6 +338,7 @@ type initArgs struct {
 }
 
 type networkArgs struct {
+	NetworkHandle *string `json:"network_handle"`
 	// LocalAddresses are the unicast addresses of the phone's current
 	// underlying network (not the VPN). Go cannot enumerate interfaces on
 	// Android 11+, so the app reports them.
@@ -476,17 +480,24 @@ func (a *Agent) identity() (*identity.DeviceIdentity, string, error) {
 	return a.device, name, nil
 }
 
-func (a *Agent) applyNetwork(args networkArgs) {
+func (a *Agent) applyNetwork(args networkArgs) bool {
 	addresses := make([]netip.Addr, 0, len(args.LocalAddresses))
 	for _, text := range args.LocalAddresses {
 		if addr, err := netip.ParseAddr(text); err == nil && !OverlayCIDR.Contains(addr) {
 			addresses = append(addresses, addr.Unmap())
 		}
 	}
+	sort.Slice(addresses, func(i, j int) bool { return addresses[i].Compare(addresses[j]) < 0 })
 	a.mu.Lock()
+	changed := false
+	if args.NetworkHandle != nil {
+		changed = a.networkHandle != *args.NetworkHandle
+		a.networkHandle = *args.NetworkHandle
+	}
 	// An absent list leaves the last report in place; an empty one means
 	// the phone has no network right now.
 	if args.LocalAddresses != nil {
+		changed = changed || !slices.Equal(a.localAddrs, addresses)
 		a.localAddrs = addresses
 	}
 	if len(args.STUNServers) > 0 {
@@ -496,17 +507,18 @@ func (a *Agent) applyNetwork(args networkArgs) {
 	if len(args.DNSServers) > 0 {
 		SetDNSServers(args.DNSServers)
 	}
+	return changed
 }
 
 // network is called when the phone changes network. A running session
 // rebinds WireGuard's sockets, refreshes its candidates and retries the direct
 // path at once instead of waiting for the next scheduled attempt.
 func (a *Agent) network(ctx context.Context, args networkArgs) (any, error) {
-	a.applyNetwork(args)
+	changed := a.applyNetwork(args)
 	a.mu.Lock()
 	current := a.session
 	a.mu.Unlock()
-	if current != nil {
+	if current != nil && changed {
 		current.networkChanged(ctx)
 	}
 	return map[string]bool{"ok": true}, nil

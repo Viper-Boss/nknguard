@@ -32,7 +32,7 @@ object NetworkInfo {
     }
 
     fun describe(context: Context, network: Network? = underlying(context)): JSONObject {
-        val out = JSONObject()
+        val out = JSONObject().put("network_handle", network?.networkHandle?.toString() ?: "")
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return out
         val properties: LinkProperties = network?.let { manager.getLinkProperties(it) } ?: return out
         val addresses = JSONArray()

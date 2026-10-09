@@ -79,7 +79,8 @@ func (c EndpointCandidate) Usable() bool {
 	if err != nil {
 		return false
 	}
-	return !addr.IsUnspecified() && !addr.IsLoopback() && !addr.IsMulticast()
+	// IPv6 link-local needs a scope id, which the wire format cannot carry.
+	return !addr.IsUnspecified() && !addr.IsLoopback() && !addr.IsMulticast() && !(addr.Is6() && addr.IsLinkLocalUnicast())
 }
 
 // priorityFor ranks candidate types. The ordering is the whole point of the

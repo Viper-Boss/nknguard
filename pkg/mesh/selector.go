@@ -99,7 +99,7 @@ func (s *Selector) Select(observation Observation) PathType {
 		// Return only after the direct path has held up for the hold period.
 		if observation.DirectHealthy && now.Sub(s.directGoodAt) >= s.DirectRecoveryHold {
 			s.current = PathDirectWG
-		} else if !observation.RelayOpen {
+		} else if !observation.RelayOpen && !observation.DirectHealthy {
 			s.current = PathNone
 		}
 	default:

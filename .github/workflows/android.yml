@@ -63,6 +63,36 @@ jobs:
           name: NKNGuard-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      # The maintainer signs downloaded previews with a persistent private
+      # key outside GitHub. Export only the official signing tool, never keys.
+      - name: export APK signing tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p signing-tools
+          signer=$(find "$ANDROID_HOME/build-tools" -path '*/lib/apksigner.jar' | sort -V | tail -1)
+          test -n "$signer"
+          cp "$signer" signing-tools/apksigner.jar
+          python3 - <<'PY'
+          import hashlib, json, os, urllib.request
+          from pathlib import Path
+          url = 'https://api.github.com/repos/adoptium/temurin17-binaries/releases/latest'
+          request = urllib.request.Request(url, headers={'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'User-Agent': 'NKNGuard-signing-tools'})
+          assets = json.load(urllib.request.urlopen(request, timeout=60))['assets']
+          package = next(a for a in assets if a['name'].startswith('OpenJDK17U-jre_aarch64_linux_hotspot_') and a['name'].endswith('.tar.gz'))
+          checksum_asset = next(a for a in assets if a['name'] == package['name']+'.sha256.txt')
+          checksum = urllib.request.urlopen(checksum_asset['browser_download_url'], timeout=60).read().decode().split()[0]
+          output = Path('signing-tools/jre-linux-arm64.tar.gz')
+          urllib.request.urlretrieve(package['browser_download_url'], output)
+          if hashlib.sha256(output.read_bytes()).hexdigest() != checksum:
+              raise SystemExit('JRE checksum mismatch')
+          Path('signing-tools/JRE-SHA256.txt').write_text(checksum + '  jre-linux-arm64.tar.gz\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NKNGuard-apk-signing-tool
+          path: signing-tools/
+          if-no-files-found: error
 
   # The NAS must run a build from this branch for the phone to receive the
   # signed revocation notice. This job runs the whole repository's checks and
@@ -86,7 +116,7 @@ jobs:
       - name: tests with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: build release binaries
-        run: make release VERSION=0.2.4-preview
+        run: make release VERSION=0.2.6-preview
       - uses: actions/upload-artifact@v4
         with:
           name: nknguard-nas-linux

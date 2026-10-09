@@ -8,9 +8,90 @@ import (
 	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
+	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
+
+func TestRelayHandshakeCannotPromoteUnprovenAttempt(t *testing.T) {
+	c := New()
+	p := c.peerFor("remote")
+	p.record = discovery.PeerRecord{DeviceID: "remote", WireGuardPublicKey: "key"}
+	p.markInstalled("key")
+	p.path, p.selector.current = PathNKNRelay, PathNKNRelay
+	p.selector.directGoodAt = time.Now().Add(-time.Minute)
+	if !p.BeginAttempt() {
+		t.Fatal("attempt did not start")
+	}
+	// The worker just assigned a public endpoint; this handshake was earned
+	// through the relay, and no new packet has arrived on the public path.
+	c.WireGuard = &revokeWG{stats: []wireguard.PeerStats{{PublicKey: "key", Endpoint: "198.51.100.2:51820", LastHandshake: time.Now().Unix(), TransferRxBytes: 100}}}
+	a, b := net.Pipe()
+	defer b.Close()
+	bridge, err := relay.NewBridge(a, netip.MustParseAddrPort("127.0.0.1:51820"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bridge.Close()
+	c.bridges[p.DeviceID()] = bridge
+	for i := 0; i < 3; i++ {
+		c.reconcileOnce(context.Background())
+	}
+	if p.Path() != PathNKNRelay || c.bridgeFor(p.DeviceID()) != bridge || !bridge.Stats().Open {
+		t.Fatal("unproven direct probe displaced or destroyed working relay")
+	}
+	if c.Metrics().PeersDirect != 0 {
+		t.Fatal("unproven endpoint counted as direct")
+	}
+}
+
+func TestDirectProbeBudgetIncludesPublicCandidate(t *testing.T) {
+	now := time.Now()
+	var remote []nat.EndpointCandidate
+	for i := 1; i <= 12; i++ {
+		remote = append(remote, nat.NewCandidate(nat.CandidateHost, netip.AddrPortFrom(netip.AddrFrom4([4]byte{10, 55, 0, byte(i)}), 51820), time.Minute, now))
+	}
+	public := nat.NewCandidate(nat.CandidateReflexive, netip.MustParseAddrPort("198.51.100.2:41000"), time.Minute, now)
+	remote = append(remote, public)
+	selected := directCandidates(remote, nil, 4)
+	if len(selected) != 4 || selected[0].IP != public.IP || selected[0].Port != public.Port {
+		t.Fatalf("public mapping excluded by virtual interfaces: %+v", selected)
+	}
+}
+
+func TestLateRelayCannotReplaceReceivingDirectEndpoint(t *testing.T) {
+	c := New()
+	p := c.peerFor("remote")
+	p.record = discovery.PeerRecord{DeviceID: "remote", WireGuardPublicKey: "key"}
+	p.SetEndpoint(netip.MustParseAddrPort("198.51.100.2:51820"))
+	c.WireGuard = &revokeWG{stats: []wireguard.PeerStats{{PublicKey: "key", Endpoint: p.Endpoint().String(), LastHandshake: time.Now().Unix(), TransferRxBytes: 100}}}
+	a, b := net.Pipe()
+	defer b.Close()
+	if c.attachBridge(context.Background(), p, a) {
+		t.Fatal("late relay displaced confirmed direct probe")
+	}
+	if c.bridgeFor(p.DeviceID()) != nil {
+		t.Fatal("late relay left a bridge")
+	}
+	_ = b.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := b.Read(make([]byte, 1)); err == nil {
+		t.Fatal("rejected stream still open")
+	}
+}
+
+func TestRelayRecoveryHoldCannotBeBypassedByMissingBridgeObservation(t *testing.T) {
+	s := DefaultSelector()
+	s.current = PathNKNRelay
+	now := time.Now()
+	for _, elapsed := range []time.Duration{0, time.Second, 4 * time.Second} {
+		if got := s.Select(Observation{Now: now.Add(elapsed), DirectHealthy: true}); got != PathNKNRelay {
+			t.Fatalf("hold bypassed at %s: %s", elapsed, got)
+		}
+	}
+	if got := s.Select(Observation{Now: now.Add(5 * time.Second), DirectHealthy: true}); got != PathDirectWG {
+		t.Fatal("held recovery not promoted")
+	}
+}
 
 func TestNewRelayGetsItsOwnReceiveWindow(t *testing.T) {
 	c := New()

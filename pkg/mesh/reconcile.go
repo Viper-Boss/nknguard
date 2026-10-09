@@ -115,6 +115,26 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		fresh := !seen.handshake.IsZero() && now.Sub(seen.handshake) < wireguard.HandshakeFreshness
 		viaBridge := isLoopbackEndpoint(seen.endpoint)
 		bridge := c.bridgeFor(peer.DeviceID())
+		// An attempt temporarily assigns unproven endpoints. The last
+		// handshake may belong to the relay; never promote it to direct or
+		// tear down the working bridge while the worker owns the endpoint.
+		if peer.Attempting() {
+			silent := peer.NoteReceive(seen.rxBytes, now)
+			// Incoming authenticated relay packets can prove the fallback
+			// while probes are ongoing. Only direct promotion is forbidden.
+			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
+				if peer.SelectPath(Observation{Now: now, RelayOpen: true}) == PathNKNRelay {
+					_, _ = peer.Apply(EventRelayOpen, now)
+				}
+			}
+			switch peer.Path() {
+			case PathDirectWG:
+				direct++
+			case PathNKNRelay:
+				relayed++
+			}
+			continue
+		}
 		// A fresh handshake only says the path worked within the last three
 		// minutes. Keepalives arrive every few seconds on a live path, so
 		// their absence shows a dead one much sooner.
@@ -230,6 +250,8 @@ func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, br
 
 // runAttempt drives one direct attempt on either side of the rendezvous.
 func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Time, token nat.SessionToken, initiator bool) {
+	peer.endpointMu.Lock()
+	defer peer.endpointMu.Unlock()
 	attemptCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(peer.lifetime, cancel)
 	defer func() { stop(); cancel() }()
@@ -242,6 +264,7 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		DeviceID:           peer.DeviceID(),
 		WireGuardPublicKey: record.WireGuardPublicKey,
 		Candidates:         peer.Candidates(),
+		LocalCandidates:    c.ownCandidates(),
 		StartAt:            startAt,
 		Token:              token,
 	}
@@ -259,7 +282,7 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		return
 	}
 	if err != nil {
-		peer.EndAttempt(false)
+		defer peer.EndAttempt(false)
 		c.mu.Lock()
 		c.metrics.PunchFailure++
 		c.mu.Unlock()
@@ -273,12 +296,13 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 		if bridge := c.bridgeFor(peer.DeviceID()); bridge != nil && record.WireGuardPublicKey != "" {
 			_ = c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String())
 		} else if initiator && c.Relay != nil && ctx.Err() == nil {
-			c.openRelay(ctx, peer, "direct attempt failed")
+			c.spawn(func() { c.openRelay(ctx, peer, "direct attempt failed") })
 		}
 		return
 	}
-	peer.EndAttempt(true)
 	peer.SetEndpoint(endpoint)
+	peer.resetReceive(time.Now())
+	peer.EndAttempt(true)
 	c.mu.Lock()
 	c.metrics.PunchSuccess++
 	c.mu.Unlock()
@@ -410,7 +434,19 @@ func (c *Controller) relayAcceptLoop(ctx context.Context, acceptor relay.Accepto
 }
 
 func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Conn) bool {
+	peer.endpointMu.Lock()
+	defer peer.endpointMu.Unlock()
 	if peer.Revoked() {
+		_ = stream.Close()
+		return false
+	}
+	// Opening NKN can take longer than the direct probe. A stream arriving
+	// afterwards must not replace a direct endpoint that is receiving packets.
+	seen := c.observe(ctx)[peer.Record().WireGuardPublicKey]
+	now := time.Now()
+	confirmed := peer.Path() == PathDirectWG || peer.Endpoint().String() == seen.endpoint
+	if confirmed && !isLoopbackEndpoint(seen.endpoint) && !seen.handshake.IsZero() &&
+		now.Sub(seen.handshake) < wireguard.HandshakeFreshness && peer.NoteReceive(seen.rxBytes, now) < c.receiveTimeout() {
 		_ = stream.Close()
 		return false
 	}

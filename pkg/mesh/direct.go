@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"sort"
 	"time"
 
 	"github.com/Viper-Boss/nknguard/pkg/nat"
@@ -17,6 +18,7 @@ type DirectAttempt struct {
 	WireGuardPublicKey string
 	VirtualIP          netip.Addr
 	Candidates         []nat.EndpointCandidate
+	LocalCandidates    []nat.EndpointCandidate
 	// StartAt is the rendezvous both sides agreed on over signalling.
 	StartAt time.Time
 	Token   nat.SessionToken
@@ -88,10 +90,7 @@ func (s *WireGuardStrategy) Attempt(ctx context.Context, attempt DirectAttempt) 
 		case <-timer.C:
 		}
 	}
-	candidates := nat.SanitiseCandidates(attempt.Candidates, time.Now())
-	if len(candidates) > limit {
-		candidates = candidates[:limit]
-	}
+	candidates := directCandidates(attempt.Candidates, attempt.LocalCandidates, limit)
 	// A handshake that was already on record — typically one that came in
 	// over the relay a moment ago — must not be mistaken for this attempt's
 	// success, so success means strictly newer than the baseline.
@@ -101,6 +100,9 @@ func (s *WireGuardStrategy) Attempt(ctx context.Context, attempt DirectAttempt) 
 		if err != nil {
 			continue
 		}
+		// Baseline each endpoint separately. Bytes received over a previous
+		// relay/candidate must not prove the endpoint we are about to assign.
+		baseline = s.snapshot(ctx, attempt.WireGuardPublicKey)
 		if err := s.WireGuard.UpdateEndpoint(ctx, attempt.WireGuardPublicKey, target.String()); err != nil {
 			return netip.AddrPort{}, err
 		}
@@ -123,6 +125,43 @@ func (s *WireGuardStrategy) Attempt(ctx context.Context, attempt DirectAttempt) 
 		}
 	}
 	return netip.AddrPort{}, ErrNoDirectPath
+}
+
+func directCandidates(remote, local []nat.EndpointCandidate, limit int) []nat.EndpointCandidate {
+	out := nat.SanitiseCandidates(remote, time.Now())
+	score := func(candidate nat.EndpointCandidate) int {
+		addr, err := netip.ParseAddr(candidate.IP)
+		if err != nil {
+			return 0
+		}
+		if candidate.Type == nat.CandidateReflexive {
+			return 9000
+		}
+		if addr.Is6() && addr.IsGlobalUnicast() && !addr.IsPrivate() {
+			return 8000
+		}
+		if addr.Is4() && addr.IsPrivate() {
+			for _, own := range local {
+				ip, err := netip.ParseAddr(own.IP)
+				if err == nil && ip.Is4() && netip.PrefixFrom(ip, 24).Contains(addr) {
+					return 10000
+				}
+			}
+			if netip.MustParsePrefix("192.168.0.0/16").Contains(addr) {
+				return 1000
+			}
+			return 100
+		}
+		if addr.Is4() && netip.MustParsePrefix("100.64.0.0/10").Contains(addr) {
+			return 50
+		}
+		return 7000
+	}
+	sort.SliceStable(out, func(i, j int) bool { return score(out[i]) > score(out[j]) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 func (s *WireGuardStrategy) snapshot(ctx context.Context, publicKey string) wireguard.PeerStats {
