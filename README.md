@@ -189,6 +189,14 @@ cd android && ./gradlew assembleDebug             # Android (JDK 17 + Android SD
 
 Requires Go ≥ 1.25.7. A binary built without `nknsdk` can `init`, `join` and `doctor`, and refuses `up` with an explanation. See [docs/BUILD.md](docs/BUILD.md).
 
+## Contributors
+
+- **[Viper-Boss](https://github.com/Viper-Boss)** — project creator and maintainer.
+- **Claude** — initial prototype and Android development assistance.
+- **Codex (OpenAI)** — networking, security, NAS/Android implementation, UI and verification assistance. AI-assisted changes remain under the maintainer's review.
+
+The [NAT dial](docs/NAT-GAUGE.md) shows measured mapping conditions, with a grey pointer when unknown. Four traditional NAT categories are explained separately; mapping-only observations do not identify inbound filtering.
+
 ## License
 
 NKNGuard is licensed under **AGPL-3.0-only**; see [LICENSE](LICENSE). Notices for third-party modules are in [NOTICE](NOTICE).

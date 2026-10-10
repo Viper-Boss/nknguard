@@ -166,8 +166,8 @@ nkn:
 - **中继很慢。** 走 NKN 会话，吞吐远低于直连，只是兜底。
 - **内核 WireGuard 独占 UDP 端口**，公网端口根据探测 socket 推断（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立，见 [NAT 穿透](docs/NAT_TRAVERSAL.md)。
 - **成员证明仍基于共享密钥。** NAS 按批准名单执行单设备撤销；若共享密钥或设备私钥泄露，需要重建网络凭证，自动轮换尚未实现。
-- **客户端是预览版。** Windows 版为原生窗口，需先安装 WireGuard for Windows。 仅 IPv4 覆盖网络、每个节点只能加入一个网络；Android 暂无开机自启和“始终开启的 VPN”。
-- **使用人数统计是公开的。** 开启时每台设备每天在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
+- **客户端是预览版。** Windows 版为原生窗口，需先安装 WireGuard for Windows。 仅 IPv4 覆盖网络；Android 可保存多台 NAS 的独立配对，一次连接一台，暂未加入开机自启。
+- **使用人数统计是公开的。** 每台运行设备每天自动在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
 - **不匿名。** WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
 - **国内 seed 是社区节点**，地址可能变化，失效时会自动回退官方节点。
 
@@ -185,6 +185,14 @@ cd android && ./gradlew assembleDebug             # Android（JDK 17 + Android S
 ```
 
 需要 Go ≥ 1.25.7。不带 `nknsdk` 标签的程序可以 `init`、`join`、`doctor`，但拒绝 `up`。详见 [docs/BUILD.md](docs/BUILD.md)。
+
+## 开发贡献
+
+- **[Viper-Boss](https://github.com/Viper-Boss)**：项目发起者与维护者。
+- **Claude**：初始雏形与 Android 开发辅助。
+- **Codex（OpenAI）**：网络连接、安全、NAS / Android 实现、界面及验证辅助；AI 辅助改动由维护者审阅。
+
+[NAT 指针仪表盘](docs/NAT-GAUGE.md) 显示真实测得的映射条件，未知时显示灰色。四类传统 NAT 单独提供中文说明；仅凭映射观测无法细分入站过滤。
 
 ## 许可证
 

@@ -84,6 +84,7 @@ jobs:
           name: NKNGuard-android-preview
           path: android-preview/
           if-no-files-found: error
+        if: always()
       # The maintainer signs downloaded previews with a persistent private
       # key outside GitHub. Export only the official signing tool, never keys.
       - name: export APK signing tool

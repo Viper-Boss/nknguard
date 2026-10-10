@@ -2,7 +2,7 @@ const byId = id => document.getElementById(id);
 const setText = (id, value) => { byId(id).textContent = value ?? '—'; };
 const pathLabel = path => ({'direct-wg':'WireGuard 直连','nkn-relay':'NKN 中继','none':'等待连接'})[path] || '等待连接';
 const stateLabel = state => ({'DIRECT':'已直连','RELAY':'已中继','PUNCHING':'正在打洞','RELAY_CONNECTING':'建立中继','OFFLINE':'离线'})[state] || '连接中';
-const natLabel = value => ({'endpoint-independent':'端点无关型','address-dependent':'对称型','open':'无需 NAT','unknown':'未知'})[value] || '未知';
+const natLabel = value => ({'endpoint-independent':'端点无关型','address-dependent':'映射随目标变化','open':'无需 NAT','unknown':'尚未测定'})[value] || '未知';
 const natHint = value => ({'endpoint-independent':'映射稳定 · 利于直连','address-dependent':'映射受限 · 可能需要中继','open':'直接连接公网','unknown':'等待自动探测'})[value] || '等待自动探测';
 let currentStatus = null;
 let currentUsage = null;
