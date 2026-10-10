@@ -29,6 +29,7 @@ type icePath struct {
 
 func (c *Controller) capabilities() []string {
 	caps := protocol.DefaultCapabilities()
+	caps = append(caps, protocol.CapRecordRenewalV1)
 	if c.ICE != nil {
 		caps = append(caps, protocol.CapICEUDPV1)
 	}

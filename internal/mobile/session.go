@@ -539,8 +539,7 @@ func (s *session) statusLoop(ctx context.Context) {
 		}
 		current := s.agent.status()
 		if current.ConnectionPhase == "disconnected" {
-			s.setPhase(PhaseError, "恢复超时，连接已停止；点连接重试")
-			s.cancel()
+			s.stopAfterRecoveryTimeout()
 			return
 		}
 		// Byte counters change every second while traffic flows; send those
@@ -552,6 +551,19 @@ func (s *session) statusLoop(ctx context.Context) {
 			last, lastSent = current, time.Now()
 		}
 	}
+}
+
+// Publish the terminal status before the status worker stops. Otherwise the
+// Android foreground service could keep displaying its last countdown.
+func (s *session) stopAfterRecoveryTimeout() {
+	s.setPhase(PhaseError, "恢复超时，连接已停止；点连接重试")
+	status := s.agent.status()
+	status.Connected = false
+	status.Phase = PhaseError
+	status.ConnectionPhase = "disconnected"
+	status.RecoveryRemaining = 0
+	s.agent.emit("status", status)
+	s.cancel()
 }
 
 func nasRoute(value string) string {

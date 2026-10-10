@@ -30,7 +30,7 @@ const (
 // DefaultCapabilities is the baseline v1 capability set. Optional transports
 // are advertised by the controller only when they are configured.
 func DefaultCapabilities() []string {
-	return []string{CapWireGuardDirect, CapNKNRelay, CapUDPPunchV1, CapDHTRecordV1, CapACLV1, CapRecordRenewalV1}
+	return []string{CapWireGuardDirect, CapNKNRelay, CapUDPPunchV1, CapDHTRecordV1, CapACLV1}
 }
 
 // VersionRange is exchanged in the handshake.
