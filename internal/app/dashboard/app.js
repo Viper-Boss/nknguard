@@ -124,7 +124,7 @@ function render(status) {
 
 async function refresh() {
   try {
-    const response = await fetch('/api/status', {cache:'no-store'});
+    const response = await dashboardFetch('/api/status', {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     render(await response.json());
   } catch (error) {
@@ -137,7 +137,7 @@ async function refresh() {
 
 async function refreshLogs() {
   try {
-    const response = await fetch('/api/logs', {cache:'no-store'});
+    const response = await dashboardFetch('/api/logs', {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const lines = await response.json();
     setText('log-lines', Array.isArray(lines) && lines.length ? lines.slice(-300).join('\n') : '暂无日志');
@@ -146,7 +146,7 @@ async function refreshLogs() {
 
 async function reconnect(id) {
   try {
-    const response = await fetch(`/api/peers/${encodeURIComponent(id)}/reconnect`, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
+    const response = await dashboardFetch(`/api/peers/${encodeURIComponent(id)}/reconnect`, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     toast('已安排重新尝试直连');
     setTimeout(refresh, 700);
@@ -162,11 +162,10 @@ async function changePassword(event) {
   if ([...next].length < 12) { message.textContent = '新密码至少需要 12 个字符。'; return; }
   if (next !== confirmation) { message.textContent = '两次输入的新密码不一致。'; return; }
   try {
-    const response = await fetch('/api/admin/password', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({current,new:next})});
+    const response = await dashboardFetch('/api/admin/password', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({current,new:next})});
     if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
     byId('password-form').reset();
-    message.textContent = '密码已更新。请刷新页面并使用新密码登录。';
-    toast('管理密码已更新');
+    location.replace('/login?password_changed=1');
   } catch (error) { message.textContent = `修改失败：${error.message}`; }
 }
 
@@ -190,7 +189,7 @@ function renderUsage(status) {
 
 async function refreshUsage(force) {
   try {
-    const response = await fetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
+    const response = await dashboardFetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     renderUsage(await response.json());
   } catch (error) {
@@ -201,7 +200,7 @@ async function refreshUsage(force) {
 }
 
 async function postAction(route) {
-  const response = await fetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
+  const response = await dashboardFetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
   if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
   return response.json();
 }
@@ -229,7 +228,7 @@ async function newInvite() {
 
 async function refreshPairState() {
   try {
-    const response = await fetch('/api/pair/state', {cache:'no-store'});
+    const response = await dashboardFetch('/api/pair/state', {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const state = await response.json();
     const pending = Array.isArray(state.pending) ? state.pending : [];
@@ -317,3 +316,13 @@ setInterval(refresh, 3000);
 setInterval(() => refreshUsage(false), 60000);
 setInterval(refreshPairState, 3000);
 setInterval(() => { if (lastUpdate) setText('updated', `${Math.round((Date.now()-lastUpdate)/1000)} 秒前更新`); }, 1000);
+
+byId('logout').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await dashboardFetch('/api/auth/logout', {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
+    if (!response.ok) throw new Error('退出失败，请重试');
+    location.replace('/login');
+  } catch (error) { button.disabled = false; toast(error.message); }
+});

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -294,8 +295,18 @@ func TestDashboardAvailableWhileNKNFactoryBlocked(t *testing.T) {
 		t.Fatal("NKN factory not reached")
 	}
 	request, _ := http.NewRequest("GET", "http://"+cfg.Dashboard.Listen+"/api/status", nil)
-	request.SetBasicAuth("admin", password)
 	client := &http.Client{Timeout: 2 * time.Second}
+	login, _ := http.NewRequest("POST", "http://"+cfg.Dashboard.Listen+"/api/auth/login", strings.NewReader(`{"username":"admin","password":"`+password+`"}`))
+	login.Header.Set("X-NKNGuard-UI", "1")
+	loggedIn, err := client.Do(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loggedIn.Body.Close()
+	if loggedIn.StatusCode != http.StatusOK || len(loggedIn.Cookies()) != 1 {
+		t.Fatalf("login failed: %d", loggedIn.StatusCode)
+	}
+	request.AddCookie(loggedIn.Cookies()[0])
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +316,7 @@ func TestDashboardAvailableWhileNKNFactoryBlocked(t *testing.T) {
 		t.Fatalf("offline dashboard status: %d", response.StatusCode)
 	}
 	invite, _ := http.NewRequest("POST", "http://"+cfg.Dashboard.Listen+"/api/pair/invite", nil)
-	invite.SetBasicAuth("admin", password)
+	invite.AddCookie(loggedIn.Cookies()[0])
 	invite.Header.Set("X-NKNGuard-UI", "1")
 	response, err = client.Do(invite)
 	if err != nil {

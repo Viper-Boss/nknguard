@@ -3,7 +3,7 @@
   const list = document.getElementById('support-wallets');
   const assets = [['usdt','USDT','TRC20 · Tron'],['btc','BTC','Bitcoin'],['eth','ETH','Ethereum'],['sol','SOL','Solana']];
   try {
-    const response = await fetch('/api/support');
+    const response = await dashboardFetch('/api/support');
     if (!response.ok) throw new Error('address unavailable');
     const addresses = await response.json();
     list.replaceChildren();
