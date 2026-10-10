@@ -88,10 +88,13 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			return
 		}
 		pending := []PendingPair{}
+		inviteID := ""
+		var expires time.Time
 		if d.Pairing != nil {
 			pending = d.Pairing.Pending()
+			inviteID, expires = d.Pairing.InviteState()
 		}
-		writeJSON(w, map[string]any{"is_owner": current.IsOwner, "approved": current.Members, "pending": pending})
+		writeJSON(w, map[string]any{"is_owner": current.IsOwner, "approved": current.Members, "pending": pending, "invite_id": inviteID, "invite_expires_at": expires})
 	})
 	mux.HandleFunc("POST /api/pair/invite", func(w http.ResponseWriter, r *http.Request) {
 		if !dashboardActionAllowed(r) {
@@ -121,7 +124,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			http.Error(w, "QR generation failed", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, map[string]any{"uri": uri, "qr_data_url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), "expires_at": invite.ExpiresAt})
+		writeJSON(w, map[string]any{"uri": uri, "qr_data_url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), "expires_at": invite.ExpiresAt, "invite_id": inviteID(invite)})
 	})
 	mux.HandleFunc("POST /api/pair/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
 		if !dashboardActionAllowed(r) {

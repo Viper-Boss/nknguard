@@ -106,6 +106,16 @@ type Controller struct {
 	// cachedEndpoints are untrusted hints bound to already verified records.
 	// Only a new WireGuard handshake can promote one to a working path.
 	cachedEndpoints map[string]netip.AddrPort
+	// Approved transport hints bootstrap record exchange; they never authorize
+	// a tunnel or replace the counterpart's signed WireGuard record.
+	bootstrapAddresses   map[string]string
+	publications         map[string]recordPublication
+	recordRequests       map[string]time.Time
+	introductionAttempts map[string]uint32
+	connections          map[string]connectionWindow
+	clientConnectionID   string
+	clientConnectUntil   time.Time
+	clientInfoReceived   bool
 
 	wg sync.WaitGroup
 }
@@ -186,17 +196,22 @@ type Metrics struct {
 // New returns a controller with an empty peer table and a deny-all policy.
 func New() *Controller {
 	return &Controller{
-		Config:          DefaultConfig(),
-		peers:           make(map[string]*Peer),
-		admitted:        make(map[string]struct{}),
-		bridges:         make(map[string]*relay.Bridge),
-		icePaths:        make(map[string]*icePath),
-		icePending:      make(map[string]*icePending),
-		iceOperations:   make(map[string]*iceOperation),
-		introduced:      make(map[string]time.Time),
-		refused:         make(map[string]time.Time),
-		cachedEndpoints: make(map[string]netip.AddrPort),
-		Policy:          acl.DefaultPolicy(),
+		Config:               DefaultConfig(),
+		peers:                make(map[string]*Peer),
+		admitted:             make(map[string]struct{}),
+		bridges:              make(map[string]*relay.Bridge),
+		icePaths:             make(map[string]*icePath),
+		icePending:           make(map[string]*icePending),
+		iceOperations:        make(map[string]*iceOperation),
+		introduced:           make(map[string]time.Time),
+		refused:              make(map[string]time.Time),
+		cachedEndpoints:      make(map[string]netip.AddrPort),
+		bootstrapAddresses:   make(map[string]string),
+		publications:         make(map[string]recordPublication),
+		recordRequests:       make(map[string]time.Time),
+		introductionAttempts: make(map[string]uint32),
+		connections:          make(map[string]connectionWindow),
+		Policy:               acl.DefaultPolicy(),
 	}
 }
 
@@ -240,7 +255,10 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// Our own candidates must exist before anything that carries our record
 	// goes out, or the first introduction advertises no way to reach us.
-	c.probeCached(ctx)
+	if !c.Config.OwnerDevice {
+		c.probeCached(ctx)
+	}
+	c.spawn(func() { c.reconcileLoop(ctx) })
 	c.bootstrapDiscovery(ctx)
 	c.gatherCandidates(ctx)
 
@@ -249,6 +267,12 @@ func (c *Controller) Run(ctx context.Context) error {
 	// Cached peers are skipped by ordinary rendezvous introductions. Ask them
 	// explicitly for a fresh signed record as soon as signaling is ready.
 	c.spawn(func() {
+		if c.Config.OwnerDevice || c.Config.ClientDevice {
+			return
+		}
+		if !signalingReady(ctx, c.Signaling) {
+			return
+		}
 		record, err := c.buildRecord(ctx)
 		if err != nil {
 			return
@@ -262,6 +286,12 @@ func (c *Controller) Run(ctx context.Context) error {
 			_ = c.send(ctx, peer.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw, WantReply: true})
 		}
 	})
+	if c.Config.ClientDevice {
+		c.spawn(func() { c.clientConnectLoop(ctx) })
+	}
+	if c.Config.OwnerDevice {
+		c.spawn(func() { c.ownerConnectLoop(ctx) })
+	}
 	c.spawn(func() { c.publishLoop(ctx) })
 	if c.Discovery != nil {
 		c.spawn(func() { c.discoverLoop(ctx) })
@@ -269,7 +299,6 @@ func (c *Controller) Run(ctx context.Context) error {
 	if c.Rendezvous != nil {
 		c.spawn(func() { c.rendezvousLoop(ctx) })
 	}
-	c.spawn(func() { c.reconcileLoop(ctx) })
 	if acceptor, ok := c.Relay.(relay.Acceptor); ok {
 		c.spawn(func() { c.relayAcceptLoop(ctx, acceptor) })
 	}
@@ -370,6 +399,16 @@ func (c *Controller) ApproveDevice(deviceID string) []string {
 	return append([]string(nil), c.Config.Members...)
 }
 
+// RememberApprovedAddress retains the transport address verified during local
+// pairing. Only approved identities may supply a hint; no peer is created.
+func (c *Controller) RememberApprovedAddress(deviceID, address string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if address != "" && len(address) <= 256 && c.authorizedLocked(deviceID) {
+		c.bootstrapAddresses[deviceID] = address
+	}
+}
+
 // RevokeDevice drops authorization, the peer, and its WireGuard key.
 func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) ([]string, error) {
 	c.mu.Lock()
@@ -381,6 +420,11 @@ func (c *Controller) RevokeDevice(ctx context.Context, deviceID string) ([]strin
 	}
 	c.Config.Members = filtered
 	delete(c.admitted, deviceID)
+	delete(c.bootstrapAddresses, deviceID)
+	delete(c.publications, deviceID)
+	delete(c.recordRequests, deviceID)
+	delete(c.recordRequests, "reply:"+deviceID)
+	delete(c.connections, deviceID)
 	peer := c.peers[deviceID]
 	if peer != nil {
 		peer.Revoke()
@@ -501,7 +545,8 @@ func (c *Controller) Peers() []Snapshot {
 	out := make([]Snapshot, 0, len(peers))
 	for _, peer := range peers {
 		snapshot := peer.Snapshot()
-		if path := c.icePathFor(peer.DeviceID()); path != nil {
+		snapshot.ConnectionPhase, snapshot.RecoveryRemaining = c.ConnectionStatus(peer.DeviceID())
+		if path := c.icePathFor(peer.DeviceID()); path != nil && path.bridge.Stats().Open {
 			snapshot.DirectTransport = "ice-udp"
 			snapshot.DirectEndpoint = path.remote.String()
 			if snapshot.Path == PathDirectWG {
@@ -957,11 +1002,13 @@ func (c *Controller) publishLoop(ctx context.Context) {
 		if err != nil {
 			c.logger().Error("building peer record failed", "component", "discovery", "error", err)
 		} else {
-			if c.Discovery != nil {
+			if c.Discovery != nil && c.discoveryPublicationDue(record, time.Now()) {
 				if err := c.Discovery.Publish(ctx, record); err != nil && ctx.Err() == nil {
 					// Publishing failing is survivable: established tunnels do
 					// not depend on it (spec §59), and the next tick retries.
 					c.logger().Warn("publishing peer record failed", "component", "discovery", "error", err)
+				} else {
+					c.notePublication("", record, time.Now(), false)
 				}
 			}
 			c.pushRecord(ctx, record)
@@ -983,17 +1030,13 @@ const maxRecordPushes = 64
 // one republish interval) and what keeps a deployment with no discovery
 // backend at all from letting records expire.
 func (c *Controller) pushRecord(ctx context.Context, record discovery.PeerRecord) {
-	raw, err := record.Marshal()
-	if err != nil {
-		return
-	}
 	pushed := 0
 	for _, peer := range c.Records() {
 		if pushed == maxRecordPushes {
 			return
 		}
 		pushed++
-		_ = c.send(ctx, peer.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw})
+		c.publishToPeer(ctx, peer.DeviceID, record, false)
 	}
 }
 
@@ -1025,14 +1068,28 @@ func (c *Controller) discoverLoop(ctx context.Context) {
 // names. The introduction is our signed record; an address that belongs to a
 // member answers with theirs, and ingestRecord takes it from there.
 func (c *Controller) rendezvousLoop(ctx context.Context) {
+	if !signalingReady(ctx, c.Signaling) {
+		return
+	}
 	ticker := time.NewTicker(orDefault(c.Config.Timing.PollInterval, 15*time.Second))
 	defer ticker.Stop()
 	for {
+		c.mu.RLock()
+		approved := make([]string, 0, len(c.bootstrapAddresses))
+		for _, address := range c.bootstrapAddresses {
+			approved = append(approved, address)
+		}
+		c.mu.RUnlock()
+		if !c.Config.OwnerDevice && !c.Config.ClientDevice {
+			c.introduceWithInterval(ctx, approved, orDefault(c.Config.Timing.PollInterval, 15*time.Second))
+		}
 		if err := c.Rendezvous.Announce(ctx); err != nil && ctx.Err() == nil {
 			c.logger().Warn("rendezvous announce failed", "component", "rendezvous", "error", err)
 		}
-		if addresses, err := c.Rendezvous.Addresses(ctx); err == nil {
-			c.introduce(ctx, addresses)
+		if !c.Config.OwnerDevice && !c.Config.ClientDevice {
+			if addresses, err := c.Rendezvous.Addresses(ctx); err == nil {
+				c.introduce(ctx, addresses)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -1047,11 +1104,34 @@ func (c *Controller) rendezvousLoop(ctx context.Context) {
 // short enough that a member who was offline is picked up within minutes.
 const reintroduceAfter = 5 * time.Minute
 
+func signalingReady(ctx context.Context, transport signaling.Transport) bool {
+	if ready, ok := transport.(interface{ Ready() <-chan struct{} }); ok {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ready.Ready():
+		}
+	}
+	return ctx.Err() == nil
+}
+
 func (c *Controller) introduce(ctx context.Context, addresses []string) {
+	interval := reintroduceAfter
+	if c.Config.ClientDevice {
+		interval = orDefault(c.Config.Timing.PollInterval, 15*time.Second)
+	}
+	c.introduceWithInterval(ctx, addresses, interval)
+}
+
+func (c *Controller) introduceWithInterval(ctx context.Context, addresses []string, interval time.Duration) {
 	self := c.Signaling.LocalAddress()
 	known := make(map[string]struct{})
 	for _, record := range c.Records() {
-		known[record.NKNAddress] = struct{}{}
+		// Waiting peers may have only a stale cache. Re-request the current
+		// signed record until a working path exists.
+		if peer, ok := c.lookupPeer(record.DeviceID); ok && peer.Path() != PathNone {
+			known[record.NKNAddress] = struct{}{}
+		}
 	}
 	var record []byte
 	now := time.Now()
@@ -1064,7 +1144,11 @@ func (c *Controller) introduce(ctx context.Context, addresses []string) {
 		}
 		c.mu.Lock()
 		last, sent := c.introduced[address]
-		if sent && now.Sub(last) < reintroduceAfter {
+		retryInterval := interval
+		if c.Config.OwnerDevice {
+			retryInterval = offlineInterval(interval, c.introductionAttempts[address])
+		}
+		if sent && now.Sub(last) < retryInterval {
 			c.mu.Unlock()
 			continue
 		}
@@ -1094,7 +1178,24 @@ func (c *Controller) introduce(ctx context.Context, addresses []string) {
 		if err != nil {
 			return
 		}
-		_ = c.Signaling.SendAddress(ctx, address, envelope)
+		if err := c.Signaling.SendAddress(ctx, address, envelope); err != nil {
+			// A startup/offline send must not consume the retry interval.
+			c.mu.Lock()
+			if c.introduced[address] == now {
+				delete(c.introduced, address)
+			}
+			c.mu.Unlock()
+		}
+		if c.Config.OwnerDevice {
+			c.mu.Lock()
+			// Successful local send is not evidence that an offline recipient
+			// received it. Back off until a fresh signed record comes back.
+			c.introduced[address] = now
+			if c.introductionAttempts[address] < 16 {
+				c.introductionAttempts[address]++
+			}
+			c.mu.Unlock()
+		}
 	}
 }
 
@@ -1114,7 +1215,23 @@ func (c *Controller) onPeerInfo(ctx context.Context, envelope protocol.Envelope)
 	if record.DeviceID != envelope.FromDeviceID {
 		return errors.New("mesh: PEER_INFO carries someone else's record")
 	}
+	if c.Config.OwnerDevice && info.WantReply {
+		if record.Verify(c.Config.NetworkID, time.Now()) != nil || !c.admit(record) || !c.permits(record) {
+			c.refuseUnapproved(ctx, record)
+			return nil
+		}
+		if !c.acceptConnectionRequest(record.DeviceID, info, envelope.Timestamp) {
+			return nil
+		}
+	}
 	c.ingestRecord(ctx, record)
+	if c.Config.ClientDevice && record.Verify(c.Config.NetworkID, time.Now()) == nil && c.Authorized(record.DeviceID) {
+		c.mu.Lock()
+		if info.ConnectionID == c.clientConnectionID || !protocol.HasCapability(record.Capabilities, protocol.CapRecordRenewalV1) {
+			c.clientInfoReceived = true
+		}
+		c.mu.Unlock()
+	}
 	if !c.Authorized(record.DeviceID) {
 		c.refuseUnapproved(ctx, record)
 		return nil
@@ -1130,7 +1247,14 @@ func (c *Controller) onPeerInfo(ctx context.Context, envelope protocol.Envelope)
 	if err != nil {
 		return err
 	}
-	return c.send(ctx, record.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw})
+	if c.Config.OwnerDevice && !c.ownerConnectionActive(record.DeviceID, time.Now()) {
+		return nil
+	}
+	err = c.send(ctx, record.DeviceID, protocol.TypePeerInfo, protocol.PeerInfo{Record: raw, ConnectionID: info.ConnectionID, ConnectUntil: info.ConnectUntil})
+	if err == nil {
+		c.notePublication(record.DeviceID, own, time.Now(), false)
+	}
+	return err
 }
 
 // refuseInterval bounds NOT_AUTHORIZED replies to one device.
@@ -1237,6 +1361,14 @@ func (c *Controller) ingestRecordAt(ctx context.Context, record discovery.PeerRe
 	if !peer.SetRecord(record) {
 		return
 	}
+	if verifyAt.After(time.Now().Add(-time.Second)) {
+		c.mu.Lock()
+		delete(c.introductionAttempts, record.NKNAddress)
+		publication := c.publications[record.DeviceID]
+		publication.attempts = 0
+		c.publications[record.DeviceID] = publication
+		c.mu.Unlock()
+	}
 	if connector, ok := c.Discovery.(PeerConnector); ok && len(record.DHTAddresses) > 0 {
 		if registry, ok := c.Discovery.(interface{ RegisterPeer(discovery.PeerRecord) }); ok {
 			registry.RegisterPeer(record)
@@ -1251,12 +1383,15 @@ func (c *Controller) ingestRecordAt(ctx context.Context, record discovery.PeerRe
 	}
 	if record.NKNAddress != "" && c.Signaling != nil {
 		c.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
+		if c.Config.OwnerDevice {
+			c.RememberApprovedAddress(record.DeviceID, record.NKNAddress)
+		}
 	}
 	state := peer.State()
 	if state == StateUnknown || state == StateOffline || state == StateDegraded {
 		_, _ = peer.Apply(EventRecordSeen, time.Now())
 		c.logger().Info("peer discovered", "component", "mesh", "peer", record.DeviceID, "name", record.Name)
-		if c.Signaling != nil {
+		if c.Signaling != nil && (!c.Config.OwnerDevice || c.ownerConnectionActive(record.DeviceID, time.Now())) {
 			c.sendHello(ctx, peer)
 		}
 	}
@@ -1295,27 +1430,16 @@ func (c *Controller) newDispatcher() *signaling.Dispatcher {
 	dispatcher.Handle(protocol.TypeICEOffer, c.onICEOffer)
 	dispatcher.Handle(protocol.TypeICEAnswer, c.onICEAnswer)
 	dispatcher.Handle(protocol.TypeWGReady, c.onWGReady)
-	dispatcher.Handle(protocol.TypeKeepalive, func(ctx context.Context, envelope protocol.Envelope) error {
-		if len(envelope.Payload) == 0 {
-			return nil
-		}
-		var request struct {
-			RetryDirect bool `json:"retry_direct"`
-		}
-		if err := json.Unmarshal(envelope.Payload, &request); err != nil {
-			return err
-		}
-		if request.RetryDirect && c.Authorized(envelope.FromDeviceID) {
-			c.Reconnect(envelope.FromDeviceID)
-		}
-		return nil
-	})
+	dispatcher.Handle(protocol.TypeKeepalive, c.onRecordKeepalive)
 	dispatcher.Handle(protocol.TypeDisconnect, c.onDisconnect)
 	dispatcher.Handle(protocol.TypeError, c.onError)
 	return dispatcher
 }
 
 func (c *Controller) send(ctx context.Context, deviceID string, messageType protocol.MessageType, payload any) error {
+	if c.Config.OwnerDevice && messageType != protocol.TypeError && !c.ownerConnectionActive(deviceID, time.Now()) {
+		return nil
+	}
 	envelope, err := protocol.Seal(c.Device, c.Config.NetworkID, deviceID, messageType, payload)
 	if err != nil {
 		return err
@@ -1324,6 +1448,9 @@ func (c *Controller) send(ctx context.Context, deviceID string, messageType prot
 }
 
 func (c *Controller) sendHello(ctx context.Context, peer *Peer) {
+	if c.Config.OwnerDevice && !c.ownerConnectionActive(peer.DeviceID(), time.Now()) {
+		return
+	}
 	hello := protocol.Hello{
 		Versions:     protocol.LocalVersionRange(),
 		Capabilities: c.capabilities(),
@@ -1374,6 +1501,9 @@ func decodeCandidates(raw []byte) ([]nat.EndpointCandidate, error) {
 }
 
 func (c *Controller) onHello(ctx context.Context, envelope protocol.Envelope) error {
+	if c.Config.OwnerDevice && !c.ownerConnectionActive(envelope.FromDeviceID, time.Now()) {
+		return nil
+	}
 	var hello protocol.Hello
 	if err := envelope.DecodePayload(&hello); err != nil {
 		return err
@@ -1421,6 +1551,9 @@ func (c *Controller) onCandidate(_ context.Context, envelope protocol.Envelope) 
 }
 
 func (c *Controller) onPunchRequest(ctx context.Context, envelope protocol.Envelope) error {
+	if c.Config.OwnerDevice && !c.ownerConnectionActive(envelope.FromDeviceID, time.Now()) {
+		return nil
+	}
 	var request protocol.PunchRequest
 	if err := envelope.DecodePayload(&request); err != nil {
 		return err
@@ -1475,6 +1608,13 @@ func (c *Controller) onWGReady(_ context.Context, envelope protocol.Envelope) er
 }
 
 func (c *Controller) onDisconnect(_ context.Context, envelope protocol.Envelope) error {
+	var request protocol.Disconnect
+	if err := envelope.DecodePayload(&request); err != nil {
+		return err
+	}
+	if c.Config.OwnerDevice {
+		c.stopOwnerConnection(envelope.FromDeviceID, request.ConnectionID, "客户端已断开")
+	}
 	if peer, ok := c.lookupPeer(envelope.FromDeviceID); ok {
 		peer.NoteError("peer disconnected")
 	}

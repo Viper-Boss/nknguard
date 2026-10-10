@@ -150,6 +150,22 @@ func (p *Pairing) Pending() []PendingPair {
 	return out
 }
 
+// InviteState exposes only a fingerprint and expiry, so browser tabs can hide
+// consumed/expired QR codes without fetching or re-creating an invitation.
+func (p *Pairing) InviteState() (string, time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.invite.Token == "" || !time.Now().Before(p.invite.ExpiresAt) {
+		return "", time.Time{}
+	}
+	return inviteID(p.invite), p.invite.ExpiresAt
+}
+
+func inviteID(invite PairInvite) string {
+	sum := sha256.Sum256([]byte(invite.Token))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 func (p *Pairing) HandleRequest(ctx context.Context, envelope protocol.Envelope) error {
 	if !p.owner() {
 		return errors.New("pairing: this device cannot approve pair requests")
@@ -231,6 +247,10 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	// the join secret while this NAS does not list it, or its first
 	// introduction would be refused as unapproved.
 	current.Members = append(current.Members, deviceID)
+	if current.MemberAddresses == nil {
+		current.MemberAddresses = make(map[string]string)
+	}
+	current.MemberAddresses[deviceID] = entry.NKNAddress
 	if err := p.node.State.SaveMembership(current); err != nil {
 		return err
 	}
@@ -242,6 +262,7 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 	}
 	delete(p.pending, deviceID)
 	p.invite = PairInvite{}
+	p.mesh.RememberApprovedAddress(deviceID, entry.NKNAddress)
 	return nil
 }
 
@@ -269,6 +290,7 @@ func (p *Pairing) revokeLocked(ctx context.Context, deviceID string) error {
 		}
 	}
 	current.Members = filtered
+	delete(current.MemberAddresses, deviceID)
 	if key := p.mesh.PeerPublicKey(deviceID); key != "" {
 		found := false
 		for _, pending := range current.PendingRemovals {

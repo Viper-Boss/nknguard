@@ -6,6 +6,24 @@ signature is what is trusted, not the transport.
 
 ## Identifiers
 
+### Optional connection lifecycle extensions
+
+Controllers implementing `record-renewal-v1` advertise it in addition to the
+unchanged baseline v1 capabilities. Only capable recipients receive compact
+record renewals inside KEEPALIVE; reconstructed records must pass the original
+root signature, freshness and sequence checks. Legacy peers receive full records.
+
+PEER_INFO may carry `connection_id` and `connect_until` alongside `want_reply`.
+A client initiates a bounded 90-second connection lease, retries every 3 seconds,
+and the owner echoes the identifier. Repeated requests do not extend the lease.
+DISCONNECT may include the connection identifier so a delayed message cannot
+close a newer session. Normal disconnection stops immediately; authenticated
+data-path silence enters a 90-second recovery window covering direct and relay
+paths. Timeout closes the peer's WireGuard, ICE and relay paths, retaining pairing.
+Connection messages disable NKN offline holding; pairing has a 30-second window.
+Existing v1 vectors remain unchanged, and these optional fields are omitted
+when unused. Full lifecycle behavior requires updating both endpoints.
+
 | Name | Format |
 |---|---|
 | Device id | `nkg_` + base32(lowercase, no padding) of `SHA-256(root_public_key)[:10]` — 16 chars |

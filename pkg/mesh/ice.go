@@ -29,6 +29,7 @@ type icePath struct {
 
 func (c *Controller) capabilities() []string {
 	caps := protocol.DefaultCapabilities()
+	caps = append(caps, protocol.CapRecordRenewalV1)
 	if c.ICE != nil {
 		caps = append(caps, protocol.CapICEUDPV1)
 	}
@@ -133,6 +134,9 @@ func (c *Controller) runICEOffer(ctx context.Context, peer *Peer) {
 }
 
 func (c *Controller) onICEOffer(ctx context.Context, envelope protocol.Envelope) error {
+	if c.Config.OwnerDevice && !c.ownerConnectionActive(envelope.FromDeviceID, time.Now()) {
+		return nil
+	}
 	if c.ICE == nil {
 		return nil
 	}
@@ -233,7 +237,7 @@ func (c *Controller) installICEPath(ctx, attempt context.Context, peer *Peer, co
 	}
 	peer.endpointMu.Lock()
 	defer peer.endpointMu.Unlock()
-	if peer.Revoked() || attempt.Err() != nil {
+	if peer.Revoked() || attempt.Err() != nil || (c.Config.OwnerDevice && !c.ownerConnectionActive(peer.DeviceID(), time.Now())) {
 		bridge.Close()
 		return false
 	}
@@ -245,7 +249,12 @@ func (c *Controller) installICEPath(ctx, attempt context.Context, peer *Peer, co
 		relayBridge.SetStandby(true)
 	}
 	c.ensureWireGuardPeer(ctx, peer)
-	c.spawn(func() { _ = bridge.Run(ctx) })
+	c.spawn(func() {
+		err := bridge.Run(ctx)
+		if ctx.Err() == nil && !peer.Revoked() && err != nil {
+			c.logger().Info("ICE direct channel stopped", "component", "nat", "peer", peer.DeviceID(), "error", err)
+		}
+	})
 	rollback := func() {
 		bridge.Close()
 		if peer.Revoked() {

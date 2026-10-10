@@ -140,6 +140,13 @@ func (a *Agent) connect(ctx context.Context, token string) (any, error) {
 	}
 	a.mu.Lock()
 	if a.session != nil {
+		select {
+		case <-a.session.done:
+			a.session = nil
+		default:
+		}
+	}
+	if a.session != nil {
 		a.mu.Unlock()
 		return nil, errors.New("已经在连接中")
 	}
@@ -194,6 +201,14 @@ func (a *Agent) disconnect() {
 	a.mu.Unlock()
 	if current == nil {
 		return
+	}
+	current.mu.Lock()
+	controller := current.controller
+	current.mu.Unlock()
+	if controller != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		controller.NotifyDisconnect(ctx)
+		cancel()
 	}
 	current.cancel()
 	<-current.done
@@ -523,15 +538,32 @@ func (s *session) statusLoop(ctx context.Context) {
 		case <-ticker.C:
 		}
 		current := s.agent.status()
+		if current.ConnectionPhase == "disconnected" {
+			s.stopAfterRecoveryTimeout()
+			return
+		}
 		// Byte counters change every second while traffic flows; send those
 		// at most every few seconds, and any state change at once.
-		changed := current.Phase != last.Phase || current.Path != last.Path || current.LastError != last.LastError ||
+		changed := current.RecoveryRemaining != last.RecoveryRemaining || current.Phase != last.Phase || current.Path != last.Path || current.LastError != last.LastError ||
 			current.Endpoint != last.Endpoint || current.NASVirtualIP != last.NASVirtualIP || current.NKNAddress != last.NKNAddress
 		if changed || time.Since(lastSent) >= 3*time.Second {
 			s.agent.emit("status", current)
 			last, lastSent = current, time.Now()
 		}
 	}
+}
+
+// Publish the terminal status before the status worker stops. Otherwise the
+// Android foreground service could keep displaying its last countdown.
+func (s *session) stopAfterRecoveryTimeout() {
+	s.setPhase(PhaseError, "恢复超时，连接已停止；点连接重试")
+	status := s.agent.status()
+	status.Connected = false
+	status.Phase = PhaseError
+	status.ConnectionPhase = "disconnected"
+	status.RecoveryRemaining = 0
+	s.agent.emit("status", status)
+	s.cancel()
 }
 
 func nasRoute(value string) string {

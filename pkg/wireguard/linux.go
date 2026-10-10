@@ -260,7 +260,7 @@ func (m *LinuxManager) addPeerLocked(ctx context.Context, iface string, peer Pee
 	if peer.Endpoint != "" {
 		args = append(args, "endpoint", peer.Endpoint)
 	}
-	if peer.PersistentKeepalive > 0 {
+	if peer.PersistentKeepalive >= 0 {
 		args = append(args, "persistent-keepalive", strconv.Itoa(peer.PersistentKeepalive))
 	}
 	_, err := m.runner.Run(ctx, "wg", args...)

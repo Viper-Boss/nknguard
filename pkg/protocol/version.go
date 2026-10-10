@@ -24,6 +24,7 @@ const (
 	CapDHTRecordV1     = "dht-record-v1"
 	CapACLV1           = "acl-v1"
 	CapICEUDPV1        = "ice-udp-v1"
+	CapRecordRenewalV1 = "record-renewal-v1"
 )
 
 // DefaultCapabilities is the baseline v1 capability set. Optional transports

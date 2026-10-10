@@ -39,7 +39,18 @@ def find_text(text):
         adb("shell", "uiautomator", "dump", "/sdcard/nkg-preview.xml")
         xml = subprocess.check_output(["adb", "shell", "cat", "/sdcard/nkg-preview.xml"])
         (output / "hierarchy.xml").write_bytes(xml)
-        target = next((n for n in ET.fromstring(xml).iter("node") if n.get("text") == text), None)
+        nodes = list(ET.fromstring(xml).iter("node"))
+        # Hosted emulators occasionally show a launcher ANR over our app.
+        # Handle only that external process; an NKNGuard ANR must still fail.
+        if any(n.get("text") == "Pixel Launcher isn't responding" for n in nodes):
+            screenshot("launcher-anr.png")
+            (output / "launcher-anr-logcat.txt").write_bytes(subprocess.check_output(["adb", "logcat", "-d"]))
+            close = next(n for n in nodes if n.get("resource-id") == "android:id/aerr_close")
+            x1, y1, x2, y2 = map(int, re.findall(r"\d+", close.get("bounds")))
+            adb("shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
+            start()
+            continue
+        target = next((n for n in nodes if n.get("text") == text), None)
         if target is not None:
             return target
         size = subprocess.check_output(["adb", "shell", "wm", "size"]).decode()

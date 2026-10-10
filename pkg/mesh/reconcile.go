@@ -102,6 +102,12 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			continue
 		}
 		record := peer.Record()
+		c.mu.RLock()
+		window := c.connections[peer.DeviceID()]
+		c.mu.RUnlock()
+		if window.closed {
+			continue
+		}
 		if record.WireGuardPublicKey == "" {
 			continue
 		}
@@ -125,6 +131,12 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 		viaBridge := bridge != nil && bridge.Stats().Open && bridge.LocalAddr().String() == seen.endpoint
 		if isLoopbackEndpoint(seen.endpoint) && !viaICE && !viaBridge {
 			fresh = false
+		}
+		if c.Config.OwnerDevice && !c.ownerConnectionActive(peer.DeviceID(), now) && !fresh {
+			if endpointOwned {
+				peer.endpointMu.Unlock()
+			}
+			continue
 		}
 		// Prepare the fallback concurrently, including while direct is up.
 		if bridge == nil && c.relayAvailable() && c.Signaling != nil && c.initiator(peer) {
@@ -187,6 +199,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			RelayActive:   bridge != nil && fresh && viaBridge,
 		})
 		peer.endpointMu.Unlock()
+		if !c.updateConnection(peer.DeviceID(), path != PathNone, now) {
+			continue
+		}
 		if path != before {
 			switches++
 			c.logger().Info("path changed", "component", "mesh", "peer", peer.DeviceID(), "from", before, "to", path)
@@ -405,6 +420,9 @@ func (c *Controller) ensureWireGuardPeer(ctx context.Context, peer *Peer) {
 		AllowedIPs:          allowed,
 		PersistentKeepalive: c.Config.Keepalive,
 	}
+	if c.Config.OwnerDevice {
+		config.PersistentKeepalive = 0
+	}
 	if err := c.WireGuard.AddPeer(ctx, config); err != nil {
 		peer.NoteError("install peer: " + err.Error())
 		return
@@ -481,7 +499,7 @@ func (c *Controller) relayAcceptLoop(ctx context.Context, acceptor relay.Accepto
 			continue
 		}
 		peer, known := c.lookupPeer(session.DeviceID)
-		if !known || !c.Authorized(session.DeviceID) || peer.Record().WireGuardPublicKey == "" {
+		if !known || !c.Authorized(session.DeviceID) || peer.Record().WireGuardPublicKey == "" || (c.Config.OwnerDevice && !c.ownerConnectionActive(session.DeviceID, time.Now())) {
 			_ = session.Conn.Close()
 			continue
 		}
@@ -496,7 +514,7 @@ func (c *Controller) relayAcceptLoop(ctx context.Context, acceptor relay.Accepto
 func (c *Controller) attachBridge(ctx context.Context, peer *Peer, stream net.Conn) bool {
 	peer.endpointMu.Lock()
 	defer peer.endpointMu.Unlock()
-	if peer.Revoked() {
+	if peer.Revoked() || (c.Config.OwnerDevice && !c.ownerConnectionActive(peer.DeviceID(), time.Now())) {
 		_ = stream.Close()
 		return false
 	}

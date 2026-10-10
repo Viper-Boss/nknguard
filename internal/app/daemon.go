@@ -127,6 +127,9 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	controller.Config.RequireApproval = cfg.Pairing.ApprovalRequired
 	controller.Config.OwnerDevice = current.IsOwner
 	controller.Config.ClientDevice = !current.IsOwner
+	for deviceID, address := range current.MemberAddresses {
+		controller.RememberApprovedAddress(deviceID, address)
+	}
 	controller.Device = node.Device
 	controller.Membership = key
 	controller.Policy = cfg.ACL
@@ -223,6 +226,11 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	cached, _ := node.State.LoadPeerCache()
 	for _, record := range cached {
 		controller.IngestCached(runCtx, record)
+		// Migrate transport hints from previously verified caches as well as
+		// newly paired devices. The hint itself grants no tunnel access.
+		if controller.PeerPublicKey(record.DeviceID) == record.WireGuardPublicKey && record.WireGuardPublicKey != "" {
+			controller.RememberApprovedAddress(record.DeviceID, record.NKNAddress)
+		}
 	}
 	hints, _ := node.State.LoadLinkHints()
 	for _, hint := range hints {
@@ -381,7 +389,7 @@ func (d *Daemon) persistLinkHints() {
 		}
 	}
 	for _, peer := range d.Controller.Peers() {
-		if peer.Path == mesh.PathDirectWG && allowed[peer.DeviceID] && peer.Endpoint != "" {
+		if peer.Path == mesh.PathDirectWG && peer.DirectTransport != "ice-udp" && allowed[peer.DeviceID] && peer.Endpoint != "" {
 			hints[peer.DeviceID] = state.LinkHint{DeviceID: peer.DeviceID, PublicKey: peer.WireGuardPublicKey, Endpoint: peer.Endpoint, SeenAt: time.Now()}
 		}
 	}

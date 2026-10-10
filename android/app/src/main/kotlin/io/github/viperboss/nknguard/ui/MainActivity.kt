@@ -355,6 +355,9 @@ class MainActivity : Activity(), NkgApp.Listener {
 
         deviceLine.text = app.info.optString("device_id").let { if (it.isEmpty()) "正在启动核心…" else "本机设备 ID：$it" }
         statusTitle.text = Text.phaseTitle(status)
+        if (status.optString("connection_phase") == "connecting" && status.optLong("recovery_remaining_seconds") > 0) {
+            statusTitle.text = "${statusTitle.text} · ${status.optLong("recovery_remaining_seconds")} 秒"
+        }
         val error = status.optString("last_error")
         statusHint.text = listOf(Text.phaseHint(status), if (phase in setOf("waiting", "error", "connecting_nkn", "core_unavailable")) error else "")
             .filter { it.isNotEmpty() }.joinToString("\n")

@@ -19,39 +19,41 @@ import (
 // field is observed: Phase is "direct" or "relay" only while WireGuard has a
 // fresh handshake with the NAS on that path.
 type Status struct {
-	Phase            string                      `json:"phase"`
-	Connected        bool                        `json:"connected"`
-	Paired           bool                        `json:"paired"`
-	Revoked          bool                        `json:"revoked"`
-	NASID            string                      `json:"nas_id,omitempty"`
-	NASName          string                      `json:"nas_name,omitempty"`
-	NASAddress       string                      `json:"nas_address,omitempty"`
-	NASVirtualIP     string                      `json:"nas_virtual_ip,omitempty"`
-	VirtualIP        string                      `json:"virtual_ip,omitempty"`
-	NKNAddress       string                      `json:"nkn_address,omitempty"`
-	NKNConnected     bool                        `json:"nkn_connected"`
-	NKNConnection    *nknclient.ConnectionStatus `json:"nkn_connection,omitempty"`
-	Path             string                      `json:"path"`
-	PeerState        string                      `json:"peer_state,omitempty"`
-	Endpoint         string                      `json:"endpoint,omitempty"`
-	DirectTransport  string                      `json:"direct_transport,omitempty"`
-	DirectEndpoint   string                      `json:"direct_endpoint,omitempty"`
-	LastHandshake    int64                       `json:"last_handshake_unix,omitempty"`
-	HandshakeOK      bool                        `json:"handshake_fresh"`
-	RxBytes          int64                       `json:"rx_bytes"`
-	TxBytes          int64                       `json:"tx_bytes"`
-	RelayFallback    int                         `json:"relay_fallbacks"`
-	LastError        string                      `json:"last_error,omitempty"`
-	Since            int64                       `json:"since_unix,omitempty"`
-	RouteCIDR        string                      `json:"route_cidr,omitempty"`
-	AllowedCIDR      string                      `json:"allowed_cidr,omitempty"`
-	DirectAttempting bool                        `json:"direct_attempting"`
-	NextDirectRetry  time.Time                   `json:"next_direct_retry,omitempty"`
-	DHTEnabled       bool                        `json:"dht_enabled"`
-	DHTPeers         int                         `json:"dht_peers"`
-	RelayReady       bool                        `json:"relay_ready"`
-	RelayStandby     bool                        `json:"relay_standby"`
-	NATBehaviour     nat.Behaviour               `json:"nat_behaviour"`
+	ConnectionPhase   string                      `json:"connection_phase,omitempty"`
+	RecoveryRemaining int64                       `json:"recovery_remaining_seconds,omitempty"`
+	Phase             string                      `json:"phase"`
+	Connected         bool                        `json:"connected"`
+	Paired            bool                        `json:"paired"`
+	Revoked           bool                        `json:"revoked"`
+	NASID             string                      `json:"nas_id,omitempty"`
+	NASName           string                      `json:"nas_name,omitempty"`
+	NASAddress        string                      `json:"nas_address,omitempty"`
+	NASVirtualIP      string                      `json:"nas_virtual_ip,omitempty"`
+	VirtualIP         string                      `json:"virtual_ip,omitempty"`
+	NKNAddress        string                      `json:"nkn_address,omitempty"`
+	NKNConnected      bool                        `json:"nkn_connected"`
+	NKNConnection     *nknclient.ConnectionStatus `json:"nkn_connection,omitempty"`
+	Path              string                      `json:"path"`
+	PeerState         string                      `json:"peer_state,omitempty"`
+	Endpoint          string                      `json:"endpoint,omitempty"`
+	DirectTransport   string                      `json:"direct_transport,omitempty"`
+	DirectEndpoint    string                      `json:"direct_endpoint,omitempty"`
+	LastHandshake     int64                       `json:"last_handshake_unix,omitempty"`
+	HandshakeOK       bool                        `json:"handshake_fresh"`
+	RxBytes           int64                       `json:"rx_bytes"`
+	TxBytes           int64                       `json:"tx_bytes"`
+	RelayFallback     int                         `json:"relay_fallbacks"`
+	LastError         string                      `json:"last_error,omitempty"`
+	Since             int64                       `json:"since_unix,omitempty"`
+	RouteCIDR         string                      `json:"route_cidr,omitempty"`
+	AllowedCIDR       string                      `json:"allowed_cidr,omitempty"`
+	DirectAttempting  bool                        `json:"direct_attempting"`
+	NextDirectRetry   time.Time                   `json:"next_direct_retry,omitempty"`
+	DHTEnabled        bool                        `json:"dht_enabled"`
+	DHTPeers          int                         `json:"dht_peers"`
+	RelayReady        bool                        `json:"relay_ready"`
+	RelayStandby      bool                        `json:"relay_standby"`
+	NATBehaviour      nat.Behaviour               `json:"nat_behaviour"`
 }
 
 func (a *Agent) status() Status {
@@ -98,6 +100,11 @@ func (a *Agent) status() Status {
 		}
 	}
 	status.Connected = true
+	select {
+	case <-current.done:
+		status.Connected = false
+	default:
+	}
 	if revoked {
 		status.Revoked = true
 		return status
@@ -114,6 +121,7 @@ func (a *Agent) status() Status {
 		}
 	}
 	status.PeerState = string(nas.State)
+	status.ConnectionPhase, status.RecoveryRemaining = controller.ConnectionStatus(current.profile.NASID)
 	status.NASName = nas.Name
 	status.NASVirtualIP = nas.VirtualIP
 	status.DirectAttempting = nas.DirectAttempting
@@ -151,6 +159,9 @@ func (a *Agent) status() Status {
 		status.Phase, status.Path = PhaseRelay, string(mesh.PathNKNRelay)
 	case status.Phase == PhaseDirect || status.Phase == PhaseRelay:
 		status.Phase = PhaseWaiting
+	}
+	if status.ConnectionPhase == "reconnecting" {
+		status.Phase = "reconnecting"
 	}
 	return status
 }
