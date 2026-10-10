@@ -37,7 +37,10 @@ func newDashboardSessions() *dashboardSessions {
 }
 
 func dashboardCredential(node *Node) ([32]byte, error) {
-	raw, err := node.Keystore.ReadSecret(dashboardPasswordName)
+	raw, err := node.Keystore.ReadSecret(dashboardAccountName)
+	if errors.Is(err, fs.ErrNotExist) {
+		raw, err = node.Keystore.ReadSecret(dashboardPasswordName)
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		raw, err = node.Keystore.ReadSecret(dashboardKeyName)
 	}
@@ -122,6 +125,46 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		path := r.URL.Path
+		if path == "/api/setup" {
+			if node.DashboardPasswordReady() {
+				http.Error(w, "管理账号已设置", http.StatusConflict)
+				return
+			}
+			if r.Method == http.MethodGet {
+				writeJSON(w, dashboardSetupInfo(node))
+				return
+			}
+			if r.Method != http.MethodPost || !dashboardActionAllowed(r) {
+				http.Error(w, "same-origin POST required", 403)
+				return
+			}
+			var account struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+				Confirm  string `json:"confirm"`
+			}
+			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&account) != nil || account.Password != account.Confirm {
+				http.Error(w, "两次密码不一致或格式不正确", 400)
+				return
+			}
+			if err := node.SetupDashboardAccount(account.Username, account.Password); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			credential, err := dashboardCredential(node)
+			if err != nil {
+				http.Error(w, "账号已保存，请返回登录页登录", 500)
+				return
+			}
+			value, err := sessions.create(credential)
+			if err != nil {
+				http.Error(w, "账号已保存，请返回登录页登录", 500)
+				return
+			}
+			setDashboardCookie(w, r, value)
+			writeJSON(w, dashboardSetupInfo(node))
+			return
+		}
 		if path == "/api/auth/login" {
 			if r.Method != http.MethodPost {
 				w.Header().Set("Allow", "POST")
@@ -136,13 +179,13 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 				Username string `json:"username"`
 				Password string `json:"password"`
 			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&credentials); err != nil || len(credentials.Username) > 64 || len(credentials.Password) > 72 {
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&credentials); err != nil || len(credentials.Username) > 128 || len(credentials.Password) > 72 {
 				http.Error(w, "登录信息格式不正确", http.StatusBadRequest)
 				return
 			}
 			credential, credentialErr := dashboardCredential(node)
 			ok, retry := logins.verify(func() bool {
-				return credentialErr == nil && credentials.Username == "admin" && node.VerifyDashboardPassword(credentials.Password)
+				return credentialErr == nil && credentials.Username == node.DashboardUsername() && node.VerifyDashboardPassword(credentials.Password)
 			})
 			if retry > 0 {
 				tooManyAttempts(w, retry)
@@ -173,7 +216,7 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if path == "/login.css" || path == "/login.js" {
+		if path == "/login.css" || path == "/login.js" || path == "/setup.css" || path == "/setup.js" {
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -182,6 +225,24 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 			return
 		}
 		authenticated := sessions.valid(r, node)
+		if path == "/setup" || path == "/setup.html" {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "method not allowed", 405)
+				return
+			}
+			if node.DashboardPasswordReady() {
+				http.Redirect(w, r, "/login", 303)
+				return
+			}
+			raw, err := fs.ReadFile(assets, "setup.html")
+			if err != nil {
+				http.Error(w, "setup page unavailable", 500)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			http.ServeContent(w, r, "setup.html", time.Time{}, bytes.NewReader(raw))
+			return
+		}
 		if path == "/login" || path == "/login.html" {
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -189,6 +250,10 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 			}
 			if authenticated {
 				http.Redirect(w, r, "/", http.StatusSeeOther)
+				return
+			}
+			if !node.DashboardPasswordReady() {
+				http.Redirect(w, r, "/setup", 303)
 				return
 			}
 			raw, err := fs.ReadFile(assets, "login.html")
@@ -205,7 +270,11 @@ func dashboardSessionHandler(node *Node, logins *loginThrottle, listen string, a
 				w.WriteHeader(http.StatusUnauthorized)
 				_, _ = w.Write([]byte("请登录管理后台"))
 			} else {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				location := "/login"
+				if !node.DashboardPasswordReady() {
+					location = "/setup"
+				}
+				http.Redirect(w, r, location, http.StatusSeeOther)
 			}
 			return
 		}

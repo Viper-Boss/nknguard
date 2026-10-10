@@ -38,6 +38,7 @@ type Status struct {
 	NKNConnected  bool                       `json:"nkn_connected"`
 	NKNConnection nknclient.ConnectionStatus `json:"nkn_connection"`
 	NAT           nat.Behaviour              `json:"nat_behaviour"`
+	RouterMapping nat.RouterMappingStatus    `json:"router_mapping"`
 
 	WireGuard wireguard.Status `json:"wireguard"`
 	Peers     []mesh.Snapshot  `json:"peers"`

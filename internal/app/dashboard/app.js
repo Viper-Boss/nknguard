@@ -2,8 +2,8 @@ const byId = id => document.getElementById(id);
 const setText = (id, value) => { byId(id).textContent = value ?? '—'; };
 const pathLabel = path => ({'direct-wg':'WireGuard 直连','nkn-relay':'NKN 中继','none':'等待连接'})[path] || '等待连接';
 const stateLabel = state => ({'DIRECT':'已直连','RELAY':'已中继','PUNCHING':'正在打洞','RELAY_CONNECTING':'建立中继','OFFLINE':'离线'})[state] || '连接中';
-const natLabel = value => ({'endpoint-independent':'端点无关型','address-dependent':'映射随目标变化','open':'无需 NAT','unknown':'尚未测定'})[value] || '未知';
-const natHint = value => ({'endpoint-independent':'映射稳定 · 利于直连','address-dependent':'映射受限 · 可能需要中继','open':'直接连接公网','unknown':'等待自动探测'})[value] || '等待自动探测';
+const natLabel = value => ({'endpoint-independent':'映射稳定','address-dependent':'映射随目标变化','open':'公网 · 无地址转换','unknown':'尚未测定'})[value] || '未知';
+const natHint = value => ({'endpoint-independent':'端点无关映射 · 具体锥型待测定','address-dependent':'映射受限 · 可能需要中继','open':'直接连接公网','unknown':'等待自动探测'})[value] || '等待自动探测';
 let currentStatus = null;
 let currentUsage = null;
 window.addEventListener('nknguard-network-ready', () => {
@@ -116,6 +116,8 @@ function render(status) {
   setText('detail-port', status.wireguard?.listen_port);
   setText('detail-nat', natLabel(status.nat_behaviour));
   setText('detail-punch', status.metrics?.punch_success);
+  setText('detail-router-mapping', status.router_mapping?.message || '等待路由器映射检测');
+  setText('detail-router-endpoint', status.router_mapping?.endpoint || '暂无公网映射');
   setText('detail-fallback', status.metrics?.relay_fallback_count);
   renderDevices(peers);
   lastUpdate = Date.now();
@@ -159,13 +161,13 @@ async function changePassword(event) {
   const next = byId('new-password').value;
   const confirmation = byId('confirm-password').value;
   const message = byId('password-message');
-  if ([...next].length < 12) { message.textContent = '新密码至少需要 12 个字符。'; return; }
+  if (next && [...next].length < 12) { message.textContent = '新密码至少需要 12 个字符。'; return; }
   if (next !== confirmation) { message.textContent = '两次输入的新密码不一致。'; return; }
   try {
-    const response = await dashboardFetch('/api/admin/password', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({current,new:next})});
+    const response = await dashboardFetch('/api/admin/account', {method:'POST',headers:{'Content-Type':'application/json','X-NKNGuard-UI':'1'},body:JSON.stringify({current,username:byId('account-username').value.trim(),new:next})});
     if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
     byId('password-form').reset();
-    location.replace('/login?password_changed=1');
+    location.replace('/login?account_changed=1');
   } catch (error) { message.textContent = `修改失败：${error.message}`; }
 }
 
@@ -326,3 +328,14 @@ byId('logout').addEventListener('click', async event => {
     location.replace('/login');
   } catch (error) { button.disabled = false; toast(error.message); }
 });
+
+async function refreshAccount() {
+  try {
+    const response = await dashboardFetch('/api/admin/account');
+    if (!response.ok) throw new Error('无法读取管理员账号');
+    const data = await response.json(); byId('account-username').value = data.username;
+    document.querySelector('.avatar').textContent = [...data.username][0]?.toUpperCase() || 'N';
+  } catch(error) { byId('password-message').textContent = error.message; }
+}
+refreshAccount();
+if (location.hash === '#pairing') changeView('pairing');

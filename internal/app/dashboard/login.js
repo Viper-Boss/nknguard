@@ -5,9 +5,9 @@ const visibility = document.getElementById('show-password');
 const message = document.getElementById('login-message');
 const submit = document.getElementById('login-submit');
 const params = new URLSearchParams(location.search);
-if (params.has('password_changed') || params.has('expired')) {
+if (params.has('password_changed') || params.has('account_changed') || params.has('expired')) {
   message.classList.add('info');
-  message.textContent = params.has('password_changed') ? '密码已更新，请使用新密码登录。' : '登录已过期，请重新登录。';
+  message.textContent = params.has('password_changed') || params.has('account_changed') ? '账号已更新，请使用最新用户名和密码登录。' : '登录已过期，请重新登录。';
   history.replaceState(null, '', '/login');
 }
 visibility.addEventListener('click', () => {

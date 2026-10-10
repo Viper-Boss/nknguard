@@ -8,10 +8,13 @@
     const data = await response.json();
     node('update-version').textContent = `${data.current} · ${data.arch === 'arm64' ? 'ARM64' : data.arch === 'amd64' ? 'x86_64' : data.arch}`;
     node('update-file').disabled = !data.supported;
+    node('choose-update').disabled = !data.supported;
     node('upload-update').disabled = !data.supported;
     if (!data.supported) message('当前安装方式请通过安装管理器更新。');
     else if (data.job) message(data.job.message);
   }
+  node('choose-update').addEventListener('click', () => node('update-file').click());
+  node('update-file').addEventListener('change', () => { node('update-filename').textContent = node('update-file').files[0]?.name || '尚未选择更新包'; });
   node('check-update').addEventListener('click', async () => {
     const button = node('check-update'); button.disabled = true; message('正在检查 GitHub 发布版本…');
     try {

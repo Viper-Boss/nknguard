@@ -1,7 +1,7 @@
 // Public receiving addresses come from the authenticated local dashboard.
 (async () => {
   const list = document.getElementById('support-wallets');
-  const assets = [['usdt','USDT','TRC20 · Tron'],['btc','BTC','Bitcoin'],['eth','ETH','Ethereum'],['sol','SOL','Solana']];
+  const assets = [['usdt','USDT','TRC20 · Tron'],['btc','BTC','Bitcoin'],['eth','ETH / USDC','ERC20 · Ethereum'],['sol','SOL','Solana']];
   try {
     const response = await dashboardFetch('/api/support');
     if (!response.ok) throw new Error('address unavailable');

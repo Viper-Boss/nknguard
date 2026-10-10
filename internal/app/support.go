@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"net/http"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -18,7 +19,13 @@ var supportAddresses = map[string]string{
 func supportQRHandler() http.HandlerFunc {
 	images := make(map[string][]byte, len(supportAddresses))
 	for asset, address := range supportAddresses {
-		images[asset], _ = qrcode.Encode(address, qrcode.Medium, 320)
+		code, err := qrcode.New(address, qrcode.Medium)
+		if err != nil {
+			continue
+		}
+		code.BackgroundColor = color.RGBA{R: 222, G: 239, B: 232, A: 255}
+		code.ForegroundColor = color.RGBA{R: 16, G: 35, B: 47, A: 255}
+		images[asset], _ = code.PNG(320)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		image, ok := images[r.PathValue("asset")]

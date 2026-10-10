@@ -75,6 +75,9 @@ func TestRouterDynamicPortAndCleanup(t *testing.T) {
 		t.Fatalf("expected mapping %d, got %v", expected, r.endpoint.Load())
 	}
 	wait(40001)
+	if status := r.MappingStatus(); status.State != "mapped" || status.InternalPort != 40001 || status.Endpoint == "" {
+		t.Fatalf("mapping status missing: %+v", status)
+	}
 	candidates, _, err := r.Gather(ctx)
 	if err != nil || len(candidates) != 1 || candidates[0].Type != CandidateMapped {
 		t.Fatal("mapping did not survive STUN failure", candidates, err)

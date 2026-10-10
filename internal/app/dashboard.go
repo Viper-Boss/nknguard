@@ -25,9 +25,6 @@ var dashboardAssets embed.FS
 // reach it through an SSH port forward. A reverse proxy must preserve the
 // loopback Host and matching Origin; arbitrary forwarded headers are untrusted.
 func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
-	if !d.Node.DashboardPasswordReady() {
-		return nil, errors.New("dashboard password is not configured")
-	}
 	listener, err := net.Listen("tcp", d.Config.Dashboard.Listen)
 	if err != nil {
 		return nil, err
@@ -51,6 +48,10 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 		writeJSON(w, d.Logs.Lines())
 	})
 	mux.HandleFunc("POST /api/admin/password", dashboardPasswordChangeHandler(d.Node, logins))
+	mux.HandleFunc("GET /api/admin/account", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"username": d.Node.DashboardUsername()})
+	})
+	mux.HandleFunc("POST /api/admin/account", dashboardAccountChangeHandler(d.Node, logins))
 	mux.HandleFunc("GET /api/usage", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()

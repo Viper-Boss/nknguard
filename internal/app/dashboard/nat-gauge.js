@@ -13,6 +13,12 @@
     const panel = document.getElementById('nat-panel');
     if (!panel) return;
     panel.dataset.mapping = key;
+    document.getElementById('nat-current-text').textContent = key === 'endpoint-independent' ? '当前：映射稳定 · 以下三种锥型待区分' : key === 'address-dependent' ? '当前：映射受限 · 具有对称型映射特征' : key === 'open' ? '当前：公网 · 无地址转换' : '当前：尚未测定';
+    panel.querySelectorAll('[data-nat-class]').forEach(card => {
+      const active = key === 'endpoint-independent' ? card.dataset.natClass === 'cone' : key === 'address-dependent' && card.dataset.natClass === 'symmetric';
+      card.classList.toggle('mapping-match', active);
+      card.setAttribute('aria-label', card.querySelector('b').textContent + (active ? key === 'endpoint-independent' ? '：映射特征相符，具体过滤类别待测定' : '：映射特征相符' : '：条件参考'));
+    });
     const needle = panel.querySelector('.nat-needle');
     needle.style.transform = `rotate(${value.angle}deg)`;
     needle.style.color = value.color;

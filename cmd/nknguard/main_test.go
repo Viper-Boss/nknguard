@@ -2,12 +2,41 @@ package main
 
 import (
 	"bytes"
+	"github.com/Viper-Boss/nknguard/internal/app"
+	"github.com/Viper-Boss/nknguard/internal/config"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestInitDeferredWebAccount(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	stateDir := filepath.Join(dir, "state")
+	var out, errors bytes.Buffer
+	if code := run([]string{"--config", path, "--state-dir", stateDir, "init", "--name", "test-nas", "--defer-dashboard-setup"}, &out, &errors); code != 0 {
+		t.Fatal(errors.String())
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := app.OpenNode(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Network.ID == "" || node.DashboardPasswordReady() {
+		t.Fatal("deferred setup missing network or already configured")
+	}
+	if err := node.SetupDashboardAccount("nas-owner", "private dashboard password"); err != nil {
+		t.Fatal(err)
+	}
+	if node.DashboardUsername() != "nas-owner" {
+		t.Fatal("custom administrator missing")
+	}
+}
 
 // The offline half of the CLI — init, join, invite, identity, leave — works
 // in a temporary directory without root or a network.

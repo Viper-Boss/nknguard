@@ -419,6 +419,15 @@ func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 		status.VirtualIP = virtual.String()
 	}
 	status.OverlayCIDR = d.Config.OverlayPrefix().String()
+	status.RouterMapping = nat.RouterMappingStatus{State: "disabled", Message: "路由器自动映射未启用"}
+	if d.Config.NAT.PortMapping {
+		status.RouterMapping = nat.RouterMappingStatus{State: "unavailable", Message: "本节点未启用路由器映射"}
+	}
+	if source, ok := d.Controller.Candidates.(interface {
+		MappingStatus() nat.RouterMappingStatus
+	}); ok {
+		status.RouterMapping = source.MappingStatus()
+	}
 	status.DHTEnabled, status.DHTPeers, status.DHTRoutes = d.Controller.DiscoveryStatus()
 	status.DHTLANPeers = d.Controller.DiscoveryLANPeers()
 	return status

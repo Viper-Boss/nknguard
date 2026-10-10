@@ -196,3 +196,5 @@ td b { color: #d1dfec; font-weight: 500; }
 .logout-button { background: #ffffff03; border: 1px solid var(--line); color: #8a9cb4; border-radius: 9px; padding: 9px 12px; font-size: 11px; cursor: pointer; }
 .logout-button:hover { color: #9ae9db; border-color: #7ee2d13b; }
 .logout-button:disabled { opacity: .5; cursor: wait; }
+
+.icon-sprite{position:absolute;overflow:hidden}
