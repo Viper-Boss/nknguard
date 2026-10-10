@@ -107,3 +107,22 @@ func TestRouterRejectsUpstreamCGNAT(t *testing.T) {
 		}
 	}
 }
+
+func TestRouterDiscoveryCancellationDoesNotUseTypedNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	entered := make(chan struct{})
+	r := &RouterCandidates{inner: mappingBase{}, port: func(context.Context) (int, error) { t.Error("port queried after failed discovery"); return 0, nil }, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), cancel: cancel, done: make(chan struct{}), discover: func(ctx context.Context) (routerGateway, error) {
+		close(entered)
+		<-ctx.Done()
+		var typedNil *mappingRouter
+		return typedNil, ctx.Err()
+	}}
+	go r.run(ctx)
+	<-entered
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if r.endpoint.Load() != nil {
+		t.Fatal("failed discovery advertised an endpoint")
+	}
+}

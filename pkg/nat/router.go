@@ -38,7 +38,14 @@ func NewRouterCandidates(ctx context.Context, inner CandidateProvider, port func
 		logger = slog.Default()
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	r := &RouterCandidates{inner: inner, port: port, logger: logger, cancel: cancel, done: make(chan struct{}), discover: func(ctx context.Context) (routerGateway, error) { return libnat.DiscoverNAT(ctx) }}
+	r := &RouterCandidates{inner: inner, port: port, logger: logger, cancel: cancel, done: make(chan struct{}), discover: func(ctx context.Context) (routerGateway, error) {
+		n, err := libnat.DiscoverNAT(ctx)
+		// A typed nil *NAT must not become a non-nil interface on cancellation.
+		if n == nil {
+			return nil, err
+		}
+		return n, err
+	}}
 	go r.run(ctx)
 	return r, r
 }
@@ -77,8 +84,10 @@ func (r *RouterCandidates) run(ctx context.Context) {
 	for {
 		operation, cancel := context.WithTimeout(ctx, 5*time.Second)
 		if router == nil {
-			var err error
-			router, err = r.discover(operation)
+			discovered, err := r.discover(operation)
+			if err == nil {
+				router = discovered
+			}
 			if err != nil && ctx.Err() == nil {
 				r.logger.Debug("router mapping unavailable; ICE retained", "component", "nat", "error", err)
 			}
