@@ -58,3 +58,10 @@ sudo rm -rf -- /mnt/docker-data/nknguard
 ```
 
 Afterward verify that `nkg0`, the process, unit, and app directory are gone.
+
+## NAS 专用转发隔离（0.2.14）
+
+需要 `iptables` 和 `ip6tables`。服务为自己的隧道接口添加带有
+`nknguard:<接口名>:nas-only` 注释的 FORWARD 丢弃规则，阻止客户端借 NAS 转发上网或互访。
+不修改全局转发开关，也不清空 Docker 的规则。正常停止时先删除隧道接口，再删除自己的规则。
+完整卸载应先正常停止服务并核查该注释；遇到强制终止残留时只清理该接口的精确规则，不清空防火墙。

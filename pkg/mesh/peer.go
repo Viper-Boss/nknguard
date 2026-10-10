@@ -20,7 +20,8 @@ const maxTransitionHistory = 32
 // its mutex; the controller reads it from the status path and writes it from
 // the peer's own goroutine.
 type Peer struct {
-	mu sync.RWMutex
+	lastMappedAttempt string
+	mu                sync.RWMutex
 	// Serializes probe endpoint changes with delayed relay attachments.
 	endpointMu     sync.Mutex
 	lifetime       context.Context

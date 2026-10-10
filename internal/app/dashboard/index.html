@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="/usage.css">
   <link rel="stylesheet" href="/network-animation.css">
   <link rel="stylesheet" href="/shell.css">
+  <link rel="stylesheet" href="/support.css">
+  <script src="/support.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/network-animation.js" type="module"></script>
 </head>
@@ -28,6 +30,7 @@
         <button class="nav-item" data-view="paths"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-paths"/></svg></span> 链路</button>
         <button class="nav-item" data-view="logs"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-logs"/></svg></span> 日志</button>
         <button class="nav-item" data-view="security"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-shield"/></svg></span> 安全设置</button>
+        <button class="nav-item" data-view="support"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 5c-3-3-6-1-8 1C10 4 7 2 4 5c-4 4 2 9 8 14 6-5 12-10 8-14Z"/></svg></span> 赞赏作者</button>
       </nav>
       <div class="side-bottom"><span class="live-dot"></span><span id="nkn-sidebar-state">正在验证 NKN</span><small id="side-version">—</small></div>
     </aside>
@@ -199,10 +202,17 @@
       <section id="logs" class="view"><div class="section-head"><div><h2>运行日志</h2><p>仅保留最近 2000 行内存日志（每行最多 4 KB），退出清空，不持续写入硬盘</p></div><button class="secondary-button" id="refresh-logs">刷新日志</button></div><section class="panel log-panel"><pre id="log-lines">正在读取日志…</pre></section></section>
 
       <section id="security" class="view"><div class="section-head"><div><h2>安全设置</h2><p>管理密码由你设置，服务端只保存加盐后的哈希</p></div></div><section class="panel password-panel"><h3>修改管理密码</h3><p>输入当前密码和新密码。新密码至少 12 个字符，修改后请用新密码重新登录。</p><form id="password-form" autocomplete="off"><label>当前密码<input id="current-password" type="password" autocomplete="current-password" required></label><label>新密码<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>确认新密码<input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required></label><button class="primary-button" type="submit">保存新密码</button><span id="password-message" role="status"></span></form></section><section class="panel usage-settings"><h3>隐私与统计</h3><p>自动参与匿名使用人数统计，每天向 NKN 链提交最多 3 个零手续费订阅。使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。NKN 节点仍能看到连接 IP。</p></section></section>
+      <section id="support" class="view support-page" aria-label="赞赏作者">
+<div class="support-hero"><span class="support-heart" aria-hidden="true">♡</span><h2>让连接更自由，<br>让更新继续发生。</h2><p>NKNGuard 的开发需要 AI 算力、测试设备和时间。如果它帮你连上了自己的 NAS，欢迎请作者喝杯咖啡，支持下一次更新。<strong>金额随意，心意就好。</strong></p></div>
+<div class="support-payment"><article class="panel"><h3>微信支付</h3><button class="support-image" data-support-image="/wechat.png" aria-label="放大微信收款码"><img src="/wechat.png" alt="作者的微信收款码" loading="lazy"></button><p class="support-caption">用微信扫一扫 · 点击图片可放大</p></article><article class="panel"><h3>支付宝</h3><button class="support-image" data-support-image="/alipay.png" aria-label="放大支付宝收款码"><img src="/alipay.png" alt="作者的支付宝收款码" loading="lazy"></button><p class="support-caption">用支付宝扫一扫 · 点击图片可放大</p></article></div>
+<section class="panel support-crypto"><h3>区块链赞赏</h3><p>收款地址与作者的 GenomeDock 项目相同。请核对币种、网络和地址；二维码仅包含地址，不包含金额。</p><div id="support-wallets" class="support-wallets">正在读取收款地址…</div></section>
+<p class="support-thanks">赞赏不是购买，不影响任何功能和授权。<br>NKNGuard 继续以 AGPL-3.0 开源，感谢每一位使用、反馈和贡献代码的朋友。</p>
+</section>
       <footer class="license-footer">© 2026 NKNGuard Authors · AGPL-3.0-only · 无担保，可依许可再发布。<a href="https://github.com/Viper-Boss/nknguard" target="_blank" rel="noopener noreferrer">查看许可证与完整源码</a></footer>
     </main>
   </div>
   <dialog id="qr-dialog" aria-label="放大的配对二维码"><img id="qr-large" alt="NKNGuard 配对二维码"><p>二维码五分钟有效；请核对验证码并在 NAS 批准。</p><button class="secondary-button" id="close-qr">关闭</button></dialog>
+  <dialog id="support-dialog" aria-label="放大的收款码"><img id="support-large" alt="作者收款码"><button id="support-close" class="secondary-button">关闭</button></dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

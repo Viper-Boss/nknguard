@@ -22,7 +22,8 @@ import (
 var dashboardAssets embed.FS
 
 // ServeDashboard exposes a local-only fnOS control panel. A remote browser can
-// reach it through an authenticated fnOS reverse proxy or an SSH port forward.
+// reach it through an SSH port forward. A reverse proxy must preserve the
+// loopback Host and matching Origin; arbitrary forwarded headers are untrusted.
 func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	if !d.Node.DashboardPasswordReady() {
 		return nil, errors.New("dashboard password is not configured")
@@ -38,6 +39,10 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	}
 	logins := newLoginThrottle()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/support", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, supportAddresses)
+	})
+	mux.HandleFunc("GET /api/support/qr/{asset}", supportQRHandler())
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, d.Status(r.Context()))
 	})
@@ -179,6 +184,8 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 			mux.ServeHTTP(w, r)
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      45 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() { _ = server.Serve(listener) }()
 	go func() {

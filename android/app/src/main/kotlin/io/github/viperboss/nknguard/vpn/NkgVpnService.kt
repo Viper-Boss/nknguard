@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
 /**
  * The VPN. It exists only between the user tapping Connect and Disconnect.
  *
- * Routing: the interface carries only the overlay prefix (10.88.0.0/16) and no
+ * Routing: the interface carries only the selected NAS /32 route and no
  * DNS servers, so ordinary traffic and name resolution are untouched. The app
  * itself is excluded from the VPN, which keeps the core's NKN connections and
  * WireGuard's own UDP packets on the real network — the same guarantee
@@ -45,6 +45,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     @Volatile private var connected = false
     @Volatile private var stopping = false
     private var sessionGeneration: Long = -1
+    private var sessionCore: io.github.viperboss.nknguard.core.CoreProcess? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
@@ -55,6 +56,22 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_SELECT, ACTION_ADD_PAIR, ACTION_REMOVE -> {
+                val operation = requireNotNull(intent)
+                app.profileBusy = true
+                stopping = true
+                executor.execute {
+                    try {
+                        if (!disconnect()) throw IllegalStateException("旧连接未能断开，已取消切换")
+                        when (operation.action) {
+                            ACTION_SELECT -> app.selectNas(operation.getStringExtra("profile") ?: error("缺少 NAS"))
+                            ACTION_REMOVE -> app.removeNas(operation.getStringExtra("profile") ?: error("缺少 NAS"))
+                            ACTION_ADD_PAIR -> app.addAndPair(operation.getStringExtra("uri") ?: error("缺少二维码"), operation.getStringExtra("name") ?: app.defaultDeviceName)
+                        }
+                    } catch (error: Exception) { reportProblem(error.message ?: "切换失败") }
+                    finally { app.profileBusy = false; stopping = false; runCatching { app.refreshStatus() } }
+                }
+            }
             ACTION_DISCONNECT -> {
                 stopping = true
                 executor.execute {
@@ -87,6 +104,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun connect() {
         if (connected) return
         app.ensureCore()
+        sessionCore = app.core
         sessionGeneration = app.core.generation
         // The core may have been started on a previous Wi-Fi/mobile network
         // while the VPN was disconnected. Refresh before candidate gathering.
@@ -142,7 +160,7 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     private fun disconnect(): Boolean {
         stopping = true
         unwatchNetwork()
-        if (app.core.isRunning && app.core.generation == sessionGeneration) {
+        if (app.core === sessionCore && app.core.isRunning && app.core.generation == sessionGeneration) {
             try {
                 app.core.call("disconnect", timeoutMillis = 15_000)
             } catch (error: Exception) {
@@ -156,6 +174,8 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
             }
         }
         connected = false
+        sessionGeneration = -1
+        sessionCore = null
         // Reinitialize a terminated fallback core without starting a VPN.
         // This restores the Connect button from authoritative saved state.
         runCatching { app.refreshStatus() }
@@ -316,6 +336,12 @@ class NkgVpnService : VpnService(), NkgApp.Listener {
     }
 
     companion object {
+        private const val ACTION_SELECT = "nknguard.SELECT_NAS"
+        private const val ACTION_ADD_PAIR = "nknguard.ADD_PAIR"
+        private const val ACTION_REMOVE = "nknguard.REMOVE_NAS"
+        fun selectNas(context: Context, id: String) { context.startService(Intent(context, NkgVpnService::class.java).setAction(ACTION_SELECT).putExtra("profile", id)) }
+        fun addAndPair(context: Context, uri: String, name: String) { context.startService(Intent(context, NkgVpnService::class.java).setAction(ACTION_ADD_PAIR).putExtra("uri", uri).putExtra("name", name)) }
+        fun removeNas(context: Context, id: String) { context.startService(Intent(context, NkgVpnService::class.java).setAction(ACTION_REMOVE).putExtra("profile", id)) }
         private const val CHANNEL = "tunnel"
         private const val NOTIFICATION_ID = 1
         private const val PROBLEM_ID = 2

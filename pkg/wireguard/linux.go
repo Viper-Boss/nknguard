@@ -34,10 +34,11 @@ type LinuxManager struct {
 	runner    Runner
 	ifaceName string
 
-	mu      sync.Mutex
-	current InterfaceConfig
-	applied bool
-	lastErr string
+	mu       sync.Mutex
+	current  InterfaceConfig
+	applied  bool
+	isolated bool
+	lastErr  string
 }
 
 // Keystore is the subset of the identity keystore this package needs. Taking
@@ -85,6 +86,8 @@ func (m *LinuxManager) Supported(ctx context.Context) (State, string) {
 // PublicKey returns the interface public key, generating the private half on
 // first use.
 func (m *LinuxManager) PublicKey(ctx context.Context) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	private, err := m.ensurePrivateKey(ctx)
 	if err != nil {
 		return "", err
@@ -123,6 +126,8 @@ func (m *LinuxManager) ensurePrivateKey(ctx context.Context) (string, error) {
 // daemon calls it whenever the peer set changes, and an unchanged call is a
 // handful of no-op commands rather than a tunnel that blinks.
 func (m *LinuxManager) EnsureInterface(ctx context.Context, cfg InterfaceConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if cfg.Name == "" {
 		cfg.Name = m.ifaceName
 	}
@@ -130,9 +135,6 @@ func (m *LinuxManager) EnsureInterface(ctx context.Context, cfg InterfaceConfig)
 	if err != nil {
 		return err
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	existed := m.interfaceExists(ctx, cfg.Name)
 	if !existed {
 		if _, err := m.runner.Run(ctx, "ip", "link", "add", "dev", cfg.Name, "type", "wireguard"); err != nil {
@@ -232,11 +234,11 @@ func renderConf(privateKey string, cfg InterfaceConfig) (string, error) {
 
 // AddPeer installs or replaces a single peer without rewriting the interface.
 func (m *LinuxManager) AddPeer(ctx context.Context, peer PeerConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := m.addPeerLocked(ctx, m.ifaceName, peer); err != nil {
 		return err
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	for index, existing := range m.current.Peers {
 		if existing.PublicKey == peer.PublicKey {
 			m.current.Peers[index] = peer
@@ -273,21 +275,42 @@ func (m *LinuxManager) addPeerLocked(ctx context.Context, iface string, peer Pee
 // renegotiating. Tearing the peer down and re-adding it would work and would
 // also drop every connection through it.
 func (m *LinuxManager) UpdateEndpoint(ctx context.Context, publicKey, endpoint string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if strings.TrimSpace(publicKey) == "" || strings.TrimSpace(endpoint) == "" {
 		return errors.New("wireguard: UpdateEndpoint needs a public key and an endpoint")
 	}
 	_, err := m.runner.Run(ctx, "wg", "set", m.ifaceName, "peer", publicKey, "endpoint", endpoint)
+	if err == nil {
+		for i := range m.current.Peers {
+			if m.current.Peers[i].PublicKey == publicKey {
+				m.current.Peers[i].Endpoint = endpoint
+			}
+		}
+	}
 	return err
 }
 
 // RemovePeer drops a peer from the interface.
 func (m *LinuxManager) RemovePeer(ctx context.Context, publicKey string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	_, err := m.runner.Run(ctx, "wg", "set", m.ifaceName, "peer", publicKey, "remove")
+	if err == nil {
+		for i, peer := range m.current.Peers {
+			if peer.PublicKey == publicKey {
+				m.current.Peers = append(m.current.Peers[:i], m.current.Peers[i+1:]...)
+				break
+			}
+		}
+	}
 	return err
 }
 
 // Stats reads the live counters.
 func (m *LinuxManager) Stats(ctx context.Context) ([]PeerStats, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	out, err := m.runner.Run(ctx, "wg", "show", m.ifaceName, "dump")
 	if err != nil {
 		return nil, err
@@ -300,6 +323,7 @@ func (m *LinuxManager) Stats(ctx context.Context) ([]PeerStats, error) {
 func (m *LinuxManager) Status(ctx context.Context) Status {
 	m.mu.Lock()
 	cfg, applied, lastErr := m.current, m.applied, m.lastErr
+	cfg.Peers = append([]PeerConfig(nil), cfg.Peers...)
 	m.mu.Unlock()
 
 	if !applied {
@@ -338,12 +362,15 @@ func (m *LinuxManager) Down(ctx context.Context) error {
 		// An unavailable command, permission error or cancelled context is not
 		// evidence that the interface disappeared.
 		if ctx.Err() == nil && (strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Cannot find device")) {
-			return nil
+			return m.clearIsolationLocked(ctx)
 		}
 		return fmt.Errorf("wireguard: cannot confirm interface absence: %w", err)
 	}
 	_, err := m.runner.Run(ctx, "ip", "link", "delete", "dev", m.ifaceName)
-	return err
+	if err != nil {
+		return err
+	}
+	return m.clearIsolationLocked(ctx)
 }
 
 // keystoreAdapter lets an *identity.Keystore satisfy the Keystore interface

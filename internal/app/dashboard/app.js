@@ -25,7 +25,7 @@ function toast(message) {
 function changeView(name) {
   document.querySelectorAll('.view').forEach(element => element.classList.toggle('active', element.id === name));
   document.querySelectorAll('.nav-item').forEach(element => element.classList.toggle('active', element.dataset.view === name));
-  setText('page-title', ({overview:'连接总览',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志',security:'安全设置'})[name]);
+  setText('page-title', ({overview:'连接总览',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志',security:'安全设置',support:'赞赏作者'})[name]);
   if (name === 'logs') refreshLogs();
   if (name === 'pairing') refreshPairState();
 }

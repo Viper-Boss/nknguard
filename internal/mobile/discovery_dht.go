@@ -16,6 +16,6 @@ func init() {
 			return nil, err
 		}
 		return dht.Open(ctx, dht.Options{StateDir: filepath.Join(s.agent.StateDir, "dht"),
-			Rendezvous: key.Rendezvous(), LANDiscovery: true, Logger: s.agent.Logger, ClientMode: true})
+			Rendezvous: key.Rendezvous(), LANDiscovery: true, Logger: s.agent.Logger, ClientMode: true, InterfaceAddresses: s.agent.interfaceAddrs})
 	}
 }

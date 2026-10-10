@@ -25,6 +25,8 @@ const (
 	CandidateHost CandidateType = "host"
 	// CandidateReflexive is the public mapping a STUN server observed.
 	CandidateReflexive CandidateType = "srflx"
+	// CandidateMapped is an explicit router mapping of the actual WG port.
+	CandidateMapped CandidateType = "mapped"
 	// CandidateRelay is a path through the relay plane. It is last resort and
 	// is carried as a candidate only so the selector can reason about all the
 	// options in one list.

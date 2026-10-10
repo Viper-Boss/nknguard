@@ -17,6 +17,8 @@ discovery:
   nkn_topic: true
 
 nat:
+  # Map the currently assigned random port; router support is optional.
+  port_mapping: true
   stun:
     enabled: true
     servers:

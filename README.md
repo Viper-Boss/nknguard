@@ -4,7 +4,7 @@
 
 **Reach your NAS from anywhere — no public IP, no relay server of ours.**
 
-A WireGuard mesh coordinated over [NKN](https://nkn.org): direct whenever the NAT allows, an encrypted NKN relay when it does not.
+A private NAS connection: NKN pairs devices, ICE finds a direct WireGuard path, and an encrypted NKN relay stays ready as fallback. Paired devices can also exchange signed connection information over a private DHT.
 
 [![Release](https://img.shields.io/github/v/release/Viper-Boss/nknguard?include_prereleases&label=release&color=2f80ed)](https://github.com/Viper-Boss/nknguard/releases)
 [![CI](https://github.com/Viper-Boss/nknguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Viper-Boss/nknguard/actions/workflows/ci.yml)
@@ -14,12 +14,12 @@ A WireGuard mesh coordinated over [NKN](https://nkn.org): direct whenever the NA
 
 [简体中文](README.zh-CN.md) · **English**
 
-<img src="docs/images/nas-dashboard-overview.png" alt="NAS dashboard: overview" width="860">
+<img src="docs/images/nas-dashboard-overview.jpg" alt="NAS dashboard: overview" width="860">
 
 </div>
 
 > [!WARNING]
-> **Development preview.** The protocol, NAS daemon, Windows and Android clients have automated tests, but real-network cross-NAT testing and on-device Android testing are not finished. Try it on non-critical devices first and do not rely on it as your only way in.
+> **Development preview.** The protocol, NAS daemon, Windows and Android clients have automated tests, with successful Android-to-NAS tests on LAN and cellular networks; coverage of routers, carriers and long-running sessions is still limited. Try it on non-critical devices first and do not rely on it as your only way in.
 
 ## Download
 
@@ -32,7 +32,7 @@ Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/re
 | 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview; maintainer-signed builds with the same certificate upgrade in place and preserve pairing |
 
-Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview builds are not code-signed.
+Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Windows preview binaries are unsigned. Maintainer-delivered Android APKs use a persistent signing certificate; raw CI debug artifacts use a temporary certificate.
 
 ## Screenshots
 
@@ -47,7 +47,14 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
   </tr>
 </table>
 
-<sub>Rendered from the real UI code with demo data (the Windows client under Wine). The UI is currently in Chinese. Android screenshots will follow on-device testing.</sub>
+<sub>Rendered from the real UI code with demo data (the Windows client under Wine). The UI is currently in Chinese. Android screenshots below come from the actual app in an emulator with clearly labeled demo NAS profiles.</sub>
+
+
+## Android and appreciation page
+
+<table><tr><td width="50%"><img src="docs/images/android-home.png" alt="Android NAS list"><br>Native Android UI · independently saved NAS profiles</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS appreciation page"><br>WeChat, Alipay and public crypto receiving addresses</td></tr></table>
+
+Donations are optional and do not unlock features. The appreciation page is inside the authenticated NAS dashboard. WeChat/Alipay images come from NasSimHub and crypto addresses from the author's GenomeDock sponsor configuration. [Appreciation details](docs/SUPPORT.md).
 
 ## Highlights
 
@@ -59,7 +66,9 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview build
 - 🇨🇳 **Built-in China seed.** A mainland-China community NKN seed is tried before the overseas official seeds; add your own node in the config.
 - 🧱 **The tunnel outlives the control plane.** If NKN drops, established WireGuard tunnels keep running.
 - 📊 **Anonymous user counts.** The dashboard and clients show how many devices ran NKNGuard in the last 24 hours / 30 days / 90 days, read from zero-fee NKN on-chain subscriptions with no server involved. Automatically enabled without an off switch; see [usage statistics](docs/USAGE_STATS.md) (Chinese).
-- 🧭 **Overlay routes only.** Clients route just `10.88.0.0/16`; the default route and normal browsing are untouched.
+- 🧭 **NAS access only.** Clients install a route to the selected NAS virtual IP (`/32`); Linux NAS forwarding rules block client-to-client and internet forwarding without changing Docker rules.
+- 🗂️ **Multiple saved NAS profiles on Android.** Each NAS has separate credentials and cached connection information. Name, switch or delete one without losing the others; one active VPN at a time.
+- 🌐 **Private DHT signaling and dynamic router mapping.** IPv4/IPv6 DHT discovery starts alongside NKN, using cached signed peer addresses. UPnP/NAT-PMP map the current random port when a router supports it; ICE and NKN remain fallback. See [DHT + NKN](docs/DHT-NKN.md).
 
 ## How it works
 
@@ -81,7 +90,7 @@ NKNGuard:   device ── NKN signalling / DHT ── device   (+ NKN relay)
 
 **fnOS:** follow [docs/FNOS_DISK_DEPLOY.md](docs/FNOS_DISK_DEPLOY.md) to keep the binary, config and identity on a data disk.
 
-**Other Linux:** amd64 or arm64, `wireguard-tools` (`wg`, `ip`), kernel WireGuard or `wireguard-go`, root, and a clock within ±2 minutes.
+**Other Linux:** amd64 or arm64, `wireguard-tools` (`wg`, `ip`), `iptables` and `ip6tables`, kernel WireGuard or `wireguard-go`, root, and a clock within ±2 minutes.
 
 ```bash
 git clone https://github.com/Viper-Boss/nknguard && cd nknguard
@@ -158,9 +167,9 @@ Stated plainly, because networking software that over-promises is worse than use
 
 - **Not every NAT can be traversed.** Two peers both behind symmetric NAT will almost always be relayed. `nknguard doctor` tells you which case you are in.
 - **The relay is slow.** It rides NKN sessions — a fallback, not a data plane.
-- **Kernel WireGuard owns its UDP port**, so the public port is inferred assuming port-preserving NAT. True for most home routers, not all; see [NAT traversal](docs/NAT_TRAVERSAL.md).
+- **UPnP cannot bypass upstream CGNAT.** Unsupported routers or blocked UDP still need ICE or relay. See [ICE + NKN](docs/ICE-NKN.md).
 - **Membership proofs still use a shared secret.** The NAS enforces an approved-device list and can revoke single devices; recreate network credentials if the secret or a device key leaks. Automated rotation is not implemented.
-- **Preview clients.** IPv4 overlay, one network per node; no Android start-on-boot or always-on VPN yet.
+- **Preview clients.** IPv4 virtual addresses over IPv4/IPv6 transport. Android saves multiple NAS profiles but connects to one at a time; no automatic boot connection yet.
 - **Usage statistics are public.** Each running device automatically publishes an anonymous key on three public NKN topics once a day; the NKN node it talks to sees its IP address. Anyone can subscribe to the topics, so the counts are indicative.
 - **Not anonymous.** WireGuard endpoints reveal IP addresses to peers, NKN addresses are linkable over time, and STUN servers see your public address.
 - **The China seed is community-run** and may move; the official seeds remain as fallback.

@@ -65,6 +65,25 @@ jobs:
           name: NKNGuard-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: native Android preview and profile switch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: python3 android/scripts/preview.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NKNGuard-android-preview
+          path: android-preview/
+          if-no-files-found: error
       # The maintainer signs downloaded previews with a persistent private
       # key outside GitHub. Export only the official signing tool, never keys.
       - name: export APK signing tool
@@ -118,7 +137,7 @@ jobs:
       - name: tests with tags
         run: go test -tags "nknsdk libp2pdht" ./...
       - name: build release binaries
-        run: make release VERSION=0.2.13-preview
+        run: make release VERSION=0.2.14-preview
       - uses: actions/upload-artifact@v4
         with:
           name: nknguard-nas-linux

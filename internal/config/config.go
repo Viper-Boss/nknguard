@@ -77,6 +77,7 @@ type Config struct {
 	} `json:"discovery"`
 
 	NAT struct {
+		PortMapping bool     `json:"port_mapping"`
 		STUNEnabled bool     `json:"stun_enabled"`
 		STUNServers []string `json:"stun_servers"`
 	} `json:"nat"`
@@ -135,6 +136,7 @@ func Default() Config {
 	config.Discovery.LANDiscovery = true
 	config.Discovery.NKNTopic = true
 	config.NAT.STUNEnabled = true
+	config.NAT.PortMapping = true
 	config.NAT.STUNServers = nat.DefaultSTUNServers()
 	config.WireGuard.Interface = "nkg0"
 	config.WireGuard.ListenPort = 0
@@ -207,6 +209,7 @@ func Parse(source string) (Config, error) {
 	}
 
 	config.NAT.STUNEnabled = root.boolOr(config.NAT.STUNEnabled, "nat", "stun", "enabled")
+	config.NAT.PortMapping = root.boolOr(config.NAT.PortMapping, "nat", "port_mapping")
 	if servers := root.strings("nat", "stun", "servers"); len(servers) > 0 {
 		config.NAT.STUNServers = servers
 	}
@@ -343,6 +346,7 @@ func (c Config) Render() string {
 	for _, server := range c.NAT.STUNServers {
 		fmt.Fprintf(&out, "      - %s\n", server)
 	}
+	fmt.Fprintf(&out, "  port_mapping: %t\n", c.NAT.PortMapping)
 	fmt.Fprintf(&out, "\nwireguard:\n  interface: %s\n  listen_port: %d\n  persistent_keepalive: %d\n",
 		c.WireGuard.Interface, c.WireGuard.ListenPort, c.WireGuard.PersistentKeepalive)
 	fmt.Fprintf(&out, "\nrelay:\n  nkn:\n    enabled: %t\n", c.Relay.NKNEnabled)

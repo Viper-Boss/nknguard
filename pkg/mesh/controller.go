@@ -240,6 +240,8 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// Our own candidates must exist before anything that carries our record
 	// goes out, or the first introduction advertises no way to reach us.
+	c.probeCached(ctx)
+	c.bootstrapDiscovery(ctx)
 	c.gatherCandidates(ctx)
 
 	dispatcher := c.newDispatcher()
@@ -472,6 +474,9 @@ func (c *Controller) peerFor(deviceID string) *Peer {
 	if existing, ok := c.peers[deviceID]; ok {
 		return existing
 	}
+	if len(c.peers) >= MaxPeers {
+		return nil
+	}
 	selector := c.Config.Timing.Selector
 	created := NewPeerWithSelector(deviceID, &selector)
 	c.peers[deviceID] = created
@@ -660,6 +665,20 @@ func (c *Controller) RestoreLinkHint(deviceID, publicKey, endpoint string, seenA
 // It does not publish records or authorize new peers.
 func (c *Controller) RunCached(ctx context.Context) {
 	defer c.wg.Wait()
+	c.probeCached(ctx)
+	ticker := time.NewTicker(orDefault(c.Config.Timing.ReconcileInterval, 2*time.Second))
+	defer ticker.Stop()
+	for {
+		c.reconcileOnce(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *Controller) probeCached(ctx context.Context) {
 	c.mu.RLock()
 	hints := make(map[string]netip.AddrPort, len(c.cachedEndpoints))
 	for id, endpoint := range c.cachedEndpoints {
@@ -681,14 +700,21 @@ func (c *Controller) RunCached(ctx context.Context) {
 		}
 		c.nudgePeer(ctx, peer)
 	}
-	ticker := time.NewTicker(orDefault(c.Config.Timing.ReconcileInterval, 2*time.Second))
-	defer ticker.Stop()
-	for {
-		c.reconcileOnce(ctx)
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+}
+
+// Bootstrap only from admitted signed records. A cached address is a dial
+// hint, never a substitute for a fresh record or WireGuard authentication.
+func (c *Controller) bootstrapDiscovery(ctx context.Context) {
+	for _, record := range c.Records() {
+		if !c.Authorized(record.DeviceID) {
+			continue
+		}
+		if registry, ok := c.Discovery.(interface{ RegisterPeer(discovery.PeerRecord) }); ok {
+			registry.RegisterPeer(record)
+		}
+		if connector, ok := c.Discovery.(PeerConnector); ok && len(record.DHTAddresses) > 0 {
+			addresses := append([]string(nil), record.DHTAddresses...)
+			c.spawn(func() { connector.ConnectPeer(ctx, addresses) })
 		}
 	}
 }
@@ -749,6 +775,9 @@ func (c *Controller) gatherCandidates(ctx context.Context) {
 	if c.Candidates == nil {
 		return
 	}
+	// Bound startup and refresh, including DNS and all STUN servers together.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	candidates, mapping, err := c.Candidates.Gather(ctx)
 	if err != nil {
 		c.logger().Warn("candidate gathering failed", "component", "nat", "error", err)
@@ -923,6 +952,7 @@ func (c *Controller) publishLoop(ctx context.Context) {
 			c.gatherCandidates(ctx)
 		}
 		first = false
+		c.bootstrapDiscovery(ctx)
 		record, err := c.buildRecord(ctx)
 		if err != nil {
 			c.logger().Error("building peer record failed", "component", "discovery", "error", err)
@@ -1198,21 +1228,19 @@ func (c *Controller) ingestRecordAt(ctx context.Context, record discovery.PeerRe
 		reject("acl", nil)
 		return
 	}
-	if _, known := c.lookupPeer(record.DeviceID); !known {
-		c.mu.RLock()
-		full := len(c.peers) >= MaxPeers
-		c.mu.RUnlock()
-		if full {
-			reject("peer table full", nil)
-			return
-		}
-	}
 	peer := c.peerFor(record.DeviceID)
+	if peer == nil {
+		reject("peer table full", nil)
+		return
+	}
 	previous := peer.Record()
 	if !peer.SetRecord(record) {
 		return
 	}
 	if connector, ok := c.Discovery.(PeerConnector); ok && len(record.DHTAddresses) > 0 {
+		if registry, ok := c.Discovery.(interface{ RegisterPeer(discovery.PeerRecord) }); ok {
+			registry.RegisterPeer(record)
+		}
 		addresses := append([]string(nil), record.DHTAddresses...)
 		c.spawn(func() { connector.ConnectPeer(ctx, addresses) })
 	}

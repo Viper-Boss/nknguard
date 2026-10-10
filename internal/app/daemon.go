@@ -15,6 +15,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/config"
 	"github.com/Viper-Boss/nknguard/internal/state"
+	"github.com/Viper-Boss/nknguard/pkg/controlhub"
 	"github.com/Viper-Boss/nknguard/pkg/diagnostics"
 	"github.com/Viper-Boss/nknguard/pkg/directice"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
@@ -22,6 +23,8 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
+	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
+	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
@@ -185,6 +188,13 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 			logger.Error("removing interface failed", "component", "wireguard", "error", cleanupErr)
 		}
 	}()
+	if current.IsOwner {
+		if policy, ok := wg.(interface{ SetNASOnlyPolicy(context.Context) error }); ok {
+			if err := policy.SetNASOnlyPolicy(runCtx); err != nil {
+				return err
+			}
+		}
+	}
 	if err := wg.EnsureInterface(runCtx, interfaceConfig); err != nil {
 		return fmt.Errorf("bring up %s: %w", cfg.WireGuard.Interface, err)
 	}
@@ -203,6 +213,12 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 			}
 			return 0, errors.New("wireguard listen port not yet known")
 		},
+	}
+	if cfg.NAT.PortMapping && current.IsOwner && portMapperFactory != nil {
+		base := controller.Candidates.(*nat.WireGuardGatherer)
+		mapped, closer := portMapperFactory(runCtx, base, base.ListenPort, logger)
+		controller.Candidates = mapped
+		defer closer.Close()
 	}
 	cached, _ := node.State.LoadPeerCache()
 	for _, record := range cached {
@@ -229,36 +245,6 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 		defer func() { _ = panel.Close() }()
 		logger.Info("dashboard listening", "component", "dashboard", "address", cfg.Dashboard.Listen)
 	}
-	cacheCtx, cacheCancel := context.WithCancel(runCtx)
-	cacheDone := make(chan struct{})
-	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
-	stopCache := func() { cacheCancel(); <-cacheDone }
-	defer stopCache()
-	plane, err := openControlPlane(runCtx, func(ctx context.Context) (*ControlPlane, error) {
-		return controlPlaneFactory(ctx, cfg, node.Keystore, key, logger)
-	}, logger)
-	stopCache()
-	if err != nil {
-		return err
-	}
-	var closePlane sync.Once
-	closeNKN := func() { closePlane.Do(func() { _ = plane.Close() }) }
-	defer closeNKN()
-	controller.Signaling = plane.Signaling
-	// Records loaded before the transport existed must teach it their addresses.
-	for _, record := range controller.Records() {
-		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
-	}
-	daemon.nknAddress.Store(plane.Signaling.LocalAddress())
-	if transport, ok := plane.Signaling.(interface {
-		ConnectionStatus() nknclient.ConnectionStatus
-	}); ok {
-		daemon.nknStatus.Store(transport.ConnectionStatus)
-	}
-	controller.Relay = plane.Relay
-	controller.Rendezvous = plane.Rendezvous
-	pairing.SetTransport(plane.Signaling)
-
 	if cfg.Discovery.DHT && discoveryFactory != nil {
 		backend, err := discoveryFactory(runCtx, cfg, key, logger)
 		if err != nil {
@@ -270,6 +256,41 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 			defer func() { _ = backend.Close() }()
 		}
 	}
+
+	var alternate signaling.Transport
+	if transport, ok := controller.Discovery.(signaling.Transport); ok {
+		alternate = transport
+	}
+	hub := controlhub.New(runCtx, alternate, rendezvous.Static(cfg.Discovery.StaticPeers))
+	defer hub.Close()
+	controller.Signaling, controller.Relay, controller.Rendezvous = hub, hub, hub
+	controllerDone := make(chan struct{})
+	var controllerErr error
+	go func() { controllerErr = controller.Run(runCtx); cancel(); close(controllerDone) }()
+	defer func() { cancel(); <-controllerDone }()
+	plane, err := openControlPlane(runCtx, func(ctx context.Context) (*ControlPlane, error) {
+		return controlPlaneFactory(ctx, cfg, node.Keystore, key, logger)
+	}, logger)
+	if err != nil {
+		return err
+	}
+	var closePlane sync.Once
+	closeNKN := func() { closePlane.Do(func() { _ = plane.Close() }) }
+	defer closeNKN()
+	if err := hub.Attach(plane.Signaling, plane.Relay, plane.Rendezvous); err != nil {
+		return err
+	}
+	// Records loaded before the transport existed must teach it their addresses.
+	for _, record := range controller.Records() {
+		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
+	}
+	daemon.nknAddress.Store(plane.Signaling.LocalAddress())
+	if transport, ok := plane.Signaling.(interface {
+		ConnectionStatus() nknclient.ConnectionStatus
+	}); ok {
+		daemon.nknStatus.Store(transport.ConnectionStatus)
+	}
+	pairing.SetTransport(plane.Signaling)
 
 	// The NKN SDK's session Accept has no context argument. Closing the client
 	// unblocks it before Controller.Run waits for its workers on shutdown.
@@ -291,7 +312,8 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	}()
 
 	logger.Info("nknguard running", "component", "app", "version", Version, "network", current.NetworkID, "virtual_ip", virtual.String())
-	runErr := controller.Run(runCtx)
+	<-controllerDone
+	runErr := controllerErr
 	cancel()
 	<-planeStopped
 	<-persistDone
