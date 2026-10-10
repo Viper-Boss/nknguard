@@ -20,6 +20,7 @@ import (
 func (d *Daemon) registerUpdates(mux *http.ServeMux) {
 	var mu sync.Mutex
 	var checking, installing bool
+	var installStarted time.Time
 	var result *releaseupdate.Result
 	kind := updateKind()
 	mux.HandleFunc("GET /api/updates", func(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +29,13 @@ func (d *Daemon) registerUpdates(mux *http.ServeMux) {
 		var state map[string]any
 		if raw, err := os.ReadFile(filepath.Join(d.Config.Paths.StateDir, "update-result.json")); err == nil && len(raw) < 4096 {
 			_ = json.Unmarshal(raw, &state)
+		}
+		if state != nil && installing {
+			stamp, _ := state["time"].(string)
+			finished, _ := time.Parse(time.RFC3339Nano, stamp)
+			if finished.After(installStarted) && (state["state"] == "failed" || state["state"] == "complete") {
+				installing = false
+			}
 		}
 		writeJSON(w, map[string]any{"current": Version, "arch": runtime.GOARCH, "kind": kind, "supported": updateSupported(d.Config), "release_url": releaseupdate.ReleaseURL, "result": result, "job": state})
 	})
@@ -76,6 +84,7 @@ func (d *Daemon) registerUpdates(mux *http.ServeMux) {
 			return
 		}
 		installing = true
+		installStarted = time.Now()
 		mu.Unlock()
 		launched := false
 		defer func() {

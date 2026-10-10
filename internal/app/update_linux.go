@@ -144,13 +144,18 @@ func ApplyUpdate(cfg config.Config, dir string) (resultErr error) {
 	}
 	defer os.Remove(replacement)
 	backup := exe + ".previous"
+	// Keep the installed path present until the single atomic replacement.
+	// A power interruption while preparing the backup still leaves the old executable.
+	if err := copyUpdateFile(exe, backup+".new"); err != nil {
+		return err
+	}
+	defer os.Remove(backup + ".new")
+	if err := os.Rename(backup+".new", backup); err != nil {
+		return err
+	}
 	writeState("installing", "正在更新服务，配对和配置保持不变")
 	if err := exec.CommandContext(ctx, "systemctl", "stop", "nknguard.service").Run(); err != nil {
 		return fmt.Errorf("stop service: %w", err)
-	}
-	if err := os.Rename(exe, backup); err != nil {
-		_ = exec.CommandContext(ctx, "systemctl", "start", "nknguard.service").Run()
-		return err
 	}
 	rollback := func(cause error) error {
 		_ = exec.CommandContext(ctx, "systemctl", "stop", "nknguard.service").Run()

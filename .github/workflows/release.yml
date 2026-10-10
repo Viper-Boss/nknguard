@@ -82,6 +82,7 @@ jobs:
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
           & $compiler "/DAppVersion=$($env:TAG.TrimStart('v'))" packaging/windows/nknguard.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          Copy-Item dist/windows/NKNGuard-Setup-*.exe .
       - name: native Windows launch smoke test
         shell: pwsh
         run: packaging/windows/smoke-ui.ps1
@@ -90,7 +91,7 @@ jobs:
           name: windows
           path: |
             NKNGuard-Windows-x86_64-preview.zip
-            dist/windows/NKNGuard-Setup-*.exe
+            NKNGuard-Setup-*.exe
           if-no-files-found: error
 
   android:
@@ -147,8 +148,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" out/* \
-            --draft --prerelease \
-            --title "NKNGuard ${TAG#v}" \
-            --notes-file .github/RELEASE_NOTES.md \
-            --target "$GITHUB_SHA"
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' > /tmp/nknguard-release-state 2>/dev/null; then
+            test "$(cat /tmp/nknguard-release-state)" = true || { echo "Refusing to change a public release"; exit 1; }
+            gh release upload "$TAG" out/* --clobber
+            gh release edit "$TAG" --draft --prerelease --notes-file .github/RELEASE_NOTES.md --target "$GITHUB_SHA"
+          else
+            gh release create "$TAG" out/* \
+              --draft --prerelease \
+              --title "NKNGuard ${TAG#v}" \
+              --notes-file .github/RELEASE_NOTES.md \
+              --target "$GITHUB_SHA"
+          fi
