@@ -1,37 +1,30 @@
-开发预览版。/ Development preview.
+## NKNGuard 0.2.15 预览版
 
-## 下载 / Downloads
+### 下载
 
-| 文件 / File | 平台 / Platform |
+| 安装包 | 用途 |
 | --- | --- |
-| `nknguard-linux-arm64` | NAS / Linux ARM64（飞牛 ARM 机型 / ARM fnOS） |
-| `nknguard-linux-amd64` | NAS / Linux x86_64 |
-| `NKNGuard-Windows-preview.zip` | Windows 10/11 原生客户端（需先安装 WireGuard for Windows / needs WireGuard for Windows） |
-| `NKNGuard-Android-preview.apk` | Android 8.0+ |
-| `SHA256SUMS` | 校验 / checksums: `sha256sum -c SHA256SUMS` |
+| `NKNGuard-Android-0.2.15-preview.1.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
+| `NKNGuard-Setup-0.2.15-preview.1.exe` | Windows 10/11 x86_64 安装器 |
+| `NKNGuard-Windows-x86_64-preview.zip` | Windows 便携客户端，仍需官方 WireGuard |
+| `NKNGuard-fnOS-amd64-0.2.15-preview.1.fpk` | 飞牛 x86_64 应用中心安装包 |
+| `NKNGuard-fnOS-arm64-0.2.15-preview.1.fpk` | 飞牛 ARM64 应用中心安装包 |
+| `nknguard-linux-amd64` / `nknguard-linux-arm64` | Linux / NAS 独立服务程序 |
+| `NKNGuard-NAS-Update-linux-<架构>-0.2.15-preview.1.zip` | 独立服务：面板上传更新包 |
+| `NKNGuard-NAS-Update-fnos-<架构>-0.2.15-preview.1.zip` | FPK 安装：面板上传更新包 |
+| `release.json` / `release.json.sig` / `SHA256SUMS` | 发布签名目录与文件校验值 |
 
-## 更新内容 / What's new
+### 本次更新
 
-- **断线后更快恢复**：以前直连断了要等 WireGuard 握手超过 3 分钟才发现；现在双方每 25 秒互发保活包，接收计数 55 秒不动就判定链路失效，再过 10 秒切到 NKN 中继并重新打洞，整体约 1 分钟。中继流断了也会自动重开。
-  A dead path is now noticed after about a minute (received-byte silence) instead of three; silent relay streams are reopened.
-- **换网络立即重连（Windows / Linux / NAS）**：程序每 5 秒检查本机地址，变化后立即给对端发包、重新探测地址并通知对端，不再等定时器。Android 之前已有系统网络变化通知，现在走同一套逻辑。
-  The daemon watches local addresses and reconnects at once on a change, like the Android app.
-- **休眠唤醒**：电脑睡眠后恢复时重新检查链路，不会把还能用的链路误判为断线。
-  Paths are re-checked after resume from suspend instead of being declared dead.
-- 包含 preview.4 的全部内容：Windows 原生客户端、面板配对链接、使用人数统计等。
-  Includes everything from preview.4.
-- v1 线协议未改变，新旧版本可以互通；但更快的断线判定只在升级后的一端生效，建议 NAS 和客户端都升级。
-  The v1 wire protocol is unchanged; upgrade both ends to get the faster detection on both.
+- NAS、Android、Windows 增加从 GitHub 手动检查更新。
+- NAS 面板可上传签名更新包，验证版本、处理器架构和文件完整性；独立服务更新失败自动恢复上一版，保留设备身份、管理密码和配对。
+- Android 可下载安装更新、导入本地 APK；安装前核对应用 ID、版本与当前签名，交给系统确认安装。
+- 飞牛分别构建 x86_64 与 ARM64 FPK；关闭默认文件日志，停止和卸载复用程序自身的隧道与防火墙清理，避免误杀复用 PID 的其他进程。
+- 保留此前多 NAS 管理、直连优先、NKN 备用中继、NAT 仪表盘及网络动画。
+- GitHub 中文介绍的赞赏区新增 USDC · ERC20，沿用 Ethereum 收款地址。
 
-## 注意 / Caveats
+### 测试范围
 
-- **Android 客户端尚未完成真机测试**；问题请附上 App 内“复制诊断信息”的内容。
-  The Android client has **not yet been tested on real devices**.
-- **新的 Windows 界面只在 Wine 中运行检查过**，尚未在真实 Windows 上测试托盘和 UAC 授权。
-  The new Windows window was checked under Wine only; tray and UAC are untested on real Windows.
-- APK 使用 CI 临时 debug 密钥签名，**升级前需先卸载旧版**。
-  **Uninstall the previous APK before installing** (throwaway CI signing key).
-- 程序均未进行代码签名；请勿为此关闭系统防护。
-  Binaries are not code-signed; do not disable security software to run them.
-- 升级 NAS 只需替换程序文件，身份、配对数据和面板密码不受影响。
-  Upgrading the NAS only replaces the binary; identity, pairings and the dashboard password are kept.
+Windows 的自动化测试覆盖程序、安装、覆盖升级、卸载及原生窗口启动。尚需在用户电脑验证到 NAS 的真实 VPN 连接。ARM64 独立服务在现有飞牛 NAS 验证更新；FPK 构建和生命周期校验不能替代各机型的应用中心实机安装测试。现有测试 NAS 的大盘没有应用中心存储空间，未格式化已有数据。
+
+这是开发预览版，Windows 安装器尚未代码签名。Android 请使用这里的维护者签名安装包，Actions 原始调试 APK 的临时签名不能覆盖升级。

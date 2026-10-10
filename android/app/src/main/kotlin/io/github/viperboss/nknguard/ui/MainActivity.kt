@@ -65,6 +65,8 @@ class MainActivity : Activity(), NkgApp.Listener {
     private var status = JSONObject()
     private var pairing: JSONObject? = null
     private var busy = false
+	private lateinit var updateActions: UpdateActions
+	private lateinit var updateMessage: TextView
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -78,6 +80,7 @@ class MainActivity : Activity(), NkgApp.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         palette = Palette(resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
+		updateActions = UpdateActions(this, app) { text -> updateMessage.text = text }
         setContentView(buildLayout())
         handleIntent(intent)
     }
@@ -210,6 +213,7 @@ class MainActivity : Activity(), NkgApp.Listener {
         when (requestCode) {
             REQUEST_VPN -> if (resultCode == RESULT_OK) startVpn() else toast("需要允许 VPN 连接才能访问 NAS")
             REQUEST_SCAN -> data?.getStringExtra(ScanActivity.EXTRA_TEXT)?.let { startPairing(it) }
+			UpdateActions.PICK_APK -> if (resultCode == RESULT_OK) data?.data?.let { updateActions.importApk(it) }
         }
     }
 
@@ -737,6 +741,16 @@ class MainActivity : Activity(), NkgApp.Listener {
         })
         column.addView(usageCard, spaced())
 
+		val updateCard = card()
+		updateCard.addView(TextView(this).apply { text = "应用更新"; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(palette.text) })
+		@Suppress("DEPRECATION")
+		val appVersion = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+		updateMessage = TextView(this).apply { text = "当前：$appVersion · 从 GitHub 手动检查更新"; textSize = 12f; setTextColor(palette.muted); setPadding(0, dp(8), 0, dp(8)) }
+		updateCard.addView(updateMessage)
+		updateCard.addView(button("检查更新") { updateActions.check() })
+		updateCard.addView(button("选择本地 APK 更新") { updateActions.chooseLocal() }.also { style(it, primary = false) })
+		updateCard.addView(button("安装已下载更新") { updateActions.install() }.also { style(it, primary = false) })
+		column.addView(updateCard, spaced())
         column.addView(button("复制诊断信息") { onCopyDiagnostics() }.also { style(it, primary = false) }, spaced())
         forgetButton = button("删除当前 NAS") { onForgetClicked() }.also { style(it, primary = false, danger = true) }
         column.addView(forgetButton, spaced())

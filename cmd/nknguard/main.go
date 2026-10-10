@@ -119,6 +119,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdPair(g, rest, stdout)
 	case "client":
 		err = cmdClient(g, stdout)
+	case "update-check":
+		err = cmdUpdateCheck(stdout)
+	case "update-apply":
+		var cfg config.Config
+		cfg, _, err = loadConfig(g)
+		if err == nil && len(rest) == 1 {
+			err = app.ApplyUpdate(cfg, rest[0])
+		} else if err == nil {
+			err = errors.New("update-apply requires a staged job directory")
+		}
 	case "leave":
 		err = cmdLeave(g, stdout)
 	case "identity":
@@ -183,6 +193,7 @@ func loadConfig(g globals) (config.Config, bool, error) {
 		cfg.Paths.Socket = g.socket
 	}
 	cfg.Paths.LegacySetupNote = filepath.Join(filepath.Dir(g.configPath), "first-run.txt")
+	cfg.SourceFile, err = filepath.Abs(g.configPath)
 	return cfg, exists, nil
 }
 

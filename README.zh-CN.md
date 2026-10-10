@@ -23,14 +23,16 @@
 
 ## 下载
 
-公开预览版见 **[Releases 页面](https://github.com/Viper-Boss/nknguard/releases)**。最新构建和 Windows 安装器可在 [Actions](https://github.com/Viper-Boss/nknguard/actions) 对应成功运行的 Artifacts 中下载，详情见[客户端使用与验收](docs/CLIENT_ACCEPTANCE.md)。
+安卓、Windows 安装器与便携包、飞牛 x86_64 / ARM64 FPK 都在右侧 **[Releases 发布页](https://github.com/Viper-Boss/nknguard/releases)**。按设备架构选择；使用说明见[客户端使用与验收](docs/CLIENT_ACCEPTANCE.md)。
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | 🗄️ **NAS / Linux**（ARM64，飞牛 ARM 机型） | `nknguard-linux-arm64` | 需要 root 与 `wireguard-tools`，见[安装 NAS 端](#1-安装-nas-端) |
 | 🗄️ **NAS / Linux**（x86_64） | `nknguard-linux-amd64` | 同上 |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-x86_64-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 维护者交付的 APK 使用持续保留的签名证书，可覆盖安装；原始 CI 包签名可能不同 |
+
+**更新：** NAS 在“系统更新”检查版本并上传对应架构的签名更新包；Android 支持检查、下载和导入本地 APK；Windows 在“应用更新”检查并打开发布页。更新说明见[升级指南](docs/UPDATES.md)。飞牛应用中心需要可用数据卷，安装包构建不代表所有机型已完成实机验收。
 
 每个版本都附带 `SHA256SUMS`，下载后可以核对：`sha256sum -c SHA256SUMS`。Windows 预览版尚未签名；维护者交付的 Android 包保持同一签名，原始 CI 调试包使用临时签名。
 

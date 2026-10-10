@@ -28,6 +28,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
+	"github.com/Viper-Boss/nknguard/pkg/releaseupdate"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/usagestats"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
@@ -227,7 +228,7 @@ func decode[T any](raw json.RawMessage) (T, error) {
 }
 
 // concurrentCommands never wait behind a state-changing command.
-var concurrentCommands = map[string]bool{"status": true, "diagnostics": true, "pair_cancel": true, "parse_invite": true, "usage": true}
+var concurrentCommands = map[string]bool{"status": true, "diagnostics": true, "pair_cancel": true, "parse_invite": true, "usage": true, "check_update": true}
 
 func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 	switch request.Cmd {
@@ -289,6 +290,16 @@ func (a *Agent) handle(ctx context.Context, request Request) (any, error) {
 		return map[string]bool{"scheduled": true}, nil
 	case "status":
 		return a.status(), nil
+	case "check_update":
+		args, err := decode[struct {
+			Current string `json:"current"`
+		}](request.Args)
+		if err != nil {
+			return nil, err
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
+		defer cancel()
+		return releaseupdate.Check(checkCtx, args.Current, "android", "all")
 	case "forget":
 		return a.forget()
 	case "diagnostics":

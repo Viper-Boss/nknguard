@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/nat-gauge.css">
   <script src="/nat-gauge.js" defer></script>
   <script src="/support.js" defer></script>
+  <script src="/updates.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/network-animation.js" type="module"></script>
 </head>
@@ -32,6 +33,7 @@
         <button class="nav-item" data-view="paths"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-paths"/></svg></span> 链路</button>
         <button class="nav-item" data-view="logs"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-logs"/></svg></span> 日志</button>
         <button class="nav-item" data-view="security"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-shield"/></svg></span> 安全设置</button>
+        <button class="nav-item" data-view="updates"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 10a8 8 0 1 0-2 8M20 3v7h-7M12 8v8m-3-3 3 3 3-3"/></svg></span> 系统更新</button>
         <button class="nav-item" data-view="support"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 5c-3-3-6-1-8 1C10 4 7 2 4 5c-4 4 2 9 8 14 6-5 12-10 8-14Z"/></svg></span> 赞赏作者</button>
       </nav>
       <div class="side-bottom"><span class="live-dot"></span><span id="nkn-sidebar-state">正在验证 NKN</span><small id="side-version">—</small></div>
@@ -221,6 +223,7 @@
       <section id="logs" class="view"><div class="section-head"><div><h2>运行日志</h2><p>仅保留最近 2000 行内存日志（每行最多 4 KB），退出清空，不持续写入硬盘</p></div><button class="secondary-button" id="refresh-logs">刷新日志</button></div><section class="panel log-panel"><pre id="log-lines">正在读取日志…</pre></section></section>
 
       <section id="security" class="view"><div class="section-head"><div><h2>安全设置</h2><p>管理密码由你设置，服务端只保存加盐后的哈希</p></div></div><section class="panel password-panel"><h3>修改管理密码</h3><p>输入当前密码和新密码。新密码至少 12 个字符，修改后请用新密码重新登录。</p><form id="password-form" autocomplete="off"><label>当前密码<input id="current-password" type="password" autocomplete="current-password" required></label><label>新密码<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>确认新密码<input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required></label><button class="primary-button" type="submit">保存新密码</button><span id="password-message" role="status"></span></form></section><section class="panel usage-settings"><h3>隐私与统计</h3><p>自动参与匿名使用人数统计，每天向 NKN 链提交最多 3 个零手续费订阅。使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。NKN 节点仍能看到连接 IP。</p></section></section>
+      <section id="updates" class="view"><div class="section-head"><div><h2>系统更新</h2><p>手动检查、验证安装包，保留设备身份与配对</p></div><span class="pill neutral" id="update-version">正在读取版本…</span></div><section class="panel"><div class="panel-head"><div><h3>GitHub 发布版本</h3><p>不会自动下载或安装；预览版也会显示</p></div><button class="primary-button" id="check-update">检查更新</button></div><p><a class="text-button" href="https://github.com/Viper-Boss/nknguard/releases" target="_blank" rel="noopener noreferrer">前往发布页下载安装包 ↗</a></p></section><section class="panel password-panel"><h3>上传安装包更新</h3><p>选择发布页中的 NAS-Update 更新包（.zip），架构必须与上方显示一致。更新包经过发布签名和完整性检查后才会安装；独立服务启动失败会恢复上一版。</p><label>选择更新包<input id="update-file" type="file" accept=".zip,application/zip"></label><button class="secondary-button" id="upload-update">上传并更新</button><p id="update-message" role="status" aria-live="polite">更新完成后刷新面板查看结果。</p></section></section>
       <section id="support" class="view support-page" aria-label="赞赏作者">
 <div class="support-hero"><span class="support-heart" aria-hidden="true">♡</span><h2>让连接更自由，<br>让更新继续发生。</h2><p>NKNGuard 的开发需要 AI 算力、测试设备和时间。如果它帮你连上了自己的 NAS，欢迎请作者喝杯咖啡，支持下一次更新。<strong>金额随意，心意就好。</strong></p></div>
 <div class="support-payment"><article class="panel"><h3>微信支付</h3><button class="support-image" data-support-image="/wechat.png" aria-label="放大微信收款码"><img src="/wechat.png" alt="作者的微信收款码" loading="lazy"></button><p class="support-caption">用微信扫一扫 · 点击图片可放大</p></article><article class="panel"><h3>支付宝</h3><button class="support-image" data-support-image="/alipay.png" aria-label="放大支付宝收款码"><img src="/alipay.png" alt="作者的支付宝收款码" loading="lazy"></button><p class="support-caption">用支付宝扫一扫 · 点击图片可放大</p></article></div>

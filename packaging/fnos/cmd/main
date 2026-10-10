@@ -5,12 +5,18 @@ bin="${TRIM_APPDEST:?}/bin/nknguard"
 cfg="${TRIM_PKGETC:?}/config.yaml"
 data="${TRIM_PKGVAR:?}"
 pidfile="$data/daemon.pid"
-logfile="$data/daemon.log"
 
-running() {
+owns_pid() {
   [ -s "$pidfile" ] || return 1
   pid=$(cat "$pidfile")
   case "$pid" in *[!0-9]*|'') return 1;; esac
+  expected=$(readlink -f "$bin")
+  actual=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || return 1
+  [ "$actual" = "$expected" ] || return 1
+}
+
+running() {
+  owns_pid || return 1
   kill -0 "$pid" 2>/dev/null || return 1
   timeout 5s "$bin" --config "$cfg" status >/dev/null 2>&1
 }
@@ -20,7 +26,8 @@ start() {
   [ -x "$bin" ] && [ -f "$cfg" ] || return 1
   if running; then return 0; fi
   install -d -m 0700 "$data" "$data/run"
-  nohup "$bin" --config "$cfg" up >> "$logfile" 2>&1 &
+  # The daemon's bounded memory ring is visible in the dashboard; no SSD log.
+  nohup "$bin" --config "$cfg" up >/dev/null 2>&1 &
   pid=$!
   printf '%s\n' "$pid" > "$pidfile"
   count=0
@@ -33,15 +40,18 @@ start() {
   kill -TERM "$pid" 2>/dev/null || true
   sleep 1
   rm -f "$pidfile"
-  tail -n 8 "$logfile" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}" || true
+  printf '%s\n' 'NKNGuard 启动失败，请检查配置、权限和系统依赖。' > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
   return 1
 }
 
 stop() {
+  if ! owns_pid; then
+    # Never signal a process that reused a stale PID.
+    rm -f "$pidfile"
+    timeout 10s "$bin" --config "$cfg" cleanup
+    return $?
+  fi
   timeout 8s "$bin" --config "$cfg" down >/dev/null 2>&1 || true
-  if [ ! -s "$pidfile" ]; then return 0; fi
-  pid=$(cat "$pidfile")
-  case "$pid" in *[!0-9]*|'') return 1;; esac
   count=0
   while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 20 ]; do
     sleep 1
@@ -53,6 +63,7 @@ stop() {
   fi
   if kill -0 "$pid" 2>/dev/null; then return 1; fi
   rm -f "$pidfile"
+  timeout 10s "$bin" --config "$cfg" cleanup
   return 0
 }
 
