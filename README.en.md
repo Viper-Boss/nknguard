@@ -12,7 +12,7 @@ A private NAS connection: NKN pairs devices, ICE finds a direct WireGuard path, 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-[简体中文](README.md) · **English**
+[简体中文](README.md) · **English** · **[❤ Support the author](docs/SUPPORT.md)**
 
 <img src="docs/images/nas-dashboard-overview.jpg" alt="NAS dashboard: overview" width="860">
 
@@ -50,11 +50,17 @@ Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Windows previ
 <sub>Rendered from the real UI code with demo data (the Windows client under Wine). The UI is currently in Chinese. Android screenshots below come from the actual app in an emulator with clearly labeled demo NAS profiles.</sub>
 
 
-## Android and appreciation page
+## Android interface
 
-<table><tr><td width="50%"><img src="docs/images/android-home.jpg" alt="Android NAS list"><br>Native Android UI · independently saved NAS profiles</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS appreciation page"><br>WeChat, Alipay and public crypto receiving addresses</td></tr></table>
+<img src="docs/images/android-home.jpg" alt="Android NAS list" width="320">
 
-Donations are optional and do not unlock features. The appreciation page is inside the authenticated NAS dashboard. WeChat/Alipay images come from NasSimHub and crypto addresses from the author's GenomeDock sponsor configuration. [Appreciation details](docs/SUPPORT.md).
+Native Android UI with separate pairing information for each saved NAS. Name, switch or remove a profile independently.
+
+## ❤ Support the author
+
+If NKNGuard is useful to you, you can support its maintenance. Donations are optional and do not affect features or device authorization.
+
+**[Open the donation page → WeChat · Alipay · USDT · BTC · ETH · SOL](docs/SUPPORT.md)**
 
 ## Highlights
 

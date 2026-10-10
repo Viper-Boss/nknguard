@@ -12,7 +12,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%C2%B7%20%E9%A3%9E%E7%89%9B%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-**简体中文** · [English](README.en.md)
+**简体中文** · [English](README.en.md) · **[❤ 赞赏作者](docs/SUPPORT.md)**
 
 <img src="docs/images/nas-dashboard-overview.jpg" alt="NAS 管理面板：连接总览" width="860">
 
@@ -50,11 +50,17 @@
 <sub>截图由真实界面代码渲染（Windows 客户端截图来自 Wine），设备名、地址、人数等为演示数据。Android 截图来自实际应用的模拟器运行，NAS 资料标注为演示。</sub>
 
 
-## 安卓界面与赞赏页面
+## 安卓界面
 
-<table><tr><td width="50%"><img src="docs/images/android-home.jpg" alt="安卓多 NAS 管理"><br>原生安卓界面 · 分别保存每台 NAS</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS 赞赏页面"><br>微信、支付宝和区块链赞赏</td></tr></table>
+<img src="docs/images/android-home.jpg" alt="安卓多 NAS 管理" width="320">
 
-赞赏完全自愿，不影响功能或设备授权。管理面板内提供原始微信、支付宝收款码，以及与 GenomeDock 相同的 USDT（TRC20）、BTC、ETH、SOL 公共收款地址。[赞赏说明](docs/SUPPORT.md)。
+原生安卓界面，分别保存每台 NAS 的配对信息，支持命名、切换和单独删除。
+
+## ❤ 赞赏作者
+
+如果 NKNGuard 对你有帮助，欢迎支持项目维护。赞赏完全自愿，不影响功能或设备授权。
+
+**[打开独立赞赏页面 → 微信 · 支付宝 · USDT · BTC · ETH · SOL](docs/SUPPORT.md)**
 
 ## 特点
 
