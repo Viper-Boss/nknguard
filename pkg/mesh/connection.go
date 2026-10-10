@@ -61,7 +61,7 @@ func (c *Controller) acceptConnectionRequest(id string, info protocol.PeerInfo, 
 func (c *Controller) stopOwnerConnection(id, sessionID, reason string) {
 	c.mu.Lock()
 	w, ok := c.connections[id]
-	if !ok || (sessionID != "" && sessionID != w.id) {
+	if !ok || sessionID != w.id {
 		c.mu.Unlock()
 		return
 	}

@@ -76,6 +76,7 @@ func TestConnectionLeaseDoesNotExtendOnRetry(t *testing.T) {
 		t.Fatal("new connection refused")
 	}
 	c.stopOwnerConnection("phone", "first", "stale disconnect")
+	c.stopOwnerConnection("phone", "", "legacy stale disconnect")
 	if !c.ownerConnectionActive("phone", now) {
 		t.Fatal("old disconnect closed the new connection")
 	}
