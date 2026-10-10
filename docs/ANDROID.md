@@ -29,7 +29,7 @@ Android 应用（Kotlin，android/app）              Go 协议核心（internal
 - **进程生命周期即 VPN 生命周期。** 应用把 TUN 描述符交给核心后立即关闭自己的副本，
   核心是唯一持有者。核心在标准输入关闭（应用进程死亡）时退出，内核随即删除 VPN
   接口，不会留下“看似连接、实际不通”的残留。
-- **路由。** VPN 只添加 `10.88.0.0/16` 路由、不设置 DNS，普通上网和域名解析不受
+- **路由。** VPN 只添加当前 NAS 虚拟地址的 `/32` 路由、不设置 DNS，普通上网和域名解析不受
   影响；不需要 root，不改默认路由。应用把**自己**排除在 VPN 之外
   （`addDisallowedApplication`），核心里 NKN SDK、STUN、wireguard-go 打开的每一个
   socket 都走真实网络——效果等同于对每个 socket 调用 `VpnService.protect()`，但覆盖
@@ -41,7 +41,7 @@ Android 应用（Kotlin，android/app）              Go 协议核心（internal
 ### 密钥与备份策略
 
 根身份种子、WireGuard 私钥、NKN 种子和入网密钥只以内存形式存在于核心进程；持久化
-的唯一副本是 `files/secrets.bin`，由 Android Keystore 中生成、不可导出的 AES-256-GCM
+的持久副本由 NAS 配置分别保存；原有 NAS 保留在 `files/secrets.bin`，新增 NAS 位于 `files/nas/<随机配置 ID>/secrets.bin`，由 Android Keystore 中生成、不可导出的 AES-256-GCM
 密钥加密。应用关闭了云备份和设备迁移（`allowBackup=false` 与
 `data_extraction_rules.xml`）：备份出去的密文在别的设备上无法解密。**换机需要重新
 配对**，并建议在 NAS 面板撤销旧手机。入网密钥不会写入日志、通知、崩溃报告或普通偏好
@@ -64,8 +64,15 @@ NAS 端新增行为：对持有有效成员证明、签名与时效均合法、�
 界面与通知只显示观察到的事实：阶段为“已连接 · 直连 / NKN 中继”仅当 WireGuard 在
 3 分钟内与 NAS 完成过握手且控制器选择了该路径；其余情况显示“正在连接 NKN”
 “等待与 NAS 握手”等。显示内容包括 NAS NKN 地址（可复制）、NAS 设备 ID、本机与 NAS
-虚拟 IP、链路、WireGuard 端点、最近握手时间、收发流量和本机 NKN 地址。没有任何定时
-动画。
+虚拟 IP、链路、WireGuard 端点、最近握手时间、收发流量和本机 NKN 地址。连接卡片提供动画；动画展示状态，不代替实际握手结果，关闭系统动画时也会停止。
+
+## 多 NAS 管理（0.2.12）
+
+首页“我的 NAS”列出已保存的服务器。点“扫码添加 NAS”申请另一台 NAS 的授权，
+在其控制台核对验证码并批准。点卡片切换，点卡片右侧菜单重命名或删除。
+切换时先断开当前 VPN，再加载所选 NAS；不会同时接管多个 NAS 的网段。
+各配置分别保存根身份、NKN 身份、WireGuard 密钥、入网密钥和连接缓存。
+升级沿用原来的存储路径，不需要重新扫码；删除一台不影响其他台。
 
 ## 构建
 

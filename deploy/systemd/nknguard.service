@@ -10,6 +10,7 @@ StandardError=null
 Type=simple
 ExecStart=/usr/local/bin/nknguard --config /etc/nknguard/config.yaml daemon
 ExecStop=/usr/local/bin/nknguard --config /etc/nknguard/config.yaml down
+ExecStopPost=/usr/local/bin/nknguard --config /etc/nknguard/config.yaml cleanup
 Restart=on-failure
 RestartSec=5s
 # The daemon creates a network interface and binds UDP; it needs these and

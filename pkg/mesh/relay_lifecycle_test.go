@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"testing"
@@ -12,6 +13,24 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
+
+type preAssignmentPacketWG struct{ revokeWG }
+
+func (w *preAssignmentPacketWG) UpdateEndpoint(_ context.Context, key, endpoint string) error {
+	// A relay reply arrives immediately before endpoint assignment. The
+	// next Stats reports the manually assigned IP with the old reply's bytes.
+	w.stats = []wireguard.PeerStats{{PublicKey: key, Endpoint: endpoint, LastHandshake: time.Now().Unix(), TransferRxBytes: 132}}
+	return nil
+}
+
+func TestDirectProbeRejectsPreAssignmentRelayReply(t *testing.T) {
+	w := &preAssignmentPacketWG{revokeWG: revokeWG{stats: []wireguard.PeerStats{{PublicKey: "key", Endpoint: "127.0.0.1:51820", LastHandshake: time.Now().Unix(), TransferRxBytes: 100}}}}
+	s := WireGuardStrategy{WireGuard: w, PerCandidate: 20 * time.Millisecond, PollInterval: time.Millisecond}
+	_, err := s.Attempt(context.Background(), DirectAttempt{WireGuardPublicKey: "key", Candidates: []nat.EndpointCandidate{nat.NewCandidate(nat.CandidateReflexive, netip.MustParseAddrPort("198.51.100.2:51820"), time.Minute, time.Now())}})
+	if !errors.Is(err, ErrNoDirectPath) {
+		t.Fatalf("old relay reply proved a manually assigned direct endpoint: %v", err)
+	}
+}
 
 func TestRelayHandshakeCannotPromoteUnprovenAttempt(t *testing.T) {
 	c := New()

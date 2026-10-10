@@ -51,6 +51,12 @@ func (w *lifecycleWG) Status(context.Context) wireguard.Status {
 	return wireguard.Status{State: s}
 }
 func (*lifecycleWG) Stats(context.Context) ([]wireguard.PeerStats, error) { return nil, nil }
+
+// The controller now publishes before NKN is ready, including in the offline
+// dashboard lifecycle test. Its fake must implement the key lookup explicitly.
+func (*lifecycleWG) PublicKey(context.Context) (string, error) {
+	return "", errors.New("test tunnel has no public key")
+}
 func (w *lifecycleWG) RemovePeer(_ context.Context, key string) error {
 	w.removed = append(w.removed, key)
 	return w.removeErr

@@ -7,6 +7,7 @@ import android.os.Looper
 import io.github.viperboss.nknguard.core.CoreException
 import io.github.viperboss.nknguard.core.CoreProcess
 import io.github.viperboss.nknguard.core.NetworkInfo
+import io.github.viperboss.nknguard.core.NasRegistry
 import io.github.viperboss.nknguard.core.SecretVault
 import io.github.viperboss.nknguard.core.StatusRecovery
 import io.github.viperboss.nknguard.core.CrashReport
@@ -31,6 +32,10 @@ class NkgApp : Application() {
         private set
     lateinit var vault: SecretVault
         private set
+    lateinit var nasRegistry: NasRegistry
+        private set
+    @Volatile var profileBusy = false
+    @Volatile private var profileEpoch = 0L
 
     /** Background work that talks to the core. Never block the main thread. */
     val worker: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "nkg-worker").apply { isDaemon = true } }
@@ -38,6 +43,7 @@ class NkgApp : Application() {
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val initLock = Any()
+    private val stateLock = Any()
     @Volatile private var initialized = false
     @Volatile private var deliberateStop = false
 
@@ -50,16 +56,74 @@ class NkgApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        vault = SecretVault(this)
-        core = CoreProcess(this, ::handleEvent) { generation ->
-            if (generation != core.generation) return@CoreProcess
-            initialized = false
-            publishUnavailable("NKNGuard 核心已退出，可点击连接恢复")
-            if (!deliberateStop) main.post {
-                if (generation == core.generation) listeners.forEach { it.onCoreProblem("NKNGuard 核心已退出") }
-            }
-        }
+        nasRegistry = NasRegistry(filesDir)
+        configureCore()
         worker.execute { runCatching { ensureCore() }.onFailure { publishUnavailable(it.message ?: "核心启动失败") } }
+    }
+
+    private fun configureCore() {
+        val epoch = ++profileEpoch
+        val directory = nasRegistry.directory()
+        val currentVault = SecretVault(this, directory)
+        vault = currentVault
+        core = CoreProcess(this, { name, data ->
+            if (epoch == profileEpoch) handleEvent(name, data, currentVault, epoch)
+        }, { generation ->
+            if (epoch == profileEpoch && generation == core.generation) {
+                initialized = false
+                if (!deliberateStop) {
+                    publishUnavailable("NKNGuard 核心已退出，可点击连接恢复")
+                    main.post { if (epoch == profileEpoch) listeners.forEach { it.onCoreProblem("NKNGuard 核心已退出") } }
+                }
+            }
+        }, directory)
+    }
+
+    /** Called only after the VPN service has completed tunnel teardown. */
+    fun selectNas(id: String) {
+        synchronized(initLock) {
+            if (nasRegistry.active().id == id) return
+            deliberateStop = true
+            try {
+                core.stop()
+                initialized = false
+                synchronized(stateLock) {
+                    nasRegistry.select(id)
+                    configureCore()
+                    info = JSONObject()
+                    status = JSONObject().put("phase", "idle")
+                    pairStatus = null
+                }
+                ensureCore()
+            } finally { deliberateStop = false }
+        }
+    }
+
+    fun addAndPair(uri: String, name: String) {
+        val invite = core.call("parse_invite", JSONObject().put("uri", uri))
+        val known = nasRegistry.findNAS(invite.getString("nas_id"))
+        val entry = known ?: if (!status.optBoolean("paired") && nasRegistry.active().nasId.isEmpty()) nasRegistry.active() else nasRegistry.add()
+        selectNas(entry.id)
+        if (status.optBoolean("paired") && !status.optBoolean("revoked")) {
+            publishStatus(status)
+            return
+        }
+        core.call("pair", JSONObject().put("uri", uri).put("name", name))
+    }
+
+    fun removeNas(id: String) {
+        if (nasRegistry.active().id == id) {
+            core.call("forget", timeoutMillis = 20_000)
+            val next = nasRegistry.list().firstOrNull { it.id != id } ?: nasRegistry.add()
+            selectNas(next.id)
+        }
+        val directory = nasRegistry.directory(id)
+        nasRegistry.remove(id)
+        if (id == "legacy") {
+            java.io.File(directory, "core").deleteRecursively()
+            java.io.File(directory, "secrets.bin").delete()
+        } else { directory.deleteRecursively() }
+        publishStatus(status)
     }
 
     fun addListener(listener: Listener) = listeners.add(listener)
@@ -112,6 +176,7 @@ class NkgApp : Application() {
 
     /** Asks the core for its status and publishes it. Blocking. */
     fun refreshStatus(): JSONObject {
+        synchronized(initLock) {
         val current = try {
             if (!core.isRunning || !initialized) ensureCore()
             core.call("status", timeoutMillis = 5_000)
@@ -120,31 +185,36 @@ class NkgApp : Application() {
         }
         publishStatus(current)
         return current
+        }
     }
 
-    private fun publishStatus(current: JSONObject) {
-        status = current
-        main.post { listeners.forEach { it.onStatus(current) } }
+    private fun publishStatus(current: JSONObject, epoch: Long = profileEpoch) {
+        synchronized(stateLock) {
+            if (epoch != profileEpoch) return
+            status = current
+            runCatching { nasRegistry.remember(current) }
+            main.post { if (epoch == profileEpoch) listeners.forEach { it.onStatus(current) } }
+        }
     }
 
     private fun publishUnavailable(message: String) = publishStatus(StatusRecovery.unavailable(status, message))
 
-    private fun handleEvent(name: String, data: JSONObject) {
+    private fun handleEvent(name: String, data: JSONObject, currentVault: SecretVault, epoch: Long) {
         when (name) {
             // Must finish before the next line is read: the response that
             // follows may report success that depends on this secret.
-            "secrets" -> vault.save(data.getJSONObject("values").let { values ->
+            "secrets" -> currentVault.save(data.getJSONObject("values").let { values ->
                 values.keys().asSequence().associateWith { values.getString(it) }
             })
-            "status" -> publishStatus(data)
+            "status" -> publishStatus(data, epoch)
             "pair_status" -> {
                 pairStatus = data
-                main.post { listeners.forEach { it.onPairStatus(data) } }
-                if (data.optString("stage") == "approved") worker.execute { runCatching { info = core.call("init", JSONObject()) } }
+                main.post { if (epoch == profileEpoch) listeners.forEach { it.onPairStatus(data) } }
+                if (data.optString("stage") == "approved") worker.execute { synchronized(initLock) { if (epoch == profileEpoch) runCatching { info = core.call("init", JSONObject()) } } }
             }
             "revoked" -> {
                 val message = data.optString("message", "NAS 已撤销本机授权")
-                main.post { listeners.forEach { it.onRevoked(message) } }
+                main.post { if (epoch == profileEpoch) listeners.forEach { it.onRevoked(message) } }
             }
         }
     }

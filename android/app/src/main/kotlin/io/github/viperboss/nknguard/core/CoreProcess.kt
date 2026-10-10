@@ -27,6 +27,7 @@ class CoreProcess(
     private val context: Context,
     private val onEvent: (name: String, data: JSONObject) -> Unit,
     private val onExit: (generation: Long) -> Unit,
+    private val profileDirectory: File = context.filesDir,
 ) {
     private class Pending {
         val latch = CountDownLatch(1)
@@ -60,7 +61,7 @@ class CoreProcess(
             if (!executable.canExecute()) {
                 throw CoreException("找不到 NKNGuard 核心程序（${executable.name}），请重新安装应用")
             }
-            val stateDir = File(context.filesDir, "core").apply { mkdirs() }
+            val stateDir = File(profileDirectory, "core").apply { mkdirs() }
             fdSocket.parentFile?.mkdirs()
             val builder = ProcessBuilder(
                 executable.absolutePath,
@@ -97,7 +98,15 @@ class CoreProcess(
     }
 
     private fun thread(name: String, body: () -> Unit) {
-        Thread(body, name).apply { isDaemon = true }.start()
+        Thread({
+            try { body() }
+            catch (_: java.io.IOException) {
+                // Closing a child during NAS switching closes its stdout and
+                // stderr too. An uncaught reader exception would terminate
+                // the whole Android app; the wait thread owns exit recovery.
+                logs.add("core pipe closed")
+            }
+        }, name).apply { isDaemon = true }.start()
     }
 
     private fun readOutput(source: Process) {

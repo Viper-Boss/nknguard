@@ -10,6 +10,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/app"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
+	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 )
@@ -50,10 +51,11 @@ type Status struct {
 	DHTPeers         int                         `json:"dht_peers"`
 	RelayReady       bool                        `json:"relay_ready"`
 	RelayStandby     bool                        `json:"relay_standby"`
+	NATBehaviour     nat.Behaviour               `json:"nat_behaviour"`
 }
 
 func (a *Agent) status() Status {
-	status := Status{Phase: PhaseIdle, Path: string(mesh.PathNone)}
+	status := Status{Phase: PhaseIdle, Path: string(mesh.PathNone), NATBehaviour: nat.BehaviourUnknown}
 	profile, paired, _ := loadProfile(a.StateDir)
 	if paired {
 		status.Paired = a.Secrets.Has(SecretJoinSecret)
@@ -104,6 +106,7 @@ func (a *Agent) status() Status {
 		return status
 	}
 	status.RelayFallback = controller.Metrics().RelayFallbacks
+	status.NATBehaviour = controller.PortMapping().Behaviour
 	var nas mesh.Snapshot
 	for _, peer := range controller.Peers() {
 		if peer.DeviceID == current.profile.NASID {
@@ -183,6 +186,7 @@ func (a *Agent) diagnostics() string {
 	fmt.Fprintf(&out, "nas: %s  nas_address: %s\n", status.NASID, redact(status.NASAddress))
 	fmt.Fprintf(&out, "virtual_ip: %s  nas_virtual_ip: %s  mtu: %d\n", status.VirtualIP, status.NASVirtualIP, TunnelMTU)
 	fmt.Fprintf(&out, "nkn: connected=%t address=%s\n", status.NKNConnected, redact(status.NKNAddress))
+	fmt.Fprintf(&out, "nat_mapping: %s (filtering not measured)\n", status.NATBehaviour)
 	if c := status.NKNConnection; c != nil {
 		fmt.Fprintf(&out, "nkn_check: state=%s last_success=%s latency_ms=%d\n", c.State, c.LastSuccess.UTC().Format(time.RFC3339), c.LatencyMS)
 		if c.LastError != "" {

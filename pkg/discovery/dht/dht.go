@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +44,7 @@ import (
 	"github.com/multiformats/go-multihash"
 
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
+	"github.com/Viper-Boss/nknguard/pkg/signaling"
 )
 
 // ProtocolPrefix scopes every DHT protocol. With the library default a node
@@ -61,6 +64,7 @@ var allowedProtocols = []string{
 	"/ipfs/ping/1.0.0",
 	ProtocolPrefix + "/kad/1.0.0",
 	string(RecordProtocol),
+	string(SignalProtocol),
 }
 
 // Options configures the backend.
@@ -71,10 +75,13 @@ type Options struct {
 	LANDiscovery   bool
 	// Phones participate without serving a permanent routing table.
 	ClientMode bool
+	MapPorts   bool
 	// Rendezvous is membership.Key.Rendezvous(): the providers key. Derived
 	// from the join secret, so a network id alone does not enumerate members.
 	Rendezvous string
 	Logger     *slog.Logger
+	// Android supplies underlying addresses because net.Interfaces is restricted.
+	InterfaceAddresses func() ([]net.Addr, error)
 }
 
 // Backend implements discovery.Discovery.
@@ -86,8 +93,12 @@ type Backend struct {
 	mdns   io.Closer
 	cancel context.CancelFunc
 
-	mu  sync.RWMutex
-	own []byte
+	mu       sync.RWMutex
+	own      []byte
+	bindings map[string]peer.ID
+	dialing  map[peer.ID]bool
+	inbound  chan signaling.Inbound
+	slots    chan struct{}
 }
 
 // Open starts the host.
@@ -99,12 +110,16 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	created, err := libp2p.New(
+	hostOptions := []libp2p.Option{
 		libp2p.Identity(identity),
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", opts.ListenPort)),
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", opts.ListenPort), fmt.Sprintf("/ip6/::/tcp/%d", opts.ListenPort)),
 		// This node never carries anyone else's bytes over libp2p.
 		libp2p.DisableRelay(),
-	)
+	}
+	if opts.MapPorts {
+		hostOptions = append(hostOptions, libp2p.NATPortMap())
+	}
+	created, err := libp2p.New(hostOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("dht: start host: %w", err)
 	}
@@ -123,8 +138,10 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	backend := &Backend{opts: opts, host: created, kad: kad, key: cid.NewCidV1(cid.Raw, hash), cancel: cancel}
+	backend := &Backend{opts: opts, host: created, kad: kad, key: cid.NewCidV1(cid.Raw, hash), cancel: cancel,
+		bindings: make(map[string]peer.ID), dialing: make(map[peer.ID]bool), inbound: make(chan signaling.Inbound, 128), slots: make(chan struct{}, 16)}
 	created.SetStreamHandler(RecordProtocol, backend.serveRecord)
+	created.SetStreamHandler(SignalProtocol, backend.serveSignal)
 	prune(created, opts.Logger)
 
 	if opts.LANDiscovery {
@@ -192,6 +209,44 @@ func parse(address string) (peer.AddrInfo, error) {
 // NKN. Reachable peers can then bootstrap the private DHT without a VPS.
 func (b *Backend) LocalAddresses() []string {
 	addresses := b.host.Addrs()
+	if b.opts.InterfaceAddresses != nil {
+		if ips, err := b.opts.InterfaceAddresses(); err == nil {
+			for _, listen := range b.host.Network().ListenAddresses() {
+				port, err := listen.ValueForProtocol(multiaddr.P_TCP)
+				if err != nil {
+					continue
+				}
+				for _, entry := range ips {
+					raw := strings.Split(entry.String(), "/")[0]
+					ip, err := netip.ParseAddr(raw)
+					if err != nil || !ip.IsGlobalUnicast() {
+						continue
+					}
+					family := "ip6"
+					if ip.Is4() {
+						family = "ip4"
+					}
+					if _, err := listen.ValueForProtocol(map[string]int{"ip4": multiaddr.P_IP4, "ip6": multiaddr.P_IP6}[family]); err != nil {
+						continue
+					}
+					if address, err := multiaddr.NewMultiaddr("/" + family + "/" + ip.String() + "/tcp/" + port); err == nil {
+						addresses = append(addresses, address)
+					}
+				}
+			}
+		}
+	}
+	unique := make([]multiaddr.Multiaddr, 0, len(addresses))
+	seen := map[string]bool{}
+	for _, address := range addresses {
+		if !seen[address.String()] {
+			unique = append(unique, address)
+			seen[address.String()] = true
+		}
+	}
+	addresses = unique
+	// Public addresses must not be crowded out by Docker or VPN interfaces.
+	sort.SliceStable(addresses, func(i, j int) bool { return addressRank(addresses[i]) < addressRank(addresses[j]) })
 	if len(addresses) > 8 {
 		addresses = addresses[:8]
 	}
@@ -208,24 +263,48 @@ func (b *Backend) ConnectPeer(ctx context.Context, addresses []string) {
 	if len(addresses) > 8 {
 		addresses = addresses[:8]
 	}
+	var target peer.AddrInfo
 	for _, address := range addresses {
 		info, err := parse(address)
 		if err != nil || info.ID == b.host.ID() {
 			continue
 		}
-		if b.host.Network().Connectedness(info.ID) == network.Connected {
-			return
+		if target.ID == "" {
+			target.ID = info.ID
 		}
-		dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err = b.host.Connect(dialCtx, info)
-		cancel()
-		if err == nil {
-			return
-		}
-		if ctx.Err() != nil {
-			return
+		if info.ID == target.ID {
+			target.Addrs = append(target.Addrs, info.Addrs...)
 		}
 	}
+	if target.ID == "" || b.host.Network().Connectedness(target.ID) == network.Connected {
+		return
+	}
+	b.mu.Lock()
+	if b.dialing[target.ID] {
+		b.mu.Unlock()
+		return
+	}
+	b.dialing[target.ID] = true
+	b.mu.Unlock()
+	defer func() { b.mu.Lock(); delete(b.dialing, target.ID); b.mu.Unlock() }()
+	dialCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	_ = b.host.Connect(dialCtx, target)
+}
+
+func addressRank(address multiaddr.Multiaddr) int {
+	raw, err := address.ValueForProtocol(multiaddr.P_IP4)
+	if err != nil {
+		raw, _ = address.ValueForProtocol(multiaddr.P_IP6)
+	}
+	ip, err := netip.ParseAddr(raw)
+	if err != nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return 2
+	}
+	if ip.IsGlobalUnicast() && !ip.IsPrivate() {
+		return 0
+	}
+	return 1
 }
 
 func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
@@ -294,8 +373,19 @@ func (b *Backend) Lookup(ctx context.Context, _ string) ([]discovery.PeerRecord,
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	var out []discovery.PeerRecord
+	seen := make(map[peer.ID]bool)
+	// A directly connected NAS need not wait for provider propagation.
+	for _, id := range b.host.Network().Peers() {
+		if len(out) >= MaxLookupPeers {
+			break
+		}
+		seen[id] = true
+		if record, err := b.fetch(ctx, peer.AddrInfo{ID: id}); err == nil {
+			out = append(out, record)
+		}
+	}
 	for info := range b.kad.FindProvidersAsync(ctx, b.key, MaxLookupPeers) {
-		if info.ID == b.host.ID() {
+		if info.ID == b.host.ID() || seen[info.ID] || len(out) >= MaxLookupPeers {
 			continue
 		}
 		if record, err := b.fetch(ctx, info); err == nil {

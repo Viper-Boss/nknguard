@@ -2,131 +2,139 @@
 
 # NKNGuard
 
-**Reach your NAS from anywhere — no public IP, no relay server of ours.**
+**扫码授权，直连优先，随时访问自己的 NAS。**
 
-A WireGuard mesh coordinated over [NKN](https://nkn.org): direct whenever the NAT allows, an encrypted NKN relay when it does not.
+基于 [NKN](https://nkn.org)、ICE 与 WireGuard 的 NAS 私有连接。无需部署协调服务器；直连失败时回落到 NKN 加密中继，已配对设备也能通过私有 DHT 同步连接信息。
 
-[![Release](https://img.shields.io/github/v/release/Viper-Boss/nknguard?include_prereleases&label=release&color=2f80ed)](https://github.com/Viper-Boss/nknguard/releases)
+[![Release](https://img.shields.io/github/v/release/Viper-Boss/nknguard?include_prereleases&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2f80ed)](https://github.com/Viper-Boss/nknguard/releases)
 [![CI](https://github.com/Viper-Boss/nknguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Viper-Boss/nknguard/actions/workflows/ci.yml)
 [![Android](https://github.com/Viper-Boss/nknguard/actions/workflows/android.yml/badge.svg)](https://github.com/Viper-Boss/nknguard/actions/workflows/android.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
-![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
+![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%C2%B7%20%E9%A3%9E%E7%89%9B%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-[简体中文](README.zh-CN.md) · **English**
+**简体中文** · [English](README.en.md)
 
-<img src="docs/images/nas-dashboard-overview.png" alt="NAS dashboard: overview" width="860">
+<img src="docs/images/nas-dashboard-overview.jpg" alt="NAS 管理面板：连接总览" width="860">
 
 </div>
 
 > [!WARNING]
-> **Development preview.** The protocol, NAS daemon, Windows and Android clients have automated tests, but real-network cross-NAT testing and on-device Android testing are not finished. Try it on non-critical devices first and do not rely on it as your only way in.
+> **开发预览版。** 协议、NAS 端、Windows 与 Android 客户端都有自动化测试，已在局域网及部分运营商网络完成 Android 到 NAS 的真机连接测试；不同路由器、运营商和长时间运行仍需持续验证。请先在非关键设备上试用，不要把它当作唯一的远程访问手段。
 
-## Download
+## 下载
 
-Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/releases)**.
+公开预览版见 **[Releases 页面](https://github.com/Viper-Boss/nknguard/releases)**。最新构建和 Windows 安装器可在 [Actions](https://github.com/Viper-Boss/nknguard/actions) 对应成功运行的 Artifacts 中下载，详情见[客户端使用与验收](docs/CLIENT_ACCEPTANCE.md)。
 
-| Platform | File | Notes |
+| 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| 🗄️ **NAS / Linux** (ARM64, incl. ARM fnOS) | `nknguard-linux-arm64` | Needs root and `wireguard-tools`; see [Install the NAS](#1-install-the-nas) |
-| 🗄️ **NAS / Linux** (x86_64) | `nknguard-linux-amd64` | Same as above |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
-| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview; maintainer-signed builds with the same certificate upgrade in place and preserve pairing |
+| 🗄️ **NAS / Linux**（ARM64，飞牛 ARM 机型） | `nknguard-linux-arm64` | 需要 root 与 `wireguard-tools`，见[安装 NAS 端](#1-安装-nas-端) |
+| 🗄️ **NAS / Linux**（x86_64） | `nknguard-linux-amd64` | 同上 |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
+| 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 维护者交付的 APK 使用持续保留的签名证书，可覆盖安装；原始 CI 包签名可能不同 |
 
-Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Preview builds are not code-signed.
+每个版本都附带 `SHA256SUMS`，下载后可以核对：`sha256sum -c SHA256SUMS`。Windows 预览版尚未签名；维护者交付的 Android 包保持同一签名，原始 CI 调试包使用临时签名。
 
-## Screenshots
+## 截图
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS dashboard: pairing"><br><sub><b>NAS dashboard · Pairing</b> — one-time QR plus the same pairing link as text, compare a six-digit code, approve; revoke single devices later</sub></td>
-    <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS dashboard: usage counts"><br><sub><b>NAS dashboard · Overview</b> — device paths and NKNGuard users in the last 24 h / 30 d / 90 d</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-pairing.png" alt="NAS 面板：配对与授权"><br><sub><b>NAS 面板 · 配对与授权</b>：一次性二维码和同内容的配对链接，核对六位码后批准，随时撤销单台设备</sub></td>
+    <td width="50%"><img src="docs/images/nas-dashboard-usage.png" alt="NAS 面板：使用人数"><br><sub><b>NAS 面板 · 总览</b>：设备连接状态，以及最近 24 小时 / 30 天 / 90 天的 NKNGuard 使用人数</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows client: connected"><br><sub><b>Windows client</b> — native window, one-click connect, keeps the tunnel in the tray</sub></td>
-    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows client: first pairing"><br><sub><b>Windows client · First pairing</b> — paste the pairing link, confirm the same code on the NAS</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-connected.png" alt="Windows 客户端：已直连"><br><sub><b>Windows 客户端</b>：原生窗口，一键连接，关闭后缩到托盘保持连接</sub></td>
+    <td width="50%"><img src="docs/images/windows-client-pairing.png" alt="Windows 客户端：首次配对"><br><sub><b>Windows 客户端 · 首次配对</b>：粘贴配对链接，在 NAS 上核对同一个六位码</sub></td>
   </tr>
 </table>
 
-<sub>Rendered from the real UI code with demo data (the Windows client under Wine). The UI is currently in Chinese. Android screenshots will follow on-device testing.</sub>
+<sub>截图由真实界面代码渲染（Windows 客户端截图来自 Wine），设备名、地址、人数等为演示数据。Android 截图来自实际应用的模拟器运行，NAS 资料标注为演示。</sub>
 
-## Highlights
 
-- 🔐 **WireGuard is the data plane.** All traffic is WireGuard-encrypted; NKNGuard never touches packet cryptography.
-- 🛰️ **NKN is the control plane — no server of ours.** Devices find each other and exchange signed records over NKN; control messages are end-to-end encrypted.
-- 🔗 **ICE direct paths with NKN standby.** Upgraded NAS and clients check IPv4/IPv6 UDP candidates independently of an active relay, then authenticate the selected path with WireGuard. See [ICE + NKN](docs/ICE-NKN.md) (Chinese).
-- ⚡ **Direct first, relay second.** NAT is punched with WireGuard's own handshake. If that fails, **WireGuard ciphertext** rides an NKN session while the direct path keeps being retried, and traffic moves back as soon as it works.
-- 📱 **Scan to pair, owner approves.** The QR holds only the NAS public key and a one-time request token — never the network secret. Every new device needs the six-digit code confirmed and approved on the NAS. Single devices can be revoked; a revoked phone gets a signed notice and disconnects at once.
-- 🇨🇳 **Built-in China seed.** A mainland-China community NKN seed is tried before the overseas official seeds; add your own node in the config.
-- 🧱 **The tunnel outlives the control plane.** If NKN drops, established WireGuard tunnels keep running.
-- 📊 **Anonymous user counts.** The dashboard and clients show how many devices ran NKNGuard in the last 24 hours / 30 days / 90 days, read from zero-fee NKN on-chain subscriptions with no server involved. Automatically enabled without an off switch; see [usage statistics](docs/USAGE_STATS.md) (Chinese).
-- 🧭 **Overlay routes only.** Clients route just `10.88.0.0/16`; the default route and normal browsing are untouched.
+## 安卓界面与赞赏页面
 
-## How it works
+<table><tr><td width="50%"><img src="docs/images/android-home.jpg" alt="安卓多 NAS 管理"><br>原生安卓界面 · 分别保存每台 NAS</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS 赞赏页面"><br>微信、支付宝和区块链赞赏</td></tr></table>
+
+赞赏完全自愿，不影响功能或设备授权。管理面板内提供原始微信、支付宝收款码，以及与 GenomeDock 相同的 USDT（TRC20）、BTC、ETH、SOL 公共收款地址。[赞赏说明](docs/SUPPORT.md)。
+
+## 特点
+
+- 🔐 **数据面是 WireGuard。** 所有流量都由 WireGuard 加密，NKNGuard 不碰包加密。
+- 🛰️ **控制面是 NKN，没有我们的服务器。** 设备通过 NKN 网络互相发现、交换签名记录；控制消息端到端加密。
+- ⚡ **直连优先，中继待命。** ICE 并行探测 IPv4 / IPv6 可用路径，再用 WireGuard 握手验证；NKN 会话保持备用，有直连时不承载用户数据，失败时接管并持续重试直连。
+- 📱 **扫码配对，主人批准。** 二维码只含 NAS 公钥和一次性申请令牌，不含入网密钥。新设备必须在 NAS 面板核对六位码并批准；可以随时撤销单台设备，被撤销的手机会立即收到签名通知并断开。
+- 🇨🇳 **内置国内 NKN 节点。** 国内网络优先使用国内社区 seed，连不上再回退官方节点；也可以在配置里加自建节点。
+- 🧱 **隧道比控制面活得久。** NKN 暂时掉线时，已建立的 WireGuard 隧道照常工作。
+- 📊 **匿名使用人数。** NAS 面板和客户端显示最近 24 小时 / 30 天 / 90 天的活跃设备数，数据来自 NKN 链上的零手续费订阅，不经过任何服务器；按项目当前设置自动参与，不提供关闭开关，见 [使用人数统计](docs/USAGE_STATS.md)。
+- 🧭 **只访问 NAS。** 客户端只接管所选 NAS 虚拟地址的 `/32` 路由，不改默认路由；NAS 对专用接口阻止转发，防止作为上网出口或访问其他客户端。
+- 🗂️ **安卓多 NAS 管理。** 家庭、办公室等 NAS 分开保存配对凭据和连接缓存，可命名、切换、单独删除；同一时间连接一台 NAS。
+- 🌐 **DHT 与动态端口映射。** 私有 DHT 支持 IPv4 / IPv6，利用已验证的地址缓存提前连接，并传送签名信令；支持 UPnP / NAT-PMP 的路由器可自动映射当前随机端口，失败时继续走 ICE / NKN。见 [DHT + NKN](docs/DHT-NKN.md)。
+
+## 工作原理
 
 ```text
-Tailscale:  device ── coordination server ── device    (+ DERP relay)
-NKNGuard:   device ── NKN signalling / DHT ── device   (+ NKN relay)
-                            │
-                            └─ data: WireGuard, direct whenever the NAT allows
+Tailscale:  设备 ── 协调服务器 ─────── 设备      （+ DERP 中继）
+NKNGuard:   设备 ── NKN 信令 / DHT ── 设备      （+ NKN 中继）
+                          │
+                          └─ 数据：WireGuard，NAT 允许时一律直连
 ```
 
-| Path | When | Speed |
+| 路径 | 什么时候用 | 速度 |
 | --- | --- | --- |
-| **WireGuard direct** | At least one side's NAT can be traversed (most home broadband) | Close to line rate |
-| **NKN encrypted relay** | Both sides behind symmetric / carrier-grade NAT, or UDP blocked | Slow — a fallback so you are connected at all |
+| **WireGuard 直连** | 至少一方的 NAT 能被打通（多数家庭宽带） | 接近带宽上限 |
+| **NKN 加密中继** | 双方都在对称型 / 运营商级 NAT 后面，或 UDP 被限制 | 慢，只保证连得上 |
 
-## Quick start
+## 快速开始
 
-### 1. Install the NAS
+### 1. 安装 NAS 端
 
-**fnOS:** follow [docs/FNOS_DISK_DEPLOY.md](docs/FNOS_DISK_DEPLOY.md) to keep the binary, config and identity on a data disk.
+**飞牛 fnOS：** 按 [docs/FNOS_DISK_DEPLOY.md](docs/FNOS_DISK_DEPLOY.md) 把程序、配置和身份都放在数据盘上。
 
-**Other Linux:** amd64 or arm64, `wireguard-tools` (`wg`, `ip`), kernel WireGuard or `wireguard-go`, root, and a clock within ±2 minutes.
+**其他 Linux：** 需要 amd64 / arm64、`wireguard-tools`（`wg`、`ip`）、`iptables` 和 `ip6tables`、内核 WireGuard 或 `wireguard-go`、root，以及误差在 ±2 分钟内的系统时钟。
 
 ```bash
 git clone https://github.com/Viper-Boss/nknguard && cd nknguard
-mkdir -p bin && install -m 0755 ~/Downloads/nknguard-linux-arm64 bin/nknguard   # or build: make deps && make build
+mkdir -p bin && install -m 0755 ~/Downloads/nknguard-linux-arm64 bin/nknguard   # 或自己编译：make deps && make build
 sudo ./scripts/install.sh
-sudo nknguard init --name nas-home      # creates the network and asks for a dashboard password
+sudo nknguard init --name nas-home      # 创建网络，并设置管理面板密码
 sudo systemctl enable --now nknguard
 ```
 
-### 2. Open the dashboard
+### 2. 打开管理面板
 
-The dashboard listens only on the NAS's `127.0.0.1:7878`. **Do not** publish it to the internet. From a computer on the LAN:
+面板只监听 NAS 本机的 `127.0.0.1:7878`，**不要**把它映射到公网。从同一局域网的电脑访问：
 
 ```bash
-ssh -L 7878:127.0.0.1:7878 user@nas
-# then open http://127.0.0.1:7878/ — user admin, the password set during init
+ssh -L 7878:127.0.0.1:7878 用户名@NAS地址
+# 然后在电脑浏览器打开 http://127.0.0.1:7878/ ，账号 admin，密码为 init 时设置的密码
 ```
 
-Forgot it? Run `sudo nknguard dashboard-password set` on the NAS. Five wrong passwords in a row trigger a temporary back-off.
+忘记密码：在 NAS 上运行 `sudo nknguard dashboard-password set`。连续输错 5 次后会临时限速。
 
-### 3. Pair a device
+### 3. 配对设备
 
-1. In **配对与授权 (Pairing)**, generate a QR code (valid 5 minutes); the same **pairing link** `nknguard://pair/v1?...` is shown under it with a copy button.
-2. Request access from the device:
-   - **Android** — open the app and tap “扫码配对” (scan to pair);
-   - **Windows** — paste the pairing link into the client, enter a name, click “请求 NAS 配对”;
-   - **Linux** — `sudo nknguard pair '<QR content>' --name laptop`.
-3. Check that the **six-digit code** matches on both screens, then click **核对后批准** (approve) on the NAS.
-4. Tap **Connect** on the device and reach the NAS on its virtual IP (shown in the client, e.g. `10.88.0.1`).
+1. 在面板 **配对与授权** 中生成二维码（5 分钟有效）；二维码下方同时显示同内容的**配对链接** `nknguard://pair/v1?...`，可以一键复制。
+2. 在设备上发起申请：
+   - **Android**：打开 App 点“扫码配对”，或复制配对链接后点“粘贴配对内容”；
+   - **Windows**：把配对链接粘贴到客户端，填电脑名称，点“请求 NAS 配对”；
+   - **Linux**：`sudo nknguard pair '<二维码内容>' --name laptop`。
+3. 核对设备上和面板上显示的 **六位验证码** 一致，在面板点 **核对后批准**。
+4. 在设备上点 **连接**，之后用 NAS 的虚拟 IP（例如 `10.88.10.1`，界面里有显示）访问飞牛服务。
 
-More: [Pairing](docs/PAIRING.md) · [Windows client](docs/WINDOWS.md) · [Android client](docs/ANDROID.md)
+详细说明：[配对](docs/PAIRING.md) · [Windows 客户端](docs/WINDOWS.md) · [Android 客户端](docs/ANDROID.md)
 
-## Commands
+## 常用命令
 
-| Command | |
+| 命令 | 作用 |
 | --- | --- |
-| `nknguard init` | create a network and set the dashboard password |
-| `nknguard pair <pairing-link>` | request owner-approved enrollment (Linux) |
-| `nknguard dashboard-password set` | set or reset the dashboard password on the NAS |
-| `sudo nknguard up` / `daemon` | run the node |
-| `sudo nknguard down` | stop the node and remove the interface |
-| `nknguard status` / `peers` | what is connected, how, and what happened |
-| `nknguard reconnect <device-id>` | retry a direct path now |
-| `nknguard doctor` | check the host, NAT and running node |
-| `nknguard diagnostics export` | redacted bundle for a bug report |
+| `nknguard init` | 创建网络并设置面板密码 |
+| `nknguard pair <配对链接>` | Linux 设备申请加入，需 NAS 批准 |
+| `nknguard dashboard-password set` | 在 NAS 本机设置或重设面板密码 |
+| `sudo nknguard up` / `daemon` | 前台运行节点 |
+| `sudo nknguard down` | 停止节点并删除接口 |
+| `nknguard status` / `peers` | 查看连接了谁、走什么路径 |
+| `nknguard reconnect <设备 ID>` | 立即重试直连 |
+| `nknguard doctor` | 检查本机环境、NAT 类型和运行状态 |
+| `nknguard diagnostics export` | 导出已脱敏的诊断包，用于报告问题 |
 
 ```text
 PEER      IP           PATH        STATE   ENDPOINT             LAST HANDSHAKE
@@ -134,17 +142,17 @@ laptop    10.88.41.7   direct-wg   DIRECT  203.0.113.5:51820    12s ago
 vps-eu    10.88.3.200  nkn-relay   RELAY   127.0.0.1:41822      4s ago
 ```
 
-## How peers find each other
+## 节点如何互相发现
 
-| Source | Setup | Trade-off |
+| 方式 | 配置 | 代价 |
 | --- | --- | --- |
-| **NKN topic** (`nkn_topic: true`, default) | none | The topic name derives from the join secret; its subscriber list is public to anyone who knows it |
-| **Private DHT** (`dht: true`, build tag `libp2pdht`) | bootstrap peers, or mDNS on a LAN | Project-private Kademlia, never the public IPFS DHT |
-| **Static peers** (`static_peers:`) | list each other's NKN address | Nothing public at all |
+| **NKN 主题**（默认开启） | 无需配置 | 主题名由入网密钥派生；订阅者列表公开，知道主题名的人能看到有哪些 NKN 地址 |
+| **私有 DHT**（`libp2pdht` 构建标签） | 引导节点，或局域网 mDNS | 项目私有 Kademlia，绝不加入公共 IPFS DHT |
+| **静态对端**（`static_peers`） | 互相填写对方 NKN 地址 | 完全不公开任何信息 |
 
-Whatever the source, a tunnel is built only for a device whose signed record verifies, whose membership proof matches and which the NAS has approved.
+无论来源如何，只有签名有效、入网证明匹配、且在 NAS 批准名单中的设备才能建立隧道。
 
-**NKN seeds** are tried in order: `nkn.seed_rpc` from the config → the built-in China seed → the official seeds. To add a self-hosted node:
+**NKN seed 节点**按“配置文件 `nkn.seed_rpc` → 内置国内节点 → 官方节点”的顺序依次尝试。自建 NKN 节点可以这样加：
 
 ```yaml
 nkn:
@@ -152,34 +160,40 @@ nkn:
     - http://192.168.1.10:30003
 ```
 
-## Limitations
+## 局限（如实说明）
 
-Stated plainly, because networking software that over-promises is worse than useless:
+- **不是所有 NAT 都能穿透。** 双方都在对称型 NAT 后面时几乎一定走中继。`nknguard doctor` 会告诉你属于哪种情况。
+- **中继很慢。** 走 NKN 会话，吞吐远低于直连，只是兜底。
+- **内核 WireGuard 独占 UDP 端口**，公网端口根据探测 socket 推断（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立，见 [NAT 穿透](docs/NAT_TRAVERSAL.md)。
+- **成员证明仍基于共享密钥。** NAS 按批准名单执行单设备撤销；若共享密钥或设备私钥泄露，需要重建网络凭证，自动轮换尚未实现。
+- **客户端是预览版。** Windows 版为原生窗口，需先安装 WireGuard for Windows。 仅 IPv4 覆盖网络；Android 可保存多台 NAS 的独立配对，一次连接一台，暂未加入开机自启。
+- **使用人数统计是公开的。** 每台运行设备每天自动在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
+- **不匿名。** WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
+- **国内 seed 是社区节点**，地址可能变化，失效时会自动回退官方节点。
 
-- **Not every NAT can be traversed.** Two peers both behind symmetric NAT will almost always be relayed. `nknguard doctor` tells you which case you are in.
-- **The relay is slow.** It rides NKN sessions — a fallback, not a data plane.
-- **Kernel WireGuard owns its UDP port**, so the public port is inferred assuming port-preserving NAT. True for most home routers, not all; see [NAT traversal](docs/NAT_TRAVERSAL.md).
-- **Membership proofs still use a shared secret.** The NAS enforces an approved-device list and can revoke single devices; recreate network credentials if the secret or a device key leaks. Automated rotation is not implemented.
-- **Preview clients.** IPv4 overlay, one network per node; no Android start-on-boot or always-on VPN yet.
-- **Usage statistics are public.** Each running device automatically publishes an anonymous key on three public NKN topics once a day; the NKN node it talks to sees its IP address. Anyone can subscribe to the topics, so the counts are indicative.
-- **Not anonymous.** WireGuard endpoints reveal IP addresses to peers, NKN addresses are linkable over time, and STUN servers see your public address.
-- **The China seed is community-run** and may move; the official seeds remain as fallback.
+## 文档
 
-## Documentation
+[架构](docs/ARCHITECTURE.md) · [协议](docs/PROTOCOL.md) · [NAT 穿透](docs/NAT_TRAVERSAL.md) · [配对](docs/PAIRING.md) · [安全模型](docs/SECURITY.md) · [构建](docs/BUILD.md) · [Windows](docs/WINDOWS.md) · [Android](docs/ANDROID.md) · [飞牛部署](docs/FNOS_DISK_DEPLOY.md) · [使用人数统计](docs/USAGE_STATS.md) · [贡献](CONTRIBUTING.md) · [报告漏洞](SECURITY.md)
 
-[Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [NAT traversal](docs/NAT_TRAVERSAL.md) · [Pairing](docs/PAIRING.md) · [Security model](docs/SECURITY.md) · [Build](docs/BUILD.md) · [Windows](docs/WINDOWS.md) · [Android](docs/ANDROID.md) · [fnOS deployment](docs/FNOS_DISK_DEPLOY.md) · [Usage statistics](docs/USAGE_STATS.md) · [Contributing](CONTRIBUTING.md) · [Reporting vulnerabilities](SECURITY.md)
-
-## Build from source
+## 从源码构建
 
 ```bash
-go test ./...                                     # core, standard library only
-make deps                                         # fetch nkn-sdk-go, libp2p
-go build -tags "nknsdk libp2pdht" ./cmd/nknguard  # full binary
-cd android && ./gradlew assembleDebug             # Android (JDK 17 + Android SDK, no NDK)
+go test ./...                                     # 核心，标准库即可
+make deps                                         # 拉取 nkn-sdk-go、libp2p
+go build -tags "nknsdk libp2pdht" ./cmd/nknguard  # 完整版
+cd android && ./gradlew assembleDebug             # Android（JDK 17 + Android SDK，不需要 NDK）
 ```
 
-Requires Go ≥ 1.25.7. A binary built without `nknsdk` can `init`, `join` and `doctor`, and refuses `up` with an explanation. See [docs/BUILD.md](docs/BUILD.md).
+需要 Go ≥ 1.25.7。不带 `nknsdk` 标签的程序可以 `init`、`join`、`doctor`，但拒绝 `up`。详见 [docs/BUILD.md](docs/BUILD.md)。
 
-## License
+## 开发贡献
 
-NKNGuard is licensed under **AGPL-3.0-only**; see [LICENSE](LICENSE). Notices for third-party modules are in [NOTICE](NOTICE).
+- **[Viper-Boss](https://github.com/Viper-Boss)**：项目发起者与维护者。
+- **Claude**：初始雏形与 Android 开发辅助。
+- **Codex（OpenAI）**：网络连接、安全、NAS / Android 实现、界面及验证辅助；AI 辅助改动由维护者审阅。
+
+[NAT 指针仪表盘](docs/NAT-GAUGE.md) 显示真实测得的映射条件，未知时显示灰色。四类传统 NAT 单独提供中文说明；仅凭映射观测无法细分入站过滤。
+
+## 许可证
+
+NKNGuard 采用 **AGPL-3.0-only** 许可证，见 [LICENSE](LICENSE)。所用第三方模块的许可声明见 [NOTICE](NOTICE)。

@@ -190,3 +190,5 @@ td b { color: #d1dfec; font-weight: 500; }
   .nav-item, .nav-item.active { padding: 7px; }
   .nav-item svg { width: 17px; height: 17px; }
 }
+
+@media(max-width:760px){.sidebar nav{flex:1;min-width:0;overflow-x:auto}.nav-item,.nav-item.active{flex:0 0 auto;gap:0}.sidebar .brand{flex:none}}

@@ -14,6 +14,7 @@ User=root
 WorkingDirectory=/mnt/docker-data/nknguard
 ExecStart=/mnt/docker-data/nknguard/bin/nknguard --config /mnt/docker-data/nknguard/etc/config.yaml up
 ExecStop=-/usr/bin/timeout 8s /mnt/docker-data/nknguard/bin/nknguard --config /mnt/docker-data/nknguard/etc/config.yaml down
+ExecStopPost=/mnt/docker-data/nknguard/bin/nknguard --config /mnt/docker-data/nknguard/etc/config.yaml cleanup
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=25s

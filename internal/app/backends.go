@@ -10,6 +10,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/identity"
 	"github.com/Viper-Boss/nknguard/pkg/membership"
+	"github.com/Viper-Boss/nknguard/pkg/nat"
 	"github.com/Viper-Boss/nknguard/pkg/relay"
 	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
@@ -33,6 +34,7 @@ type ControlPlane struct {
 // The default build leaves them nil, which the daemon turns into ErrNoNKN or
 // "no DHT" respectively.
 var (
+	portMapperFactory   func(context.Context, nat.CandidateProvider, func(context.Context) (int, error), *slog.Logger) (nat.CandidateProvider, io.Closer)
 	controlPlaneFactory func(ctx context.Context, cfg config.Config, keystore *identity.Keystore, key *membership.Key, logger *slog.Logger) (*ControlPlane, error)
 	discoveryFactory    func(ctx context.Context, cfg config.Config, key *membership.Key, logger *slog.Logger) (discovery.Discovery, error)
 	pairDeviceFactory   func(context.Context, config.Config, string, io.Writer) (PairResult, error)

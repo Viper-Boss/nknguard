@@ -127,7 +127,7 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			fresh = false
 		}
 		// Prepare the fallback concurrently, including while direct is up.
-		if bridge == nil && c.Relay != nil && c.Signaling != nil && c.initiator(peer) {
+		if bridge == nil && c.relayAvailable() && c.Signaling != nil && c.initiator(peer) {
 			c.spawn(func() { c.openRelay(ctx, peer, "prepare standby") })
 		}
 		// An attempt temporarily assigns unproven endpoints. The last
@@ -137,7 +137,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			silent := peer.NoteReceive(seen.rxBytes, now)
 			// Incoming authenticated relay packets can prove the fallback
 			// while probes are ongoing. Only direct promotion is forbidden.
-			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
+			// Without endpoint ownership this observation predates the probe:
+			// promoting it can overwrite an ICE success with the old relay.
+			if endpointOwned && bridge != nil && viaBridge && fresh && silent < receiveTimeout {
 				if peer.SelectPath(Observation{Now: now, RelayOpen: true, RelayActive: true}) == PathNKNRelay {
 					_, _ = peer.Apply(EventRelayOpen, now)
 				}
@@ -245,7 +247,7 @@ func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, br
 	}
 	// The relay comes first when a peer has had no path for RelayAfter: being
 	// connected slowly beats not being connected while a punch is retried.
-	if bridge == nil && c.Relay != nil && peer.stuckFor(now) >= orDefault(c.Config.Timing.RelayAfter, 20*time.Second) {
+	if bridge == nil && c.relayAvailable() && peer.stuckFor(now) >= orDefault(c.Config.Timing.RelayAfter, 20*time.Second) {
 		c.spawn(func() { c.openRelay(ctx, peer, "no path") })
 	}
 	if !c.usesICE(peer) && len(peer.Candidates()) == 0 {
@@ -254,7 +256,23 @@ func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, br
 	if !peer.ShouldRetryDirect(now) || !peer.BeginAttempt() {
 		return
 	}
-	if c.usesICE(peer) {
+	// An explicit mapping targets the actual WG socket. It is worth a bounded
+	// plain-WG attempt before ICE only when it cannot disturb an existing path.
+	mapped := false
+	if peer.Path() == PathNone && bridge == nil {
+		for _, candidate := range peer.Candidates() {
+			if candidate.Type == nat.CandidateMapped && !candidate.Expired(now) && candidate.Usable() {
+				peer.mu.Lock()
+				if peer.lastMappedAttempt != candidate.String() {
+					peer.lastMappedAttempt = candidate.String()
+					mapped = true
+				}
+				peer.mu.Unlock()
+				break
+			}
+		}
+	}
+	if c.usesICE(peer) && !mapped {
 		c.spawn(func() { c.runICEOffer(ctx, peer) })
 		return
 	}
@@ -271,7 +289,7 @@ func (c *Controller) progress(ctx context.Context, peer *Peer, now time.Time, br
 		// pointless, so this counts as a failure and the relay takes over.
 		peer.NoteError("punch request: " + err.Error())
 		peer.EndAttempt(false)
-		if bridge == nil && c.Relay != nil {
+		if bridge == nil && c.relayAvailable() {
 			c.spawn(func() { c.openRelay(ctx, peer, "signalling unavailable") })
 		}
 		return
@@ -330,7 +348,7 @@ func (c *Controller) runAttempt(ctx context.Context, peer *Peer, startAt time.Ti
 			_ = c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String())
 			peer.resetReceive(time.Now())
 			c.nudgePeer(ctx, peer)
-		} else if initiator && c.Relay != nil && ctx.Err() == nil {
+		} else if initiator && c.relayAvailable() && ctx.Err() == nil {
 			c.spawn(func() { c.openRelay(ctx, peer, "direct attempt failed") })
 		}
 		return
@@ -624,4 +642,14 @@ func (c *Controller) closeBridges() {
 	for _, path := range icePaths {
 		path.bridge.Close()
 	}
+}
+
+func (c *Controller) relayAvailable() bool {
+	if c.Relay == nil {
+		return false
+	}
+	if ready, ok := c.Relay.(interface{ Available() bool }); ok {
+		return ready.Available()
+	}
+	return true
 }

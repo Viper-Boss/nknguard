@@ -55,6 +55,12 @@ class MainActivity : Activity(), NkgApp.Listener {
     private lateinit var forgetButton: Button
     private lateinit var usageCounts: TextView
     private lateinit var usageNote: TextView
+    private lateinit var nasCards: LinearLayout
+    private lateinit var connectionScene: ConnectionSceneView
+    private lateinit var natGauge: NatGaugeView
+    private lateinit var nasHeading: TextView
+    private lateinit var accessLine: TextView
+    private var nasListStamp = ""
 
     private var status = JSONObject()
     private var pairing: JSONObject? = null
@@ -113,6 +119,7 @@ class MainActivity : Activity(), NkgApp.Listener {
 
     override fun onStatus(status: JSONObject) {
         this.status = status
+        if (status.optBoolean("paired") && !status.optBoolean("revoked") && pairing?.optString("nas_id") == status.optString("nas_id")) pairing = null
         render()
     }
 
@@ -236,7 +243,7 @@ class MainActivity : Activity(), NkgApp.Listener {
                 pairing = JSONObject().put("stage", "connecting").put("nas_id", invite.optString("nas_id"))
                     .put("nas_address", invite.optString("nas_address")).put("expires_at", invite.optString("expires_at"))
                 render()
-                background { app.core.call("pair", JSONObject().put("uri", uri).put("name", chosen)) }
+                NkgVpnService.addAndPair(this, uri, chosen)
             }
             .show()
     }
@@ -250,17 +257,11 @@ class MainActivity : Activity(), NkgApp.Listener {
 
     private fun onForgetClicked() {
         AlertDialog.Builder(this)
-            .setTitle("解除配对")
-            .setMessage("将断开连接并删除本机保存的 NAS 入网材料。本机设备身份会保留；如果 NAS 上仍批准着本机，建议同时在 NAS 面板撤销。")
+            .setTitle("删除这台 NAS")
+            .setMessage("将断开连接并删除这台 NAS 的本机凭据，其他 NAS 不受影响。建议同时在 NAS 面板撤销本机授权。")
             .setNegativeButton("取消", null)
             .setPositiveButton("解除配对") { _, _ ->
-                if (status.optBoolean("connected")) NkgVpnService.disconnect(this)
-                background {
-                    app.core.call("forget", timeoutMillis = 20_000)
-                    app.ensureCore()
-                    app.refreshStatus()
-                    main.post { toast("已解除配对") }
-                }
+                NkgVpnService.removeNas(this, app.nasRegistry.active().id)
             }
             .show()
     }
@@ -336,6 +337,17 @@ class MainActivity : Activity(), NkgApp.Listener {
         val paired = status.optBoolean("paired")
         val revoked = status.optBoolean("revoked") || phase == "revoked"
         val connected = status.optBoolean("connected")
+        busy = app.profileBusy
+        connectionScene.online = Text.isOnline(status)
+        connectionScene.pending = connected && !connectionScene.online
+        connectionScene.relay = phase == "relay"
+        connectionScene.invalidate()
+        natGauge.update(if (connected) status.optString("nat_behaviour", "unknown") else "unknown")
+        nasHeading.text = app.nasRegistry.active().name
+        val virtualIP = status.optString("nas_virtual_ip").ifBlank { app.nasRegistry.active().virtualIP }
+        accessLine.text = if (virtualIP.isBlank()) "配对后显示你的 NAS 访问地址" else "飞牛访问地址  $virtualIP:5666  ⧉"
+        accessLine.setOnClickListener { if (virtualIP.isNotBlank()) copy("NAS 访问地址", "$virtualIP:5666") }
+        renderNasCards()
 
         deviceLine.text = app.info.optString("device_id").let { if (it.isEmpty()) "正在启动核心…" else "本机设备 ID：$it" }
         statusTitle.text = Text.phaseTitle(status)
@@ -360,12 +372,78 @@ class MainActivity : Activity(), NkgApp.Listener {
         retryButton.text = if (status.optBoolean("direct_attempting")) "正在尝试直连…" else "重试直连"
 
         val pairingActive = pairing != null
-        scanButton.visibility = if (StatusRecovery.canPair(status) && !pairingActive) View.VISIBLE else View.GONE
+        scanButton.visibility = if (status.has("paired") && !pairingActive) View.VISIBLE else View.GONE
+        scanButton.isEnabled = !busy
+        pasteButton.isEnabled = !busy
         pasteButton.visibility = scanButton.visibility
         forgetButton.visibility = if (paired || revoked) View.VISIBLE else View.GONE
 
         renderPairing()
-        renderRows(connected)
+        if (rows.visibility == View.VISIBLE) renderRows(connected)
+    }
+
+    private fun renderNasCards() {
+        val devices = app.nasRegistry.list()
+        val active = app.nasRegistry.active().id
+        val stamp = devices.toString() + active + busy + (pairing != null)
+        if (stamp == nasListStamp) return
+        nasListStamp = stamp
+        nasCards.removeAllViews()
+        devices.forEach { entry ->
+            val item = card().apply {
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(18).toFloat()
+                    setColor(if (entry.id == active) Color.parseColor("#173D43") else palette.card)
+                    setStroke(dp(1), if (entry.id == active) palette.accent else palette.border)
+                }
+            }
+            val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            line.addView(TextView(this).apply {
+                text = entry.name
+                textSize = 17f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(palette.text)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            line.addView(TextView(this).apply {
+                text = "•••"
+                textSize = 21f
+                gravity = Gravity.CENTER
+                setTextColor(palette.muted)
+                contentDescription = "管理 ${entry.name}"
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setOnClickListener { manageNas(entry.id, entry.name) }
+            })
+            item.addView(line)
+            item.addView(TextView(this).apply {
+                text = (if (entry.id == active) "当前设备" else "点按切换") + "  ·  " + entry.virtualIP.ifBlank { if (entry.nasId.isBlank()) "等待配对" else "已配对" }
+                textSize = 12f
+                setTextColor(if (entry.id == active) palette.accent else palette.muted)
+                setPadding(0, dp(8), 0, 0)
+            })
+            item.isEnabled = !busy && pairing == null
+            item.setOnClickListener {
+                if (entry.id != active && !app.profileBusy && pairing == null) {
+                    NkgVpnService.selectNas(this, entry.id)
+                    toast("正在切换到 ${entry.name}")
+                }
+            }
+            nasCards.addView(item, spaced().apply { topMargin = dp(10) })
+        }
+    }
+
+    private fun manageNas(id: String, name: String) {
+        if (app.profileBusy || pairing != null) return
+        AlertDialog.Builder(this).setTitle(name).setItems(arrayOf("重命名", "删除本机配对")) { _, which ->
+            if (which == 0) {
+                val input = EditText(this).apply { setText(name); setSingleLine() }
+                AlertDialog.Builder(this).setTitle("给 NAS 起个名字").setView(input).setNegativeButton("取消", null)
+                    .setPositiveButton("保存") { _, _ -> background { app.nasRegistry.rename(id, input.text.toString()); main.post { renderNasCards(); nasHeading.text = app.nasRegistry.active().name } } }.show()
+            } else {
+                AlertDialog.Builder(this).setTitle("删除 $name？").setMessage("只删除这台 NAS 在手机上的凭据。建议同时在 NAS 面板撤销授权。")
+                    .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ -> NkgVpnService.removeNas(this, id) }.show()
+            }
+        }.show()
     }
 
     private fun renderPairing() {
@@ -467,9 +545,15 @@ class MainActivity : Activity(), NkgApp.Listener {
         }
         column.addView(TextView(this).apply {
             text = "NKNGuard"
-            textSize = 26f
+            textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(palette.text)
+        })
+        column.addView(TextView(this).apply {
+            text = "我的文件，随时在身边。"
+            textSize = 13f
+            setTextColor(palette.muted)
+            setPadding(0, dp(5), 0, dp(6))
         })
         deviceLine = TextView(this).apply {
             textSize = 12f
@@ -479,6 +563,14 @@ class MainActivity : Activity(), NkgApp.Listener {
         column.addView(deviceLine)
 
         val card = card()
+        nasHeading = TextView(this).apply {
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.accent)
+        }
+        card.addView(nasHeading)
+        connectionScene = ConnectionSceneView(this)
+        card.addView(connectionScene, LinearLayout.LayoutParams(-1, dp(160)))
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -500,6 +592,12 @@ class MainActivity : Activity(), NkgApp.Listener {
             setPadding(0, dp(8), 0, 0)
         }
         card.addView(statusHint)
+        accessLine = TextView(this).apply {
+            textSize = 13f
+            setTextColor(palette.accent)
+            setPadding(0, dp(14), 0, dp(2))
+        }
+        card.addView(accessLine)
         column.addView(card, spaced())
 
         connectButton = button("连接") { onConnectClicked() }
@@ -536,13 +634,73 @@ class MainActivity : Activity(), NkgApp.Listener {
         pairCard.addView(pairCancel, spaced())
         column.addView(pairCard, spaced())
 
-        scanButton = button("扫码配对") { onScanClicked() }
+        column.addView(TextView(this).apply {
+            text = "我的 NAS"
+            textSize = 19f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.text)
+            setPadding(0, dp(24), 0, 0)
+        })
+        nasCards = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(nasCards)
+
+        scanButton = button("＋ 扫码添加 NAS") { onScanClicked() }
         pasteButton = button("粘贴配对内容") { onPasteClicked() }.also { style(it, primary = false) }
-        column.addView(scanButton, spaced())
-        column.addView(pasteButton, spaced())
+        val addActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        addActions.addView(scanButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8) })
+        addActions.addView(pasteButton, LinearLayout.LayoutParams(0, -2, 1f))
+        scanButton.textSize = 14f
+        pasteButton.textSize = 14f
+        column.addView(addActions, spaced())
+
+        val natCard = card()
+        val natHead = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        natHead.addView(TextView(this).apply {
+            text = "网络直连条件"
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.text)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        natHead.addView(TextView(this).apply {
+            text = "四类 NAT  ⓘ"
+            textSize = 12f
+            setTextColor(palette.accent)
+            setPadding(dp(8), dp(6), 0, dp(6))
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity).setTitle("传统四类 NAT")
+                    .setMessage("绿色 · 全锥型\n映射稳定，入站限制较少。\n\n青绿 · 地址受限锥型\n只接收已联系过的地址。\n\n黄色 · 端口受限锥型\n还需匹配已联系过的端口。\n\n红色 · 对称型\n不同目标可能使用不同映射。\n\n当前测量的是映射行为，尚未测量入站过滤，不能细分前三种锥型。指针仅为条件参考，直连是否可用以真实握手为准。IPv6 与局域网仍会独立尝试直连。")
+                    .setPositiveButton("知道了", null).show()
+            }
+        })
+        natCard.addView(natHead)
+        natGauge = NatGaugeView(this).apply { contentDescription = "NAT 映射条件尚未测定，连接后自动探测" }
+        // Keep the dial aspect ratio on tablets and honour large text settings.
+        natCard.addView(natGauge, LinearLayout.LayoutParams(-1, -2))
+        natCard.addView(TextView(this).apply {
+            text = "绿色条件较好，红色限制较多；灰色表示尚无探测结果。实际连接以握手为准。"
+            textSize = 11f
+            setTextColor(palette.muted)
+            setPadding(0, dp(6), 0, 0)
+        })
+        column.addView(natCard, spaced())
 
         rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(rows, spaced())
+        val detailCard = card()
+        val detailsTitle = TextView(this).apply {
+            text = "连接详情与访问地址  ›"
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(palette.text)
+            setPadding(0, dp(4), 0, dp(4))
+            setOnClickListener {
+                rows.visibility = if (rows.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (rows.visibility == View.VISIBLE) renderRows(status.optBoolean("connected"))
+            }
+        }
+        detailCard.addView(detailsTitle)
+        detailCard.addView(rows)
+        rows.visibility = View.GONE
+        column.addView(detailCard, spaced())
 
         val usageCard = card()
         usageCard.addView(TextView(this).apply {
@@ -580,7 +738,7 @@ class MainActivity : Activity(), NkgApp.Listener {
         column.addView(usageCard, spaced())
 
         column.addView(button("复制诊断信息") { onCopyDiagnostics() }.also { style(it, primary = false) }, spaced())
-        forgetButton = button("解除配对") { onForgetClicked() }.also { style(it, primary = false, danger = true) }
+        forgetButton = button("删除当前 NAS") { onForgetClicked() }.also { style(it, primary = false, danger = true) }
         column.addView(forgetButton, spaced())
 
         return ScrollView(this).apply {
@@ -606,8 +764,9 @@ class MainActivity : Activity(), NkgApp.Listener {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(16), dp(18), dp(16))
         background = GradientDrawable().apply {
-            cornerRadius = dp(16).toFloat()
+            cornerRadius = dp(22).toFloat()
             setColor(palette.card)
+            setStroke(dp(1), palette.border)
         }
     }
 
@@ -629,8 +788,8 @@ class MainActivity : Activity(), NkgApp.Listener {
                 setStroke(dp(1), if (danger) palette.bad else palette.border)
             }
         }
-        button.setTextColor(if (primary) Color.WHITE else if (danger) palette.bad else palette.text)
-        button.minHeight = dp(48)
+        button.setTextColor(if (primary) Color.parseColor("#092A2E") else if (danger) palette.bad else palette.text)
+        button.minHeight = dp(54)
     }
 
     private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -640,12 +799,12 @@ class MainActivity : Activity(), NkgApp.Listener {
     private fun dp(value: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
 
     private class Palette(dark: Boolean) {
-        val background = if (dark) Color.parseColor("#0D1117") else Color.parseColor("#F6F8FA")
-        val card = if (dark) Color.parseColor("#161B22") else Color.WHITE
-        val text = if (dark) Color.parseColor("#E6EDF3") else Color.parseColor("#1F2328")
-        val muted = if (dark) Color.parseColor("#8B949E") else Color.parseColor("#59636E")
-        val border = if (dark) Color.parseColor("#30363D") else Color.parseColor("#D1D9E0")
-        val accent = if (dark) Color.parseColor("#2F81F7") else Color.parseColor("#1F6FEB")
+        val background = Color.parseColor("#091522")
+        val card = Color.parseColor("#112537")
+        val text = Color.parseColor("#EDF5F8")
+        val muted = Color.parseColor("#96AEC1")
+        val border = Color.parseColor("#20394B")
+        val accent = Color.parseColor("#4DE2BE")
         val good = Color.parseColor("#2DA44E")
         val pending = Color.parseColor("#D29922")
         val bad = Color.parseColor("#CF222E")

@@ -21,8 +21,8 @@ import javax.crypto.spec.GCMParameterSpec
  * nothing usable. Consequence, stated to the user: backups are disabled and a
  * new phone must be paired again.
  */
-class SecretVault(context: Context) {
-    private val file = File(context.filesDir, "secrets.bin")
+class SecretVault(context: Context, directory: File = context.filesDir) {
+    private val file = File(directory, "secrets.bin")
 
     class VaultException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -66,6 +66,7 @@ class SecretVault(context: Context) {
 
     @Synchronized
     fun save(values: Map<String, String>) {
+		file.parentFile?.mkdirs()
         val plain = JSONObject(values).toString().toByteArray(Charsets.UTF_8)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())

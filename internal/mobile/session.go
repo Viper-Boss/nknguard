@@ -11,6 +11,7 @@ import (
 
 	"github.com/Viper-Boss/nknguard/internal/state"
 	"github.com/Viper-Boss/nknguard/pkg/backoff"
+	"github.com/Viper-Boss/nknguard/pkg/controlhub"
 	"github.com/Viper-Boss/nknguard/pkg/directice"
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/Viper-Boss/nknguard/pkg/mesh"
@@ -18,6 +19,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/protocol"
 	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
+	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard"
 	"github.com/Viper-Boss/nknguard/pkg/wireguard/userspace"
 )
@@ -241,13 +243,26 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 	s.mu.Lock()
 	s.controller = controller
 	s.mu.Unlock()
-	cacheCtx, cacheCancel := context.WithCancel(ctx)
-	cacheDone := make(chan struct{})
-	go func() { defer close(cacheDone); controller.RunCached(cacheCtx) }()
-	stopCache := func() { cacheCancel(); <-cacheDone }
-	defer stopCache()
-	defer s.persist(controller)
 
+	var alternate signaling.Transport
+	if transport, ok := controller.Discovery.(signaling.Transport); ok {
+		alternate = transport
+	}
+	hub := controlhub.New(ctx, alternate, controller.Rendezvous)
+	defer hub.Close()
+	controller.Signaling, controller.Relay = hub, hub
+	controllerDone := make(chan struct{})
+	var controllerErr error
+	go func() {
+		controllerErr = controller.Run(ctx)
+		if controllerErr != nil && ctx.Err() == nil {
+			a.Logger.Warn("controller stopped", "error", controllerErr)
+		}
+		s.cancel()
+		close(controllerDone)
+	}()
+	defer func() { s.cancel(); <-controllerDone }()
+	defer s.persist(controller)
 	seed, err := a.nknSeed()
 	if err != nil {
 		s.setPhase(PhaseError, err.Error())
@@ -279,8 +294,12 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 			}
 			continue
 		}
-		stopCache()
-		s.runController(ctx, plane, controller)
+		if err := hub.Attach(plane.Signaling, plane.Relay, nil); err != nil {
+			_ = plane.Close()
+			s.setPhase(PhaseError, err.Error())
+			return
+		}
+		s.runController(ctx, plane, controller, controllerDone)
 		return
 	}
 }
@@ -378,9 +397,7 @@ func cachedEndpointFitsNetwork(endpoint string, local []netip.Addr) bool {
 	return false
 }
 
-func (s *session) runController(ctx context.Context, plane *Plane, controller *mesh.Controller) {
-	controller.Signaling = plane.Signaling
-	controller.Relay = plane.Relay
+func (s *session) runController(ctx context.Context, plane *Plane, controller *mesh.Controller, controllerDone <-chan struct{}) {
 	for _, record := range controller.Records() {
 		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)
 	}
@@ -409,7 +426,7 @@ func (s *session) runController(ctx context.Context, plane *Plane, controller *m
 			}
 		}
 	}()
-	_ = controller.Run(ctx)
+	<-controllerDone
 	s.cancel()
 	<-persistDone
 	s.persist(controller)

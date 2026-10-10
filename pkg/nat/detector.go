@@ -28,8 +28,8 @@ type Behaviour string
 const (
 	// BehaviourUnknown means we could not learn enough to say.
 	BehaviourUnknown Behaviour = "unknown"
-	// BehaviourOpen means the observed address equals the local one — no NAT
-	// in the path, or a full-cone one that behaves like it.
+	// BehaviourOpen means the observed address equals the local one. This
+	// measures translation, not inbound filtering or firewall reachability.
 	BehaviourOpen Behaviour = "open"
 	// BehaviourEndpointIndependent means the same external port was reported
 	// by every server. Hole punching usually works.

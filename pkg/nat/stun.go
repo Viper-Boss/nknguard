@@ -49,7 +49,26 @@ func DefaultSTUNServers() []string {
 // STUN server reports is only the mapping WireGuard will use if both go out of
 // the same local port.
 func STUNQuery(ctx context.Context, conn net.PacketConn, server string, timeout time.Duration) (netip.AddrPort, error) {
-	target, err := net.ResolveUDPAddr("udp", server)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("nat: invalid stun server: %w", err)
+	}
+	family := "ip"
+	if local, ok := conn.LocalAddr().(*net.UDPAddr); ok && local.IP.To4() != nil {
+		family = "ip4"
+	}
+	addresses, err := net.DefaultResolver.LookupIP(ctx, family, host)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("nat: resolve stun server %q: %w", server, err)
+	}
+	if len(addresses) == 0 {
+		return netip.AddrPort{}, fmt.Errorf("nat: stun server %q has no usable address", server)
+	}
+	// Resolve only the numeric address here; the cancellable lookup above
+	// bounds DNS together with the socket I/O rather than before its deadline.
+	target, err := net.ResolveUDPAddr("udp", net.JoinHostPort(addresses[0].String(), port))
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("nat: resolve stun server %q: %w", server, err)
 	}
