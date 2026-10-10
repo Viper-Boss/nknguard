@@ -12,7 +12,7 @@ A private NAS connection: NKN pairs devices, ICE finds a direct WireGuard path, 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-[简体中文](README.md) · **English** · **[❤ Support the author](docs/SUPPORT.md)**
+[简体中文](README.md) · **English** · **[❤ Support the author](#-support-the-author)**
 
 <img src="docs/images/nas-dashboard-overview.jpg" alt="NAS dashboard: overview" width="860">
 
@@ -60,7 +60,57 @@ Native Android UI with separate pairing information for each saved NAS. Name, sw
 
 If NKNGuard is useful to you, you can support its maintenance. Donations are optional and do not affect features or device authorization.
 
-**[Open the donation page → WeChat · Alipay · USDT · BTC · ETH · SOL](docs/SUPPORT.md)**
+Scan a QR code below, or click an image to view the original.
+
+<table>
+  <tr><th align="center">WeChat</th><th align="center">Alipay</th></tr>
+  <tr>
+    <td align="center"><a href="internal/app/dashboard/wechat.png"><img src="internal/app/dashboard/wechat.png" alt="WeChat收款码" width="240"></a></td>
+    <td align="center"><a href="internal/app/dashboard/alipay.png"><img src="internal/app/dashboard/alipay.png" alt="Alipay收款码" width="240"></a></td>
+  </tr>
+</table>
+
+<table>
+  <tr><th align="center">USDT · TRC20（Tron）</th><th align="center">BTC · Bitcoin</th></tr>
+  <tr>
+    <td align="center"><a href="docs/images/support-usdt.png"><img src="docs/images/support-usdt.png" alt="USDT TRC20 收款地址二维码" width="180"></a></td>
+    <td align="center"><a href="docs/images/support-btc.png"><img src="docs/images/support-btc.png" alt="BTC 收款地址二维码" width="180"></a></td>
+  </tr>
+  <tr><th align="center">ETH · Ethereum</th><th align="center">SOL · Solana</th></tr>
+  <tr>
+    <td align="center"><a href="docs/images/support-eth.png"><img src="docs/images/support-eth.png" alt="ETH 收款地址二维码" width="180"></a></td>
+    <td align="center"><a href="docs/images/support-sol.png"><img src="docs/images/support-sol.png" alt="SOL 收款地址二维码" width="180"></a></td>
+  </tr>
+</table>
+
+<details>
+<summary>Copy cryptocurrency receiving addresses</summary>
+
+**USDT · TRC20（Tron）**
+
+```text
+TEwbANy1Mo3DFdT6CMphgjU511LzbCoQsm
+```
+
+**BTC · Bitcoin**
+
+```text
+bc1q8m5fp9jgmve8sjva2cfdwhs3pc65723nezrc3v
+```
+
+**ETH · Ethereum**
+
+```text
+0x9d955292BD72904fB5D5D9A147250A625f80c6E5
+```
+
+**SOL · Solana**
+
+```text
+24BL4HqrJUdDzg6fu3yk4Qi5oh6utRUWEQitpCa5HgwS
+```
+
+</details>
 
 ## Highlights
 

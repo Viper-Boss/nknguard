@@ -12,7 +12,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%C2%B7%20%E9%A3%9E%E7%89%9B%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-**简体中文** · [English](README.en.md) · **[❤ 赞赏作者](docs/SUPPORT.md)**
+**简体中文** · [English](README.en.md) · **[❤ 赞赏作者](#-赞赏作者)**
 
 <img src="docs/images/nas-dashboard-overview.jpg" alt="NAS 管理面板：连接总览" width="860">
 
@@ -60,7 +60,57 @@
 
 如果 NKNGuard 对你有帮助，欢迎支持项目维护。赞赏完全自愿，不影响功能或设备授权。
 
-**[打开独立赞赏页面 → 微信 · 支付宝 · USDT · BTC · ETH · SOL](docs/SUPPORT.md)**
+直接扫描下方二维码；点击图片可查看原图。
+
+<table>
+  <tr><th align="center">微信</th><th align="center">支付宝</th></tr>
+  <tr>
+    <td align="center"><a href="internal/app/dashboard/wechat.png"><img src="internal/app/dashboard/wechat.png" alt="微信收款码" width="240"></a></td>
+    <td align="center"><a href="internal/app/dashboard/alipay.png"><img src="internal/app/dashboard/alipay.png" alt="支付宝收款码" width="240"></a></td>
+  </tr>
+</table>
+
+<table>
+  <tr><th align="center">USDT · TRC20（Tron）</th><th align="center">BTC · Bitcoin</th></tr>
+  <tr>
+    <td align="center"><a href="docs/images/support-usdt.png"><img src="docs/images/support-usdt.png" alt="USDT TRC20 收款地址二维码" width="180"></a></td>
+    <td align="center"><a href="docs/images/support-btc.png"><img src="docs/images/support-btc.png" alt="BTC 收款地址二维码" width="180"></a></td>
+  </tr>
+  <tr><th align="center">ETH · Ethereum</th><th align="center">SOL · Solana</th></tr>
+  <tr>
+    <td align="center"><a href="docs/images/support-eth.png"><img src="docs/images/support-eth.png" alt="ETH 收款地址二维码" width="180"></a></td>
+    <td align="center"><a href="docs/images/support-sol.png"><img src="docs/images/support-sol.png" alt="SOL 收款地址二维码" width="180"></a></td>
+  </tr>
+</table>
+
+<details>
+<summary>复制区块链收款地址</summary>
+
+**USDT · TRC20（Tron）**
+
+```text
+TEwbANy1Mo3DFdT6CMphgjU511LzbCoQsm
+```
+
+**BTC · Bitcoin**
+
+```text
+bc1q8m5fp9jgmve8sjva2cfdwhs3pc65723nezrc3v
+```
+
+**ETH · Ethereum**
+
+```text
+0x9d955292BD72904fB5D5D9A147250A625f80c6E5
+```
+
+**SOL · Solana**
+
+```text
+24BL4HqrJUdDzg6fu3yk4Qi5oh6utRUWEQitpCa5HgwS
+```
+
+</details>
 
 ## 特点
 
