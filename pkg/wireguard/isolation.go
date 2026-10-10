@@ -38,11 +38,18 @@ func (m *LinuxManager) SetNASOnlyPolicy(ctx context.Context) error {
 }
 
 func (m *LinuxManager) clearIsolationLocked(ctx context.Context) error {
-	if !m.isolated {
-		return nil
-	}
 	var result error
 	for _, tool := range []string{"iptables", "ip6tables"} {
+		// A cleanup command has a new manager, but rules from a stopped or
+		// killed daemon still belong to this interface. Check exact ownership
+		// instead of relying on process-local state. Ordinary clients may not
+		// have firewall tools when no isolation policy was installed.
+		if _, err := m.runner.Look(tool); err != nil {
+			if m.isolated {
+				result = errors.Join(result, err)
+			}
+			continue
+		}
 		for _, direction := range []string{"-i", "-o"} {
 			rule := m.isolationRule(direction)
 			if _, err := m.runner.Run(ctx, tool, append([]string{"-w", "3", "-C", "FORWARD"}, rule...)...); err != nil {

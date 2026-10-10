@@ -12,7 +12,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1f9e8f)](LICENSE)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Linux%20%C2%B7%20%E9%A3%9E%E7%89%9B%20fnOS%20%C2%B7%20Windows%20%C2%B7%20Android-4b5563)
 
-**简体中文** · [English](README.md)
+**简体中文** · [English](README.en.md)
 
 <img src="docs/images/nas-dashboard-overview.jpg" alt="NAS 管理面板：连接总览" width="860">
 
@@ -52,7 +52,7 @@
 
 ## 安卓界面与赞赏页面
 
-<table><tr><td width="50%"><img src="docs/images/android-home.png" alt="安卓多 NAS 管理"><br>原生安卓界面 · 分别保存每台 NAS</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS 赞赏页面"><br>微信、支付宝和区块链赞赏</td></tr></table>
+<table><tr><td width="50%"><img src="docs/images/android-home.jpg" alt="安卓多 NAS 管理"><br>原生安卓界面 · 分别保存每台 NAS</td><td width="50%"><img src="docs/images/nas-support.jpg" alt="NAS 赞赏页面"><br>微信、支付宝和区块链赞赏</td></tr></table>
 
 赞赏完全自愿，不影响功能或设备授权。管理面板内提供原始微信、支付宝收款码，以及与 GenomeDock 相同的 USDT（TRC20）、BTC、ETH、SOL 公共收款地址。[赞赏说明](docs/SUPPORT.md)。
 

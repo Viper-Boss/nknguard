@@ -67,3 +67,19 @@ func TestNASIsolationIdempotentAndRemovesOnlyOwnedRules(t *testing.T) {
 		t.Fatal("shutdown altered unrelated rules", r.rules)
 	}
 }
+
+func TestStoppedDaemonCleanupRemovesPreviousProcessIsolation(t *testing.T) {
+	r := &policyRunner{rules: map[string]bool{"docker-unrelated": true}, existing: true}
+	owner := NewLinuxManagerWithRunner(nil, "nkg0", r)
+	if err := owner.SetNASOnlyPolicy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh cleanup process has no in-memory knowledge of the policy.
+	cleanup := NewLinuxManagerWithRunner(nil, "nkg0", r)
+	if err := cleanup.Down(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r.existing || len(r.rules) != 1 || !r.rules["docker-unrelated"] {
+		t.Fatal("cleanup left owned resources or changed unrelated rules", r.rules)
+	}
+}
