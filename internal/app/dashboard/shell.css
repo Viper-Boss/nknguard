@@ -192,3 +192,7 @@ td b { color: #d1dfec; font-weight: 500; }
 }
 
 @media(max-width:760px){.sidebar nav{flex:1;min-width:0;overflow-x:auto}.nav-item,.nav-item.active{flex:0 0 auto;gap:0}.sidebar .brand{flex:none}}
+
+.logout-button { background: #ffffff03; border: 1px solid var(--line); color: #8a9cb4; border-radius: 9px; padding: 9px 12px; font-size: 11px; cursor: pointer; }
+.logout-button:hover { color: #9ae9db; border-color: #7ee2d13b; }
+.logout-button:disabled { opacity: .5; cursor: wait; }

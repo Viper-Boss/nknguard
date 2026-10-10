@@ -165,25 +165,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	})
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	server := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !validDashboardHost(r.Host, d.Config.Dashboard.Listen) {
-				http.Error(w, "invalid host", http.StatusForbidden)
-				return
-			}
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
-			switch ok, retry := dashboardAuthenticated(r, d.Node, logins); {
-			case retry > 0:
-				tooManyAttempts(w, retry)
-				return
-			case !ok:
-				w.Header().Set("WWW-Authenticate", `Basic realm="NKNGuard NAS"`)
-				http.Error(w, "administrator password required", http.StatusUnauthorized)
-				return
-			}
-			mux.ServeHTTP(w, r)
-		}),
+		Handler:           dashboardSessionHandler(d.Node, logins, d.Config.Dashboard.Listen, assets, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      45 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -196,20 +178,6 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 		_ = server.Shutdown(shutdown)
 	}()
 	return closerFunc(server.Close), nil
-}
-
-// dashboardAuthenticated checks the Basic credentials. While too many wrong
-// passwords have been tried it returns how long to wait instead, without
-// checking the password. A request without credentials (a browser's first
-// request, before it prompts) is not counted as a failure.
-func dashboardAuthenticated(r *http.Request, node *Node, logins *loginThrottle) (bool, time.Duration) {
-	user, supplied, ok := r.BasicAuth()
-	if !ok {
-		return false, 0
-	}
-	return logins.verify(func() bool {
-		return user == "admin" && node.VerifyDashboardPassword(supplied)
-	})
 }
 
 func tooManyAttempts(w http.ResponseWriter, retry time.Duration) {

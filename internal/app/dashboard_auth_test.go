@@ -49,19 +49,7 @@ func TestDashboardPasswordMigrationAndAuthentication(t *testing.T) {
 	if !again.VerifyDashboardPassword(password) {
 		t.Fatal("dashboard password hash was not persisted")
 	}
-	logins := newLoginThrottle()
-	r := httptest.NewRequest("GET", "http://127.0.0.1:7878/api/status", nil)
-	if ok, _ := dashboardAuthenticated(r, again, logins); ok {
-		t.Fatal("missing authentication accepted")
-	}
-	r.SetBasicAuth("admin", "wrong")
-	if ok, _ := dashboardAuthenticated(r, again, logins); ok {
-		t.Fatal("wrong password accepted")
-	}
-	r.SetBasicAuth("admin", password)
-	if ok, _ := dashboardAuthenticated(r, again, logins); !ok {
-		t.Fatal("correct password rejected")
-	}
+
 }
 
 func TestDashboardPasswordChangeHandler(t *testing.T) {

@@ -68,7 +68,11 @@ are not enforced by a firewall in this release.
 
 **Local privilege.** The daemon runs as root to manage the interface. The
 local control API is a Unix socket, mode 0660. The dashboard listens only on
-loopback and requires a separate administrator password. Its Basic credentials
+loopback and requires a separate administrator password through a web login page.
+Opaque sessions last 12 hours, are held only in bounded daemon memory, and use
+HttpOnly, SameSite=Strict cookies (Secure when served over HTTPS). Logging out,
+changing the password or restarting the daemon invalidates the session. Login
+attempts are rate limited and mutations require same-origin requests. Passwords
 travel over HTTP on loopback; remote access should use an SSH tunnel. Commands
 are always argument vectors; nothing is ever passed to a shell.
 
