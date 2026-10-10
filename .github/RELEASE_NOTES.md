@@ -4,14 +4,14 @@
 
 | 安装包 | 用途 |
 | --- | --- |
-| `NKNGuard-Android-0.2.15-preview.1.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
-| `NKNGuard-Setup-0.2.15-preview.1.exe` | Windows 10/11 x86_64 安装器 |
+| `NKNGuard-Android-0.2.15-preview.2.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
+| `NKNGuard-Setup-0.2.15-preview.2.exe` | Windows 10/11 x86_64 安装器 |
 | `NKNGuard-Windows-x86_64-preview.zip` | Windows 便携客户端，仍需官方 WireGuard |
-| `NKNGuard-fnOS-amd64-0.2.15-preview.1.fpk` | 飞牛 x86_64 应用中心安装包 |
-| `NKNGuard-fnOS-arm64-0.2.15-preview.1.fpk` | 飞牛 ARM64 应用中心安装包 |
+| `NKNGuard-fnOS-amd64-0.2.15-preview.2.fpk` | 飞牛 x86_64 应用中心安装包 |
+| `NKNGuard-fnOS-arm64-0.2.15-preview.2.fpk` | 飞牛 ARM64 应用中心安装包 |
 | `nknguard-linux-amd64` / `nknguard-linux-arm64` | Linux / NAS 独立服务程序 |
-| `NKNGuard-NAS-Update-linux-<架构>-0.2.15-preview.1.zip` | 独立服务：面板上传更新包 |
-| `NKNGuard-NAS-Update-fnos-<架构>-0.2.15-preview.1.zip` | FPK 安装：面板上传更新包 |
+| `NKNGuard-NAS-Update-linux-<架构>-0.2.15-preview.2.zip` | 独立服务：面板上传更新包 |
+| `NKNGuard-NAS-Update-fnos-<架构>-0.2.15-preview.2.zip` | FPK 安装：面板上传更新包 |
 | `release.json` / `release.json.sig` / `SHA256SUMS` | 发布签名目录与文件校验值 |
 
 ### 本次更新

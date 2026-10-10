@@ -93,6 +93,9 @@ func Fetch(ctx context.Context, client *http.Client, location string, limit int6
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "NKNGuard-update-check")
+	if u.Host == "api.github.com" && strings.HasPrefix(u.Path, "/repos/"+Repository+"/releases/assets/") {
+		req.Header.Set("Accept", "application/octet-stream")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -116,7 +119,8 @@ func allowedURL(u *url.URL) bool {
 		return false
 	}
 	if u.Host == "api.github.com" {
-		return strings.HasPrefix(u.Path, "/repos/"+Repository+"/releases")
+		base := "/repos/" + Repository + "/releases"
+		return u.Path == base || strings.HasPrefix(u.Path, base+"/")
 	}
 	return strings.HasPrefix(u.Path, "/"+Repository+"/releases/")
 }
@@ -133,8 +137,9 @@ func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 		Tag    string `json:"tag_name"`
 		Draft  bool   `json:"draft"`
 		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
+			Name   string `json:"name"`
+			URL    string `json:"browser_download_url"`
+			APIURL string `json:"url"`
 		} `json:"assets"`
 	}
 	if err = json.Unmarshal(raw, &releases); err != nil {
@@ -149,6 +154,11 @@ func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 		locations := map[string]string{}
 		for _, a := range release.Assets {
 			locations[a.Name] = a.URL
+			// The public asset API avoids a github.com web redirect, which can
+			// time out on NAS networks even when api.github.com is reachable.
+			if a.APIURL != "" {
+				locations[a.Name] = a.APIURL
+			}
 		}
 		if locations["release.json"] == "" || locations["release.json.sig"] == "" {
 			continue

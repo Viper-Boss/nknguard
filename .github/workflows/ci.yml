@@ -44,7 +44,7 @@ jobs:
         working-directory: cmd/nknguard
         run: go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard --file-description "NKNGuard Windows client" --original-filename NKNGuard-Windows.exe
       - name: build Windows app
-        run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1 -X github.com/Viper-Boss/nknguard/internal/app.Version=0.2.15-preview.1" -o NKNGuard-Windows.exe ./cmd/nknguard
+        run: go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiBuild=1 -X github.com/Viper-Boss/nknguard/internal/app.Version=0.2.15-preview.2" -o NKNGuard-Windows.exe ./cmd/nknguard
       - name: native Windows GUI launch
         shell: pwsh
         run: packaging/windows/smoke-ui.ps1
@@ -62,7 +62,7 @@ jobs:
         shell: pwsh
         run: |
           $target = Join-Path $env:RUNNER_TEMP "nknguard-install-test"
-          $installer = (Resolve-Path dist/windows/NKNGuard-Setup-0.2.15-preview.1.exe).Path
+          $installer = (Resolve-Path dist/windows/NKNGuard-Setup-0.2.15-preview.2.exe).Path
           foreach ($iteration in 1..2) {
             $process = Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$target`"") -PassThru -Wait -WindowStyle Hidden
             if ($process.ExitCode -ne 0 -or !(Test-Path "$target\NKNGuard-Windows.exe")) { throw "Install/upgrade failed" }
@@ -75,7 +75,7 @@ jobs:
           name: NKNGuard-Windows
           path: |
             NKNGuard-Windows.exe
-            dist/windows/NKNGuard-Setup-0.2.15-preview.1.exe
+            dist/windows/NKNGuard-Setup-0.2.15-preview.2.exe
           if-no-files-found: error
 
   full:

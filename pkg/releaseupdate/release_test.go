@@ -58,7 +58,7 @@ func TestFetchBoundsAndOrigin(t *testing.T) {
 		requests++
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("oversized")), Header: http.Header{}}, nil
 	})}
-	for _, location := range []string{"http://github.com/Viper-Boss/nknguard/releases/a", "https://github.com/other/repo/releases/a", "https://evil.example/a", "https://github.com:443/Viper-Boss/nknguard/releases/a"} {
+	for _, location := range []string{"http://github.com/Viper-Boss/nknguard/releases/a", "https://github.com/other/repo/releases/a", "https://evil.example/a", "https://github.com:443/Viper-Boss/nknguard/releases/a", "https://api.github.com/repos/Viper-Boss/nknguard/releases-other/assets/1"} {
 		if _, err := Fetch(context.Background(), c, location, 4); err == nil {
 			t.Fatalf("accepted %s", location)
 		}
@@ -68,5 +68,18 @@ func TestFetchBoundsAndOrigin(t *testing.T) {
 	}
 	if _, err := Fetch(context.Background(), c, ReleaseURL+"/download/v0.2.15/release.json", 4); err == nil {
 		t.Fatal("unbounded response accepted")
+	}
+}
+
+func TestPublicAssetAPIDownload(t *testing.T) {
+	c := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Accept") != "application/octet-stream" {
+			t.Fatal("asset API must request bytes rather than JSON metadata")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("signature")), Header: http.Header{}}, nil
+	})}
+	raw, err := Fetch(context.Background(), c, "https://api.github.com/repos/"+Repository+"/releases/assets/123", 64)
+	if err != nil || string(raw) != "signature" {
+		t.Fatalf("asset API download failed: %q %v", raw, err)
 	}
 }

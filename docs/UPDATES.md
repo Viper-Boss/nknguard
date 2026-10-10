@@ -34,7 +34,7 @@ NAS 更新只支持现有 `nknguard.service` 独立服务与标准应用中心�
 推送 `v…` 标签或 `release/v…` 分支后，工作流构建所有安装包并创建草稿。维护者在持有原 APK 签名和发布签名密钥的设备上运行：
 
 ```sh
-python3 packaging/finalize-release.py v0.2.15-preview.1 --work /private/release-stage
+python3 packaging/finalize-release.py v0.2.15-preview.2 --work /private/release-stage
 ```
 
 脚本重签 APK、生成已签名目录和 NAS 更新包，再上传并公开发布。密钥和 GitHub 登录留在维护者设备，不进仓库、不进入普通 CI；更新器内只有公开验证密钥。
