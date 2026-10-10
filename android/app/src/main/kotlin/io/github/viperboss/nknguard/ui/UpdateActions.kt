@@ -65,12 +65,15 @@ class UpdateActions(private val activity: Activity, private val app: NkgApp, pri
     private fun download(location: String, asset: JSONObject) {
         work {
             val url = URL(location)
-            require(url.protocol == "https" && url.host == "github.com" && url.path.startsWith("/Viper-Boss/nknguard/releases/download/")) { "下载地址不是官方发布页" }
+            val official = (url.host == "github.com" && url.path.startsWith("/Viper-Boss/nknguard/releases/download/")) ||
+                (url.host == "api.github.com" && Regex("/repos/Viper-Boss/nknguard/releases/assets/[0-9]+").matches(url.path))
+            require(url.protocol == "https" && url.userInfo == null && url.port == -1 && official) { "下载地址不是官方发布页" }
             val expected = asset.getLong("size")
             require(expected in 1..MAX_SIZE) { "安装包大小无效" }
             val connection = url.openConnection() as HttpsURLConnection
             connection.connectTimeout = 20_000; connection.readTimeout = 25_000
             connection.setRequestProperty("User-Agent", "NKNGuard-Android-update")
+            if (url.host == "api.github.com") connection.setRequestProperty("Accept", "application/octet-stream")
             val pending = File(directory, "download.tmp")
             try {
                 require(connection.responseCode == 200) { "GitHub 下载失败：${connection.responseCode}" }
