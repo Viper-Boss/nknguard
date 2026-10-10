@@ -24,7 +24,10 @@ mkdir -p "$stage/app/bin"
 cp "$root/LICENSE" "$root/NOTICE" "$stage/app/"
 cp "$binary" "$stage/app/bin/nknguard"
 chmod 755 "$stage/app/bin/nknguard" "$stage"/cmd/*
-sed -i "s/^platform=.*/platform=$platform/;s/^version=.*/version=${version#v}/" "$stage/manifest"
+sed -i "s/^platform[[:space:]]*=.*/platform = $platform/;s/^version[[:space:]]*=.*/version = ${version#v}/" "$stage/manifest"
+# A valid ELF alone is insufficient: fnOS dispatches installation by manifest.
+grep -qx "platform = $platform" "$stage/manifest"
+grep -qx "version = ${version#v}" "$stage/manifest"
 # fnpack writes appname.fpk in the current working directory.
 (cd "$output" && "${FNPACK:-fnpack}" build --directory "$stage")
 mv "$output/nknguard.fpk" "$output/NKNGuard-fnOS-$arch-${version#v}.fpk"
