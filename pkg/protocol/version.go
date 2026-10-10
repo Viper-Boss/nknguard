@@ -24,12 +24,13 @@ const (
 	CapDHTRecordV1     = "dht-record-v1"
 	CapACLV1           = "acl-v1"
 	CapICEUDPV1        = "ice-udp-v1"
+	CapRecordRenewalV1 = "record-renewal-v1"
 )
 
 // DefaultCapabilities is the baseline v1 capability set. Optional transports
 // are advertised by the controller only when they are configured.
 func DefaultCapabilities() []string {
-	return []string{CapWireGuardDirect, CapNKNRelay, CapUDPPunchV1, CapDHTRecordV1, CapACLV1}
+	return []string{CapWireGuardDirect, CapNKNRelay, CapUDPPunchV1, CapDHTRecordV1, CapACLV1, CapRecordRenewalV1}
 }
 
 // VersionRange is exchanged in the handshake.

@@ -2,3 +2,5 @@
 .invite-link-box{text-align:left;margin:0 auto 15px;max-width:420px}.invite-link-box[hidden]{display:none}.invite-link-box small{display:block;color:#8799ac;font-size:11px;margin-bottom:6px;line-height:1.5}.invite-link-box code{display:block;font:500 11px/1.5 Consolas,"SFMono-Regular",monospace;color:#23405f;background:#f4f8fc;border:1px solid #dce7ef;border-radius:9px;padding:9px 10px;overflow-wrap:anywhere;user-select:all;cursor:text;max-height:88px;overflow:auto}
 
 #qr-dialog{border:0;border-radius:16px;padding:16px;max-width:94vw;text-align:center}#qr-dialog::backdrop{background:#102033b3}#qr-large{display:block;width:min(768px,84vw,72vh);height:auto;image-rendering:pixelated}#qr-dialog p{font-size:12px;color:#66788d}
+
+.qr-wrap.is-idle{aspect-ratio:auto;min-height:150px;background:transparent;border:1px dashed #7cabc52b;padding:25px}.qr-wrap.is-idle .qr-placeholder{color:#84a1b8;line-height:1.8;max-width:250px}

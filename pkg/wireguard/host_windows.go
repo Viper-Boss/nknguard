@@ -216,7 +216,7 @@ func (m *WindowsManager) addPeer(ctx context.Context, wg string, peer PeerConfig
 	if peer.Endpoint != "" {
 		args = append(args, "endpoint", peer.Endpoint)
 	}
-	if peer.PersistentKeepalive > 0 {
+	if peer.PersistentKeepalive >= 0 {
 		args = append(args, "persistent-keepalive", strconv.Itoa(peer.PersistentKeepalive))
 	}
 	_, err := m.runner.Run(ctx, wg, args...)

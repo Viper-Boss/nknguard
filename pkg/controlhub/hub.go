@@ -133,6 +133,10 @@ func (h *Hub) SendAddress(ctx context.Context, address string, envelope protocol
 }
 func (h *Hub) Receive() <-chan signaling.Inbound { return h.inbound }
 func (h *Hub) Close() error                      { h.cancel(); return nil }
+
+// Ready closes when the primary transport attaches. A controller may run
+// cached direct paths earlier, but must defer NKN introductions until then.
+func (h *Hub) Ready() <-chan struct{} { return h.ready }
 func (h *Hub) Open(ctx context.Context, peer relay.Peer) (net.Conn, error) {
 	h.mu.RLock()
 	data := h.data

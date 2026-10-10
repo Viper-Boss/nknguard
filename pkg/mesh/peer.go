@@ -337,6 +337,8 @@ func (p *Peer) ShouldRetryDirect(now time.Time) bool {
 // beyond public keys, which is what lets the diagnostics bundle include it
 // verbatim.
 type Snapshot struct {
+	ConnectionPhase    string       `json:"connection_phase,omitempty"`
+	RecoveryRemaining  int64        `json:"recovery_remaining_seconds,omitempty"`
 	Relay              *relay.Stats `json:"relay,omitempty"`
 	DeviceID           string       `json:"device_id"`
 	Name               string       `json:"name,omitempty"`

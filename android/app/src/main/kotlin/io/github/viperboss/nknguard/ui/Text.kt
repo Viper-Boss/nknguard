@@ -12,6 +12,7 @@ object Text {
         "idle" -> "未连接"
         "core_unavailable" -> "连接已停止"
         "connecting" -> "正在建立 VPN…"
+        "reconnecting" -> "正在恢复连接 · ${status.optLong("recovery_remaining_seconds")} 秒"
         "connecting_nkn" -> "正在连接 NKN 网络…"
         "waiting" -> when {
             status.optBoolean("direct_attempting") -> "正在验证直连…"
@@ -22,11 +23,12 @@ object Text {
         "direct" -> "已连接 · 直连"
         "relay" -> "已连接 · NKN 中继"
         "revoked" -> "授权已失效"
-        "error" -> "出错"
+        "error" -> if (status.optString("connection_phase") == "disconnected") "连接已停止" else "出错"
         else -> status.optString("phase", "未知")
     }
 
     fun phaseHint(status: JSONObject): String = when (status.optString("phase")) {
+        "reconnecting" -> "直连与中继正在自动重试；恢复后继续使用，超时后停止。配对信息会保留。"
         "not_paired" -> "在 NAS 面板“配对与授权”中生成二维码，然后扫码或粘贴配对内容。"
         "idle" -> if (status.optBoolean("revoked")) "NAS 已撤销本机授权，请重新配对。" else "点击“连接”后才会启动 VPN。"
         "core_unavailable" -> "核心暂时无法响应，点击按钮恢复。已有配对信息会保留。"

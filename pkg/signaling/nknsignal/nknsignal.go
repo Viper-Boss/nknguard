@@ -21,10 +21,17 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/signaling"
 )
 
-// MaxHoldingSeconds is how long NKN nodes may store a message for an offline
-// recipient. Control messages are time-sensitive — a punch request for a
-// rendezvous that has passed is useless — so this is short.
-const MaxHoldingSeconds = 30
+// Connection state has no offline queue. Reconnecting peers exchange current
+// signed records, not old ports and expired ICE sessions. Pairing alone keeps
+// a short delivery window while the phone moves from scanning to connecting.
+const MaxHoldingSeconds = 0
+
+func holdingSeconds(kind protocol.MessageType) int32 {
+	if kind == protocol.TypePairRequest || kind == protocol.TypePairApproval {
+		return 30
+	}
+	return MaxHoldingSeconds
+}
 
 // Transport implements signaling.Transport over an NKN MultiClient.
 type Transport struct {
@@ -112,7 +119,7 @@ func (t *Transport) SendAddress(ctx context.Context, address string, envelope pr
 	if err != nil {
 		return err
 	}
-	_, err = t.client.Send(nkn.NewStringArray(address), raw, &nkn.MessageConfig{NoReply: true, MaxHoldingSeconds: MaxHoldingSeconds})
+	_, err = t.client.Send(nkn.NewStringArray(address), raw, &nkn.MessageConfig{NoReply: true, MaxHoldingSeconds: holdingSeconds(envelope.Type)})
 	return err
 }
 

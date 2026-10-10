@@ -74,7 +74,9 @@ type PeerInfo struct {
 	Record []byte `json:"record"`
 	// WantReply asks the receiver to answer with its own record, which is what
 	// makes a one-sided introduction symmetric.
-	WantReply bool `json:"want_reply,omitempty"`
+	WantReply    bool   `json:"want_reply,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
+	ConnectUntil int64  `json:"connect_until,omitempty"`
 }
 
 // CandidateSet is the sender's current view of how it can be reached.
@@ -126,7 +128,8 @@ type RelayReady struct {
 // Disconnect is a courtesy: it lets the peer tear down immediately instead of
 // waiting for a timeout.
 type Disconnect struct {
-	Reason string `json:"reason,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	ConnectionID string `json:"connection_id,omitempty"`
 }
 
 // Error reports a refusal. It never carries key material or the offending

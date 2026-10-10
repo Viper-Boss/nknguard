@@ -40,6 +40,9 @@ func TestOwnerApprovedPairingAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if id, expiry := pairing.InviteState(); id == "" || !expiry.Equal(invite.ExpiresAt) {
+		t.Fatal("active invitation status missing")
+	}
 	uri, err := invite.URI()
 	if err != nil {
 		t.Fatal(err)
@@ -82,6 +85,13 @@ func TestOwnerApprovedPairingAndRevocation(t *testing.T) {
 	if !controller.Authorized(client.DeviceID()) {
 		t.Fatal("approved device was not authorized")
 	}
+	if id, _ := pairing.InviteState(); id != "" {
+		t.Fatal("consumed invitation still active")
+	}
+	storedApproval, err := node.State.LoadMembership()
+	if err != nil || storedApproval.MemberAddresses[client.DeviceID()] != client.DeviceID() {
+		t.Fatal("approved address not persisted")
+	}
 	select {
 	case inbound := <-clientWire.Receive():
 		if inbound.Envelope.Type != protocol.TypePairApproval {
@@ -104,8 +114,15 @@ func TestOwnerApprovedPairingAndRevocation(t *testing.T) {
 		t.Fatal("revoked device is still authorized")
 	}
 	stored, err := node.State.LoadMembership()
-	if err != nil || len(stored.Members) != 0 {
+	if err != nil || len(stored.Members) != 0 || len(stored.MemberAddresses) != 0 {
 		t.Fatalf("stored approval: %+v %v", stored, err)
+	}
+}
+
+func TestExpiredInvitationIsNotAdvertised(t *testing.T) {
+	pairing := &Pairing{invite: PairInvite{Token: "test-token", ExpiresAt: time.Now().Add(-time.Second)}}
+	if id, expiry := pairing.InviteState(); id != "" || !expiry.IsZero() {
+		t.Fatal("expired invitation advertised as active")
 	}
 }
 

@@ -40,6 +40,9 @@ type Membership struct {
 	// as peers present a valid join proof; signed invitations replace it in
 	// v0.2, which is why it is a list rather than a boolean.
 	Members []string `json:"members"`
+	// Addresses verified during pairing allow the NAS to request signed peer
+	// records after a restart. They are hints, never membership credentials.
+	MemberAddresses map[string]string `json:"member_addresses,omitempty"`
 	// PendingRemovals survives a crash between revocation and kernel cleanup.
 	PendingRemovals []string `json:"pending_wireguard_removals,omitempty"`
 }
