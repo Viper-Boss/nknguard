@@ -33,9 +33,9 @@ class NatGaugeView(context: Context) : View(context) {
         state = key
         val target: Float
         when (key) {
-            "open" -> { target = -76f; label = "公网 · 无地址转换"; detail = "防火墙仍可能限制直连"; needleColor = colors[0] }
-            "endpoint-independent" -> { target = -34f; label = "映射稳定"; detail = "锥型具体类别尚未测定"; needleColor = colors[1] }
-            "address-dependent" -> { target = 72f; label = "映射随目标变化"; detail = "对称型映射特征 · 直连较难"; needleColor = colors[3] }
+            "open" -> { target = 76f; label = "公网 · 无地址转换"; detail = "防火墙仍可能限制直连"; needleColor = colors[0] }
+            "endpoint-independent" -> { target = 34f; label = "映射稳定"; detail = "锥型具体类别尚未测定"; needleColor = colors[1] }
+            "address-dependent" -> { target = -72f; label = "映射随目标变化"; detail = "对称型映射特征 · 直连较难"; needleColor = colors[3] }
             else -> { target = 0f; label = "尚未测定"; detail = "连接后自动探测"; needleColor = Color.parseColor("#7E91A9") }
         }
         contentDescription = "NAT 映射条件：$label。$detail。入站过滤尚未测量。"
@@ -74,7 +74,7 @@ class NatGaugeView(context: Context) : View(context) {
         paint.strokeCap = Paint.Cap.ROUND
         colors.forEachIndexed { i, color ->
             paint.color = color
-            canvas.drawArc(RectF(48f, 33f, 272f, 257f), 183f + i * 45, 39f, false, paint)
+            canvas.drawArc(RectF(48f, 33f, 272f, 257f), 183f + (3 - i) * 45, 39f, false, paint)
         }
         paint.strokeCap = Paint.Cap.BUTT
         paint.strokeWidth = 1f
@@ -100,9 +100,9 @@ class NatGaugeView(context: Context) : View(context) {
         paint.textSize = 11f * font
         paint.color = Color.parseColor("#839AB3")
         paint.textAlign = Paint.Align.LEFT
-        canvas.drawText("较易直连", 30f, 173f, paint)
+        canvas.drawText("较受限", 30f, 173f, paint)
         paint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("较受限", 290f, 173f, paint)
+        canvas.drawText("较易直连", 290f, 173f, paint)
         paint.textAlign = Paint.Align.CENTER
         paint.typeface = Typeface.DEFAULT_BOLD
         paint.color = needleColor

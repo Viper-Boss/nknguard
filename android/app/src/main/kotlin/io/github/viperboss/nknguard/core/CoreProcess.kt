@@ -98,7 +98,15 @@ class CoreProcess(
     }
 
     private fun thread(name: String, body: () -> Unit) {
-        Thread(body, name).apply { isDaemon = true }.start()
+        Thread({
+            try { body() }
+            catch (_: java.io.IOException) {
+                // Closing a child during NAS switching closes its stdout and
+                // stderr too. An uncaught reader exception would terminate
+                // the whole Android app; the wait thread owns exit recovery.
+                logs.add("core pipe closed")
+            }
+        }, name).apply { isDaemon = true }.start()
     }
 
     private fun readOutput(source: Process) {
