@@ -13,10 +13,6 @@ import (
 	libnat "github.com/libp2p/go-libp2p/p2p/net/nat"
 )
 
-type CandidateProvider interface {
-	Gather(context.Context) ([]EndpointCandidate, PortMapping, error)
-}
-
 // RouterCandidates maps the actual dynamically assigned WG UDP port. Mapping
 // discovery and renewal never block signaling or candidate gathering.
 type routerGateway interface {

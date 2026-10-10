@@ -8,6 +8,7 @@
 package nat
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -15,6 +16,10 @@ import (
 	"strings"
 	"time"
 )
+
+type CandidateProvider interface {
+	Gather(context.Context) ([]EndpointCandidate, PortMapping, error)
+}
 
 // CandidateType says how an address was learned, which is what its priority
 // is based on.
