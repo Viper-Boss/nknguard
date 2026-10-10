@@ -153,7 +153,7 @@ NKNGuard:   设备 ── NKN 信令 / DHT ── 设备      （+ NKN 中继）
 git clone https://github.com/Viper-Boss/nknguard && cd nknguard
 mkdir -p bin && install -m 0755 ~/Downloads/nknguard-linux-arm64 bin/nknguard   # 或自己编译：make deps && make build
 sudo ./scripts/install.sh
-sudo nknguard init --name nas-home      # 创建网络，并设置管理面板密码
+sudo nknguard init --name nas-home --defer-dashboard-setup  # 初始化身份，管理账号在网页设置
 sudo systemctl enable --now nknguard
 ```
 
@@ -163,8 +163,10 @@ sudo systemctl enable --now nknguard
 
 ```bash
 ssh -L 7878:127.0.0.1:7878 用户名@NAS地址
-# 然后在电脑浏览器打开 http://127.0.0.1:7878/ ，账号 admin，密码为 init 时设置的密码
+# 然后打开 http://127.0.0.1:7878/ ，首次按三步向导设置用户名和密码
 ```
+
+已有安装保留原账号（旧版用户名为 `admin`）、身份和配对。可在安全设置中修改用户名或密码；首次向导不会重新创建已有身份。
 
 忘记密码：在 NAS 上运行 `sudo nknguard dashboard-password set`。连续输错 5 次后会临时限速。
 

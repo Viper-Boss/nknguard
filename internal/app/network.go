@@ -37,6 +37,14 @@ func (n *Node) DashboardKey() (string, error) {
 // key and first-run note are removed after the new hash has been safely
 // persisted.
 func (n *Node) SetDashboardPassword(password string) error {
+	lock, err := acquireInstanceLock(filepath.Join(n.Config.Paths.StateDir, "dashboard-account.lock"))
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if n.Keystore.Has(dashboardAccountName) {
+		return n.writeDashboardAccount(n.DashboardUsername(), password)
+	}
 	if err := ValidateDashboardPassword(password); err != nil {
 		return err
 	}
@@ -78,6 +86,13 @@ func ValidateDashboardPassword(password string) error {
 // VerifyDashboardPassword supports old installations until their owner sets a
 // new password. A configured hash always takes precedence over the old key.
 func (n *Node) VerifyDashboardPassword(password string) bool {
+	account, accountErr := n.readDashboardAccount()
+	if accountErr == nil {
+		return bcrypt.CompareHashAndPassword([]byte(account.Hash), []byte(password)) == nil
+	}
+	if !errors.Is(accountErr, fs.ErrNotExist) {
+		return false
+	}
 	hash, err := n.Keystore.ReadSecret(dashboardPasswordName)
 	if err == nil {
 		return bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
@@ -91,7 +106,7 @@ func (n *Node) VerifyDashboardPassword(password string) bool {
 }
 
 func (n *Node) DashboardPasswordReady() bool {
-	return n.Keystore.Has(dashboardPasswordName) || n.Keystore.Has(dashboardKeyName)
+	return n.Keystore.Has(dashboardAccountName) || n.Keystore.Has(dashboardPasswordName) || n.Keystore.Has(dashboardKeyName)
 }
 
 // Node is the on-disk identity of this machine: keystore, root identity, state.

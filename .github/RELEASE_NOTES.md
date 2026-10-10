@@ -1,27 +1,28 @@
-## NKNGuard 0.2.15 预览版
+## NKNGuard 0.2.16 预览版
 
 ### 下载
 
 | 安装包 | 用途 |
 | --- | --- |
-| `NKNGuard-Android-0.2.15-preview.2.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
-| `NKNGuard-Setup-0.2.15-preview.2.exe` | Windows 10/11 x86_64 安装器 |
+| `NKNGuard-Android-0.2.16-preview.1.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
+| `NKNGuard-Setup-0.2.16-preview.1.exe` | Windows 10/11 x86_64 安装器 |
 | `NKNGuard-Windows-x86_64-preview.zip` | Windows 便携客户端，仍需官方 WireGuard |
-| `NKNGuard-fnOS-amd64-0.2.15-preview.2.fpk` | 飞牛 x86_64 应用中心安装包 |
-| `NKNGuard-fnOS-arm64-0.2.15-preview.2.fpk` | 飞牛 ARM64 应用中心安装包 |
+| `NKNGuard-fnOS-amd64-0.2.16-preview.1.fpk` | 飞牛 x86_64 应用中心安装包 |
+| `NKNGuard-fnOS-arm64-0.2.16-preview.1.fpk` | 飞牛 ARM64 应用中心安装包 |
 | `nknguard-linux-amd64` / `nknguard-linux-arm64` | Linux / NAS 独立服务程序 |
-| `NKNGuard-NAS-Update-linux-<架构>-0.2.15-preview.2.zip` | 独立服务：面板上传更新包 |
-| `NKNGuard-NAS-Update-fnos-<架构>-0.2.15-preview.2.zip` | FPK 安装：面板上传更新包 |
+| `NKNGuard-NAS-Update-linux-<架构>-0.2.16-preview.1.zip` | 独立服务：面板上传更新包 |
+| `NKNGuard-NAS-Update-fnos-<架构>-0.2.16-preview.1.zip` | FPK 安装：面板上传更新包 |
 | `release.json` / `release.json.sig` / `SHA256SUMS` | 发布签名目录与文件校验值 |
 
 ### 本次更新
 
-- NAS、Android、Windows 增加从 GitHub 手动检查更新。
-- NAS 面板可上传签名更新包，验证版本、处理器架构和文件完整性；独立服务更新失败自动恢复上一版，保留设备身份、管理密码和配对。
-- Android 可下载安装更新、导入本地 APK；安装前核对应用 ID、版本与当前签名，交给系统确认安装。
-- 飞牛分别构建 x86_64 与 ARM64 FPK；关闭默认文件日志，停止和卸载复用程序自身的隧道与防火墙清理，避免误杀复用 PID 的其他进程。
-- 保留此前多 NAS 管理、直连优先、NKN 备用中继、NAT 仪表盘及网络动画。
-- GitHub 中文介绍的赞赏区新增 USDC · ERC20，沿用 Ethereum 收款地址。
+- 首次打开 NAS 面板提供三步向导：设置用户名与密码、查看持久化 NKN 地址、引导手机配对。已有安装保留账号、密钥和配对。
+- 网页登录替代浏览器验证弹框；安全设置支持修改用户名和密码，修改后旧登录会话失效。
+- UPnP / NAT-PMP 使用实际 WireGuard 动态端口，自动续租；面板显示映射状态和公网端点，失败继续尝试其他链路。
+- NAT 卡片和仪表盘统一名称，新增当前条件标记；未测定入站过滤时不误报具体锥型。
+- 更新页安装包选择与上传按钮统一配色；保留签名、架构校验和失败回滚。
+- 赞赏二维码采用薄荷绿与深蓝配色，复制按钮对齐；ETH / USDC · ERC20 使用原 Ethereum 收款地址。
+- Android 保持原签名，Windows、两种架构的飞牛 FPK 与签名 NAS 更新包同步发布。
 
 ### 测试范围
 

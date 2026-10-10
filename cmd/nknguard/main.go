@@ -212,6 +212,8 @@ func cmdInit(g globals, args []string, stdout, stderr io.Writer) error {
 	name := flags.String("name", "", "device name")
 	passwordStdin := flags.Bool("dashboard-password-stdin", false, "read password from standard input")
 	passwordFile := flags.String("dashboard-password-file", "", "read password from an owner-only file")
+	username := flags.String("dashboard-user", "", "administrator username")
+	deferSetup := flags.Bool("defer-dashboard-setup", false, "choose administrator credentials in the first-run web wizard")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -225,15 +227,41 @@ func cmdInit(g globals, args []string, stdout, stderr io.Writer) error {
 	if *name != "" {
 		cfg.Device.Name = *name
 	}
-	password, err := readDashboardPassword(*passwordStdin, *passwordFile, stderr)
-	if err != nil {
-		return err
+	var password string
+	if *deferSetup {
+		if *passwordStdin || *passwordFile != "" || *username != "" {
+			return errors.New("web setup cannot be combined with credential flags")
+		}
+	} else {
+		if *username == "" {
+			*username = "admin"
+			if !*passwordStdin && *passwordFile == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+				fmt.Fprint(stderr, "Set dashboard username (3–32 characters): ")
+				line, err := bufio.NewReader(io.LimitReader(os.Stdin, 256)).ReadString('\n')
+				if err != nil {
+					return err
+				}
+				*username = strings.TrimSpace(line)
+			}
+		}
+		if err := app.ValidateDashboardUsername(*username); err != nil {
+			return err
+		}
+		password, err = readDashboardPassword(*passwordStdin, *passwordFile, stderr)
+		if err != nil {
+			return err
+		}
 	}
 	node, err := app.OpenNode(cfg)
 	if err != nil {
 		return err
 	}
-	if err := node.SetDashboardPassword(password); err != nil {
+	if !*deferSetup {
+		if err := node.SetupDashboardAccount(*username, password); err != nil {
+			return err
+		}
+	}
+	if err := node.PrepareNKNIdentity(); err != nil {
 		return err
 	}
 	networkID, secret, err := node.CreateNetwork()
@@ -245,7 +273,10 @@ func cmdInit(g globals, args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "Network created.\n\nNetwork ID:\n  %s\n\n", networkID)
 	if cfg.Pairing.ApprovalRequired {
-		fmt.Fprintf(stdout, "Start the NAS with: sudo nknguard up\nOpen the local dashboard at http://%s/ to scan and approve new devices.\nDashboard user: admin\nDashboard password: chosen during setup\n", cfg.Dashboard.Listen)
+		fmt.Fprintf(stdout, "Start the NAS with: sudo nknguard up\nOpen the local dashboard at http://%s/ to finish setup and approve devices.\n", cfg.Dashboard.Listen)
+		if !*deferSetup {
+			fmt.Fprintf(stdout, "Dashboard user: %s\nDashboard password: chosen during setup\n", *username)
+		}
 	} else {
 		fmt.Fprintf(stdout, "Legacy join secret (keep private):\n  %s\n\nOn another device:\n  nknguard join %s --secret %s\n", secret, networkID, secret)
 	}
@@ -280,6 +311,7 @@ func cmdDashboardPassword(g globals, args []string, stdout, stderr io.Writer) er
 	flags.SetOutput(stderr)
 	fromStdin := flags.Bool("stdin", false, "read password from standard input")
 	file := flags.String("file", "", "read password from an owner-only file")
+	username := flags.String("username", "", "also change the administrator username")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -300,7 +332,12 @@ func cmdDashboardPassword(g globals, args []string, stdout, stderr io.Writer) er
 	}
 	// SetDashboardPassword also removes the legacy first-run.txt that older
 	// installers wrote with the generated password.
-	if err := node.SetDashboardPassword(password); err != nil {
+	if *username != "" {
+		err = node.SetDashboardAccount(*username, password)
+	} else {
+		err = node.SetDashboardPassword(password)
+	}
+	if err != nil {
 		return err
 	}
 	fmt.Fprintln(stdout, "Dashboard password updated. Sign in with the new password; no service restart is needed.")

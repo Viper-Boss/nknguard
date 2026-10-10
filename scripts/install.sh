@@ -15,6 +15,6 @@ install -d -m 0700 /var/lib/nknguard
 install -m 0644 deploy/systemd/nknguard.service /etc/systemd/system/nknguard.service
 systemctl daemon-reload
 echo "Installed. Next:"
-echo "  sudo nknguard init --name nas-home"
+echo "  sudo nknguard init --name nas-home --defer-dashboard-setup"
 echo "  systemctl enable --now nknguard"
-echo "  Open http://127.0.0.1:7878/ on the NAS to pair and approve devices."
+echo "  Open http://127.0.0.1:7878/ on the NAS to set your administrator username/password, then pair devices."
