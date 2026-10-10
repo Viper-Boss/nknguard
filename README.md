@@ -76,9 +76,9 @@
     <td align="center"><a href="docs/images/support-usdt.png"><img src="docs/images/support-usdt.png" alt="USDT TRC20 收款地址二维码" width="180"></a></td>
     <td align="center"><a href="docs/images/support-btc.png"><img src="docs/images/support-btc.png" alt="BTC 收款地址二维码" width="180"></a></td>
   </tr>
-  <tr><th align="center">ETH · Ethereum</th><th align="center">SOL · Solana</th></tr>
+  <tr><th align="center">ETH · Ethereum<br>USDC · ERC20</th><th align="center">SOL · Solana</th></tr>
   <tr>
-    <td align="center"><a href="docs/images/support-eth.png"><img src="docs/images/support-eth.png" alt="ETH 收款地址二维码" width="180"></a></td>
+    <td align="center"><a href="docs/images/support-eth.png"><img src="docs/images/support-eth.png" alt="ETH / USDC · ERC20 收款地址二维码" width="180"></a></td>
     <td align="center"><a href="docs/images/support-sol.png"><img src="docs/images/support-sol.png" alt="SOL 收款地址二维码" width="180"></a></td>
   </tr>
 </table>
@@ -98,7 +98,7 @@ TEwbANy1Mo3DFdT6CMphgjU511LzbCoQsm
 bc1q8m5fp9jgmve8sjva2cfdwhs3pc65723nezrc3v
 ```
 
-**ETH · Ethereum**
+**ETH / USDC · Ethereum（USDC：ERC20）**
 
 ```text
 0x9d955292BD72904fB5D5D9A147250A625f80c6E5
