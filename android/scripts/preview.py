@@ -51,6 +51,8 @@ def find_text(text):
 target = find_text("办公室 NAS · 演示")
 x1, y1, x2, y2 = map(int, re.findall(r"\d+", target.get("bounds")))
 adb("shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
+time.sleep(2)
+(output / "switch-early-logcat.txt").write_bytes(subprocess.check_output(["adb", "logcat", "-d"]))
 for _ in range(25):
     time.sleep(1)
     current = json.loads(subprocess.check_output(["adb", "shell", "run-as", package, "cat", "files/nas-registry.json"]))
@@ -58,7 +60,7 @@ for _ in range(25):
     if current["selected"] == office and vault_ready:
         break
 screenshot("android-after-switch.png")
-(output / "switch-logcat.txt").write_bytes(subprocess.check_output(["adb", "logcat", "-d", "-t", "500"]))
+(output / "switch-logcat.txt").write_bytes(subprocess.check_output(["adb", "logcat", "-d"]))
 assert current["selected"] == office, "NAS card did not switch active profile"
 assert len(current["entries"]) == 2, "Switch deleted another NAS"
 adb("shell", "run-as", package, "ls", "files/secrets.bin", f"files/nas/{office}/secrets.bin")

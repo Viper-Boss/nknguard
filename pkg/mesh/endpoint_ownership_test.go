@@ -16,6 +16,18 @@ type staleRelayObservation struct {
 	stat wireguard.PeerStats
 }
 
+func TestFailedAttemptAllowsRelayReconciliationBeforeRetry(t *testing.T) {
+	p := NewPeer("remote")
+	p.selector.DirectRetryInterval = time.Second
+	p.selector.DirectRetryMax = time.Second
+	p.selector.lastDirectTry = time.Now().Add(-time.Minute)
+	p.attempting = true
+	p.EndAttempt(false)
+	if p.ShouldRetryDirect(time.Now()) {
+		t.Fatal("slow failed attempt immediately stole restored relay endpoint")
+	}
+}
+
 func (w staleRelayObservation) Stats(context.Context) ([]wireguard.PeerStats, error) {
 	return []wireguard.PeerStats{w.stat}, nil
 }
