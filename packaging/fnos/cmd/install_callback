@@ -10,7 +10,7 @@ fail() {
 bin="${TRIM_APPDEST:?}/bin/nknguard"
 cfg="${TRIM_PKGETC:?}/config.yaml"
 data="${TRIM_PKGVAR:?}"
-[ -x "$bin" ] || fail '应用包内缺少 ARM64 NKNGuard 可执行文件。'
+[ -x "$bin" ] || fail '应用包内缺少对应架构的 NKNGuard 可执行文件。'
 install -d -m 0700 "$TRIM_PKGETC" "$data" "$data/state" "$data/run"
 if [ ! -e "$cfg" ]; then
   [ -n "${wizard_dashboard_password:-}" ] || fail '请在安装向导中设置管理密码。'

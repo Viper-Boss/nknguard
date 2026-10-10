@@ -29,7 +29,7 @@ Everything is on the **[Releases page](https://github.com/Viper-Boss/nknguard/re
 | --- | --- | --- |
 | 🗄️ **NAS / Linux** (ARM64, incl. ARM fnOS) | `nknguard-linux-arm64` | Needs root and `wireguard-tools`; see [Install the NAS](#1-install-the-nas) |
 | 🗄️ **NAS / Linux** (x86_64) | `nknguard-linux-amd64` | Same as above |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-x86_64-preview.zip` | Native desktop app with a tray icon; install [WireGuard for Windows](https://www.wireguard.com/install/) first |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | Preview; maintainer-signed builds with the same certificate upgrade in place and preserve pairing |
 
 Each release ships a `SHA256SUMS` file: `sha256sum -c SHA256SUMS`. Windows preview binaries are unsigned. Maintainer-delivered Android APKs use a persistent signing certificate; raw CI debug artifacts use a temporary certificate.

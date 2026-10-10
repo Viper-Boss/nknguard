@@ -44,7 +44,9 @@ func DefaultConfigPath() string {
 
 // Config is the whole file.
 type Config struct {
-	Version int `json:"version"`
+	// SourceFile is populated by the CLI, never accepted from configuration text.
+	SourceFile string `json:"-"`
+	Version    int    `json:"version"`
 
 	Device struct {
 		Name string   `json:"name"`

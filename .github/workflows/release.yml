@@ -1,7 +1,7 @@
 name: release
 
 # Pushing a tag v* (or a branch release/v*, which becomes tag v*) builds
-# every platform and publishes a GitHub pre-release with the NAS/Linux
+# every platform and prepares a draft for persistent APK and catalogue signing with the NAS/Linux
 # daemons, the Windows client, the Android APK and SHA256SUMS. Release notes
 # come from .github/RELEASE_NOTES.md.
 
@@ -31,11 +31,18 @@ jobs:
       - name: test
         run: go test -race ./... && go test -tags "nknsdk libp2pdht" ./...
       - name: build
-        run: make release VERSION="$TAG"
+        run: |
+          make release VERSION="$TAG"
+          curl -fL --retry 3 https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 -o "$RUNNER_TEMP/fnpack"
+          chmod +x "$RUNNER_TEMP/fnpack"
+          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh amd64 "$TAG" "$PWD/dist/nknguard-linux-amd64" dist
+          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh arm64 "$TAG" "$PWD/dist/nknguard-linux-arm64" dist
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/nknguard-linux-*
+          path: |
+            dist/nknguard-linux-*
+            dist/*.fpk
           if-no-files-found: error
 
   windows:
@@ -67,11 +74,24 @@ jobs:
             -o NKNGuard-Windows.exe ./cmd/nknguard
           mkdir -p pkg
           cp NKNGuard-Windows.exe LICENSE NOTICE pkg/
-          cd pkg && 7z a ../NKNGuard-Windows-preview.zip .
+          cd pkg && 7z a ../NKNGuard-Windows-x86_64-preview.zip .
+      - name: installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
+          & $compiler "/DAppVersion=$($env:TAG.TrimStart('v'))" packaging/windows/nknguard.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          Copy-Item dist/windows/NKNGuard-Setup-*.exe .
+      - name: native Windows launch smoke test
+        shell: pwsh
+        run: packaging/windows/smoke-ui.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: NKNGuard-Windows-preview.zip
+          path: |
+            NKNGuard-Windows-x86_64-preview.zip
+            NKNGuard-Setup-*.exe
           if-no-files-found: error
 
   android:
@@ -98,15 +118,15 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug -PskipGoCore=true
       - name: rename
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk NKNGuard-Android-preview.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk UNSIGNED-NKNGuard-Android-preview.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: NKNGuard-Android-preview.apk
+          path: UNSIGNED-NKNGuard-Android-preview.apk
           if-no-files-found: error
 
   publish:
-    name: Publish pre-release
+    name: Prepare release for maintainer signing
     needs: [linux, windows, android]
     runs-on: ubuntu-latest
     permissions:
@@ -128,8 +148,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" out/* \
-            --prerelease \
-            --title "NKNGuard ${TAG#v}" \
-            --notes-file .github/RELEASE_NOTES.md \
-            --target "$GITHUB_SHA"
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' > /tmp/nknguard-release-state 2>/dev/null; then
+            test "$(cat /tmp/nknguard-release-state)" = true || { echo "Refusing to change a public release"; exit 1; }
+            gh release upload "$TAG" out/* --clobber
+            gh release edit "$TAG" --draft --prerelease --notes-file .github/RELEASE_NOTES.md --target "$GITHUB_SHA"
+          else
+            gh release create "$TAG" out/* \
+              --draft --prerelease \
+              --title "NKNGuard ${TAG#v}" \
+              --notes-file .github/RELEASE_NOTES.md \
+              --target "$GITHUB_SHA"
+          fi

@@ -268,6 +268,7 @@ func (u *clientUI) create() error {
 	u.copyIP = u.newButton("复制 NAS IP", false, 120, func() { u.copyText(u.nasIP.Text()) })
 	u.installWG = u.newButton("安装 WireGuard", false, 140, func() { openURL("https://www.wireguard.com/install/") })
 	export := u.newButton("导出诊断", false, 108, u.exportDiagnostics)
+	checkUpdate := u.newButton("检查更新", false, 108, u.checkUpdate)
 
 	err := ui.MainWindow{
 		AssignTo:   &u.mw,
@@ -360,6 +361,7 @@ func (u *clientUI) create() error {
 						),
 					),
 					muted("关闭窗口后 NKNGuard 缩到右下角托盘，连接保持；在托盘菜单中选“退出”才会断开。\n连接后只路由到 NAS 的虚拟地址，普通上网不受影响。"),
+					card("应用更新", muted("当前版本："+app.Version+" · Windows x86_64"), row(checkUpdate.decl(), muted("从 GitHub 检查，下载后由你启动安装。"), ui.HSpacer{})),
 					row(
 						muted("© 2026 NKNGuard Authors · AGPL-3.0-only · 无担保，可依许可再发布。"),
 						ui.Label{
