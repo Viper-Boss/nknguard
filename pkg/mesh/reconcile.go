@@ -137,7 +137,9 @@ func (c *Controller) reconcileOnce(ctx context.Context) {
 			silent := peer.NoteReceive(seen.rxBytes, now)
 			// Incoming authenticated relay packets can prove the fallback
 			// while probes are ongoing. Only direct promotion is forbidden.
-			if bridge != nil && viaBridge && fresh && silent < receiveTimeout {
+			// Without endpoint ownership this observation predates the probe:
+			// promoting it can overwrite an ICE success with the old relay.
+			if endpointOwned && bridge != nil && viaBridge && fresh && silent < receiveTimeout {
 				if peer.SelectPath(Observation{Now: now, RelayOpen: true, RelayActive: true}) == PathNKNRelay {
 					_, _ = peer.Apply(EventRelayOpen, now)
 				}

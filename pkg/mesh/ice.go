@@ -284,6 +284,17 @@ func (c *Controller) installICEPath(ctx, attempt context.Context, peer *Peer, co
 			return false
 		case <-ticker.C:
 			seen := c.observe(ctx)[record.WireGuardPublicKey]
+			// A relay datagram already queued in the kernel can arrive after
+			// SetStandby and make WireGuard roam. Keep this bounded proof phase
+			// on its nominated ICE socket; only a new WG receive can promote it.
+			if seen.endpoint != bridge.LocalAddr().String() {
+				if err := c.WireGuard.UpdateEndpoint(ctx, record.WireGuardPublicKey, bridge.LocalAddr().String()); err != nil {
+					rollback()
+					return false
+				}
+				c.nudgePeer(ctx, peer)
+				continue
+			}
 			fresh := !seen.handshake.IsZero() && time.Since(seen.handshake) < wireguard.HandshakeFreshness
 			if !fresh || seen.endpoint != bridge.LocalAddr().String() || bridge.Stats().BytesRecv == 0 ||
 				(!seen.handshake.After(baseline.handshake) && seen.rxBytes <= baseline.rxBytes) {
