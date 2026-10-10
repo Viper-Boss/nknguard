@@ -91,21 +91,19 @@ func (s *WireGuardStrategy) Attempt(ctx context.Context, attempt DirectAttempt) 
 		}
 	}
 	candidates := directCandidates(attempt.Candidates, attempt.LocalCandidates, limit)
-	// A handshake that was already on record — typically one that came in
-	// over the relay a moment ago — must not be mistaken for this attempt's
-	// success, so success means strictly newer than the baseline.
-	baseline := s.snapshot(ctx, attempt.WireGuardPublicKey)
 	for _, candidate := range candidates {
 		target, err := candidate.AddrPort()
 		if err != nil {
 			continue
 		}
-		// Baseline each endpoint separately. Bytes received over a previous
-		// relay/candidate must not prove the endpoint we are about to assign.
-		baseline = s.snapshot(ctx, attempt.WireGuardPublicKey)
 		if err := s.WireGuard.UpdateEndpoint(ctx, attempt.WireGuardPublicKey, target.String()); err != nil {
 			return netip.AddrPort{}, err
 		}
+		// Read the baseline after assigning the candidate. A relay packet
+		// received between a pre-assignment snapshot and UpdateEndpoint
+		// would otherwise look like new direct traffic at the assigned IP.
+		// Nudge only after this snapshot so replies prove this candidate.
+		baseline := s.snapshot(ctx, attempt.WireGuardPublicKey)
 		if s.Nudge != nil && attempt.VirtualIP.IsValid() {
 			s.Nudge(ctx, attempt.VirtualIP)
 		}
