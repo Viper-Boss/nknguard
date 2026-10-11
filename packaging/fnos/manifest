@@ -8,3 +8,6 @@ maintainer    = Viper-Boss
 maintainer_url = https://github.com/Viper-Boss/nknguard
 distributor   = Viper-Boss
 ctl_stop      = true
+desktop_uidir = ui
+desktop_applaunchname = nknguard.main
+service_port = 7878

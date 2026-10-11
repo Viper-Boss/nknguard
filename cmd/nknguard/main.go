@@ -62,12 +62,14 @@ Global flags (before the command):
   --config <path>     configuration file (default /etc/nknguard/config.yaml)
   --state-dir <path>  override paths.state_dir
   --socket <path>     override paths.socket
+  --dashboard-listen <IP:port|auto-lan:port>  override dashboard listener
 `
 
 type globals struct {
-	configPath string
-	stateDir   string
-	socket     string
+	configPath      string
+	stateDir        string
+	socket          string
+	dashboardListen string
 }
 
 var guiBuild string
@@ -98,6 +100,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	top.StringVar(&g.configPath, "config", config.DefaultConfigPath(), "")
 	top.StringVar(&g.stateDir, "state-dir", "", "")
 	top.StringVar(&g.socket, "socket", "", "")
+	top.StringVar(&g.dashboardListen, "dashboard-listen", "", "")
 	if err := top.Parse(args); err != nil {
 		return 2
 	}
@@ -193,6 +196,12 @@ func loadConfig(g globals) (config.Config, bool, error) {
 		cfg.Paths.Socket = g.socket
 	}
 	cfg.Paths.LegacySetupNote = filepath.Join(filepath.Dir(g.configPath), "first-run.txt")
+	if g.dashboardListen != "" {
+		cfg.Dashboard.Listen, err = resolveDashboardListen(g.dashboardListen)
+		if err != nil {
+			return cfg, exists, err
+		}
+	}
 	cfg.SourceFile, err = filepath.Abs(g.configPath)
 	return cfg, exists, nil
 }

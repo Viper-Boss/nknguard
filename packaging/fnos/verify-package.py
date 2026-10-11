@@ -28,6 +28,7 @@ def verify(path, arch, version):
         read = lambda name: (path / name).read_bytes()
         binaries = {name: read("app/bin/" + name) for name in ("nknguard", "wg", "wireguard-go")}
         licenses = {name: read("app/share/licenses/" + name) for name in ("wireguard-tools.txt", "wireguard-go.txt")}
+        ui = {name: read("app/ui/" + name) for name in ("config", "images/icon_64.png", "images/icon_256.png")}
     else:
         archive = tarfile.open(path, "r:*")
         def read(name):
@@ -44,6 +45,7 @@ def verify(path, arch, version):
                 binaries[name] = app.extractfile(binary).read()
             licenses = {name: app.extractfile(members["share/licenses/" + name]).read() for name in ("wireguard-tools.txt", "wireguard-go.txt")}
             assert "share/sources/wireguard-tools-1.0.20260223.tar.xz" in members, "Missing bundled wg source"
+            ui = {name: app.extractfile(members["ui/" + name]).read() for name in ("config", "images/icon_64.png", "images/icon_256.png")}
         for member in archive.getmembers():
             if member.name.startswith("cmd/") and member.isfile():
                 assert member.mode & 0o111, f"Lifecycle script not executable: {member.name}"
@@ -53,6 +55,16 @@ def verify(path, arch, version):
         assert fields.get("appname") == "nknguard", "Unexpected appname"
         assert fields.get("platform") == platform, "Wrong manifest platform"
         assert fields.get("version") == version, "Wrong manifest version"
+        assert fields.get("desktop_uidir") == "ui", "Missing desktop directory"
+        assert fields.get("desktop_applaunchname") == "nknguard.main", "Missing desktop entry"
+        assert fields.get("service_port") == "7878", "Wrong dashboard service port"
+        entry = json.loads(ui["config"])[".url"]["nknguard.main"]
+        assert entry.get("type") == "url" and entry.get("protocol") == "http", "Desktop must open browser"
+        assert entry.get("port") == "7878" and entry.get("url") == "/", "Wrong desktop dashboard URL"
+        assert entry.get("icon") == "images/icon_{0}.png", "Wrong desktop icon path"
+        for size in (64, 256):
+            assert ui[f"images/icon_{size}.png"] == read("ICON.PNG" if size == 64 else "ICON_256.PNG"), "Wrong desktop icon"
+        assert b"--dashboard-listen auto-lan:7878" in read("cmd/main"), "Missing LAN dashboard listener"
         elf(binaries["nknguard"], cpu, "daemon")
         for name in ("wg", "wireguard-go"):
             elf(binaries[name], cpu, name, static=True)

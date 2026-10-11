@@ -25,6 +25,7 @@ class PackagingTest(unittest.TestCase):
         for icon in ("ICON.PNG", "ICON_256.PNG"):
             shutil.copy2(ROOT / icon, self.root / icon)
         (self.root / "app/bin").mkdir(parents=True)
+        shutil.copytree(ROOT / "app/ui", self.root / "app/ui")
         self.stubs = self.root / "stubs"
         self.stubs.mkdir()
         for name, script in {
@@ -39,7 +40,7 @@ class PackagingTest(unittest.TestCase):
         self.temp.cleanup()
     def stage(self, arch):
         platform, machine = {"amd64": ("x86", 62), "arm64": ("arm", 183)}[arch]
-        (self.root / "manifest").write_text(f"appname = nknguard\nversion = 0.2.18-preview.3\nplatform = {platform}\n")
+        (self.root / "manifest").write_text(f"appname = nknguard\nversion = 0.2.18-preview.4\nplatform = {platform}\ndesktop_uidir = ui\ndesktop_applaunchname = nknguard.main\nservice_port = 7878\n")
         header = bytearray(64)
         header[:6] = bytes.fromhex("7f454c460201")
         struct.pack_into("<H", header, 18, machine)
@@ -52,7 +53,7 @@ class PackagingTest(unittest.TestCase):
     def test_both_architectures_and_cross_install_rejection(self):
         for arch, correct, wrong in [("amd64", "x86_64", "aarch64"), ("arm64", "aarch64", "x86_64")]:
             self.stage(arch)
-            verifier.verify(self.root, arch, "0.2.18-preview.3")
+            verifier.verify(self.root, arch, "0.2.18-preview.4")
             for machine, success in [(correct, True), (wrong, False)]:
                 with self.subTest(package=arch, device=machine):
                     env = dict(os.environ, PATH=str(self.stubs) + os.pathsep + os.environ["PATH"], TEST_MACHINE=machine)
@@ -69,19 +70,20 @@ class PackagingTest(unittest.TestCase):
         self.stage("arm64")
         (self.root / "wizard/install").write_text("[]\n")
         with self.assertRaisesRegex(AssertionError, "Empty install wizard"):
-            verifier.verify(self.root, "arm64", "0.2.18-preview.3")
+            verifier.verify(self.root, "arm64", "0.2.18-preview.4")
     def test_wrong_binary_is_rejected(self):
         self.stage("arm64")
-        (self.root / "manifest").write_text("appname = nknguard\nversion = 0.2.18-preview.3\nplatform = x86\n")
+        manifest = self.root / "manifest"
+        manifest.write_text(manifest.read_text().replace("platform = arm", "platform = x86"))
         with self.assertRaisesRegex(AssertionError, "Wrong daemon CPU"):
-            verifier.verify(self.root, "amd64", "0.2.18-preview.3")
+            verifier.verify(self.root, "amd64", "0.2.18-preview.4")
     def test_bundled_wg_architecture_is_checked(self):
         self.stage("arm64")
         data = bytearray((self.root / "app/bin/wg").read_bytes())
         struct.pack_into("<H", data, 18, 62)
         (self.root / "app/bin/wg").write_bytes(data)
         with self.assertRaisesRegex(AssertionError, "Wrong wg CPU"):
-            verifier.verify(self.root, "arm64", "0.2.18-preview.3")
+            verifier.verify(self.root, "arm64", "0.2.18-preview.4")
     def test_initialization_uses_bundled_wg(self):
         self.stage("arm64")
         app = self.root / "app"
@@ -95,6 +97,20 @@ class PackagingTest(unittest.TestCase):
         result = subprocess.run(["sh", str(self.root / "cmd/install_callback")], env=env, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(marker.read_text().strip(), "bundled-wg")
+
+    def test_missing_desktop_registration_is_rejected(self):
+        self.stage("arm64")
+        manifest = self.root / "manifest"
+        manifest.write_text(manifest.read_text().replace("desktop_uidir = ui", "desktop_uidir = missing"))
+        with self.assertRaisesRegex(AssertionError, "Missing desktop directory"):
+            verifier.verify(self.root, "arm64", "0.2.18-preview.4")
+
+    def test_loopback_only_start_is_rejected(self):
+        self.stage("arm64")
+        script = self.root / "cmd/main"
+        script.write_text(script.read_text().replace("--dashboard-listen auto-lan:7878", ""))
+        with self.assertRaisesRegex(AssertionError, "Missing LAN dashboard listener"):
+            verifier.verify(self.root, "arm64", "0.2.18-preview.4")
 
 if __name__ == "__main__":
     unittest.main()

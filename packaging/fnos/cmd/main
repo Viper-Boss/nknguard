@@ -29,7 +29,7 @@ start() {
   if running; then return 0; fi
   install -d -m 0700 "$data" "$data/run"
   # The daemon's bounded memory ring is visible in the dashboard; no SSD log.
-  nohup "$bin" --config "$cfg" up >/dev/null 2>&1 &
+  nohup "$bin" --config "$cfg" --dashboard-listen auto-lan:7878 up >/dev/null 2>&1 &
   pid=$!
   printf '%s\n' "$pid" > "$pidfile"
   count=0

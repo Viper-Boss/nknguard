@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "nknguard.main": {
+      "title": "NKNGuard",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "7878",
+      "url": "/",
+      "allUsers": true
+    }
+  }
+}
