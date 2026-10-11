@@ -50,6 +50,7 @@ type Status struct {
 	DirectAttempting  bool                        `json:"direct_attempting"`
 	NextDirectRetry   time.Time                   `json:"next_direct_retry,omitempty"`
 	DHTEnabled        bool                        `json:"dht_enabled"`
+	DHTFallbackActive bool                        `json:"dht_fallback_active"`
 	DHTPeers          int                         `json:"dht_peers"`
 	RelayReady        bool                        `json:"relay_ready"`
 	RelayStandby      bool                        `json:"relay_standby"`
@@ -131,6 +132,7 @@ func (a *Agent) status() Status {
 	}
 	status.NextDirectRetry = nas.NextDirectRetry
 	status.DHTEnabled, status.DHTPeers, _ = controller.DiscoveryStatus()
+	status.DHTFallbackActive = status.DHTEnabled && controller.DiscoveryFallbackActive()
 	if nas.VirtualIP != "" {
 		status.AllowedCIDR = nas.VirtualIP + "/32"
 	}

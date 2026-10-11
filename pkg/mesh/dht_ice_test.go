@@ -44,7 +44,7 @@ func TestDHTCachedBootstrapEstablishesICEWithoutNKN(t *testing.T) {
 		c.Direct = &WireGuardStrategy{WireGuard: c.WireGuard}
 		c.SetVirtualIP(netip.AddrFrom4([4]byte{10, 88, 0, byte(i + 1)}))
 		enableTestICE(c)
-		hub := controlhub.New(ctx, backend, nil)
+		hub := controlhub.NewWithPolicy(ctx, backend, nil, controlhub.Policy{FailoverAfter: 100 * time.Millisecond, RecoverAfter: 50 * time.Millisecond})
 		defer hub.Close()
 		c.Signaling, c.Relay, c.Discovery = hub, hub, backend
 		controllers[i] = c

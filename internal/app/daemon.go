@@ -437,6 +437,7 @@ func (d *Daemon) Status(ctx context.Context) diagnostics.Status {
 		status.RouterMapping = source.MappingStatus()
 	}
 	status.DHTEnabled, status.DHTPeers, status.DHTRoutes = d.Controller.DiscoveryStatus()
+	status.DHTFallbackActive = status.DHTEnabled && d.Controller.DiscoveryFallbackActive()
 	status.DHTLANPeers = d.Controller.DiscoveryLANPeers()
 	return status
 }

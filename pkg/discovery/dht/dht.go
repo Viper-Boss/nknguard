@@ -355,6 +355,14 @@ func (b *Backend) serveRecord(stream network.Stream) {
 // Publish stores our record for the record protocol and (re)announces us as
 // a provider of the network's rendezvous key.
 func (b *Backend) Publish(ctx context.Context, record discovery.PeerRecord) error {
+	if err := b.StoreRecord(record); err != nil {
+		return err
+	}
+	return b.kad.Provide(ctx, b.key, true)
+}
+
+// StoreRecord refreshes the standby record in memory without DHT traffic.
+func (b *Backend) StoreRecord(record discovery.PeerRecord) error {
 	raw, err := record.Marshal()
 	if err != nil {
 		return err
@@ -362,7 +370,7 @@ func (b *Backend) Publish(ctx context.Context, record discovery.PeerRecord) erro
 	b.mu.Lock()
 	b.own = raw
 	b.mu.Unlock()
-	return b.kad.Provide(ctx, b.key, true)
+	return nil
 }
 
 // MaxLookupPeers bounds one lookup's fan-out.

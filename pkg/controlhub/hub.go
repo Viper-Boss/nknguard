@@ -26,12 +26,23 @@ type Hub struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
 	attached           bool
+	policy             Policy
+	now                func() time.Time
+	unavailableSince   time.Time
+	recoveredSince     time.Time
+	sendFailureSince   time.Time
+	fallback           bool
 }
 
 func New(ctx context.Context, secondary signaling.Transport, source rendezvous.Source) *Hub {
+	return NewWithPolicy(ctx, secondary, source, Policy{FailoverAfter: time.Minute, RecoverAfter: 15 * time.Second})
+}
+
+func NewWithPolicy(ctx context.Context, secondary signaling.Transport, source rendezvous.Source, policy Policy) *Hub {
 	ctx, cancel := context.WithCancel(ctx)
 	h := &Hub{secondary: secondary, source: source, addresses: make(map[string]string),
-		inbound: make(chan signaling.Inbound, 128), ready: make(chan struct{}), ctx: ctx, cancel: cancel}
+		inbound: make(chan signaling.Inbound, 128), ready: make(chan struct{}), ctx: ctx, cancel: cancel,
+		policy: policy, now: time.Now, unavailableSince: time.Now()}
 	if secondary != nil {
 		go h.pump(secondary)
 	}
@@ -103,9 +114,8 @@ func (h *Hub) Send(ctx context.Context, id string, envelope protocol.Envelope) e
 	h.mu.RLock()
 	primary, secondary := h.primary, h.secondary
 	h.mu.RUnlock()
-	// An established DHT stream carries only signed control envelopes. Fresh
-	// connections are bootstrapped separately, never on the send critical path.
-	if secondary != nil {
+	// DHT remains warm, but carries control only after a sustained NKN outage.
+	if h.DiscoveryFallbackActive() && secondary != nil {
 		fast, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := secondary.Send(fast, id, envelope)
 		cancel()
@@ -118,7 +128,14 @@ func (h *Hub) Send(ctx context.Context, id string, envelope protocol.Envelope) e
 	}
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return primary.Send(bounded, id, envelope)
+	err := primary.Send(bounded, id, envelope)
+	h.notePrimaryResult(ctx, err)
+	if err != nil && ctx.Err() == nil && h.DiscoveryFallbackActive() && secondary != nil {
+		fast, stop := context.WithTimeout(ctx, 2*time.Second)
+		defer stop()
+		return secondary.Send(fast, id, envelope)
+	}
+	return err
 }
 func (h *Hub) SendAddress(ctx context.Context, address string, envelope protocol.Envelope) error {
 	h.mu.RLock()
@@ -129,7 +146,9 @@ func (h *Hub) SendAddress(ctx context.Context, address string, envelope protocol
 	}
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return p.SendAddress(bounded, address, envelope)
+	err := p.SendAddress(bounded, address, envelope)
+	h.notePrimaryResult(ctx, err)
+	return err
 }
 func (h *Hub) Receive() <-chan signaling.Inbound { return h.inbound }
 func (h *Hub) Close() error                      { h.cancel(); return nil }

@@ -1002,7 +1002,14 @@ func (c *Controller) publishLoop(ctx context.Context) {
 		if err != nil {
 			c.logger().Error("building peer record failed", "component", "discovery", "error", err)
 		} else {
-			if c.Discovery != nil && c.discoveryPublicationDue(record, time.Now()) {
+			// Keep a fresh signed local record available to peers whose NKN is
+			// down, without advertising or querying DHT while NKN is healthy.
+			if local, ok := c.Discovery.(interface {
+				StoreRecord(discovery.PeerRecord) error
+			}); ok {
+				_ = local.StoreRecord(record)
+			}
+			if c.Discovery != nil && c.DiscoveryFallbackActive() && c.discoveryPublicationDue(record, time.Now()) {
 				if err := c.Discovery.Publish(ctx, record); err != nil && ctx.Err() == nil {
 					// Publishing failing is survivable: established tunnels do
 					// not depend on it (spec §59), and the next tick retries.
@@ -1314,6 +1321,9 @@ func (c *Controller) refuseUnapproved(ctx context.Context, record discovery.Peer
 }
 
 func (c *Controller) pollDiscovery(ctx context.Context) {
+	if !c.DiscoveryFallbackActive() {
+		return
+	}
 	records, err := c.Discovery.Lookup(ctx, c.Config.NetworkID)
 	if err != nil {
 		return

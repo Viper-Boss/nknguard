@@ -17,17 +17,19 @@ function updateStates() {
   const nknActive = status.nkn_connected === true;
   const known = typeof status.dht_enabled === 'boolean';
   const ready = status.dht_enabled && status.dht_peers > 0;
-  const badge = !known ? '未知' : !status.dht_enabled ? '已关闭' : ready ? '网络健康' : '运行中，未找到任何人';
+  const fallback = status.dht_fallback_active === true;
+  const policyKnown = typeof status.dht_fallback_active === 'boolean';
+  const badge = !known ? '未知' : !status.dht_enabled ? '已关闭' : policyKnown ? (fallback ? (ready ? '备用发现已启用' : '备用发现 · 暂无邻居') : (ready ? '待命 · 已连接邻居' : '待命 · 暂无邻居')) : ready ? '网络健康' : '运行中，未找到任何人';
   globe.closest('.net-card').dataset.state = nknActive ? 'online' : 'offline';
   mesh.closest('.net-card').dataset.state = ready ? 'online' : 'offline';
   text('nkn-animation-state', nknActive ? '已连接' : ({checking:'验证连接中',reconnecting:'重新连接中',closed:'未连接',unavailable:'状态不可用'})[status.nkn_connection?.state] || '等待 NKN');
   document.getElementById('nkn-animation-state').title = status.nkn_connection?.last_success && !status.nkn_connection.last_success.startsWith('0001-') ? `最近确认：${new Date(status.nkn_connection.last_success).toLocaleString()} · 自检往返 ${status.nkn_connection.latency_ms} 毫秒` : '等待消息经过 NKN 返回后确认连接';
   text('nkn-path-state', nknActive ? '连接正常' : '等待连接');
   text('nkn-visual-note', nknActive ? '全球连接 · 持续在线' : '全球节点示意');
-  text('nkn-dht-state', !known ? '第二通路尚未启用' : !status.dht_enabled ? 'DHT 已关闭' : ready ? '可用 · 自动协同' : '孤立——没有找到任何节点');
+  text('nkn-dht-state', !known ? '第二通路尚未启用' : !status.dht_enabled ? 'DHT 已关闭' : policyKnown ? (fallback ? 'NKN 持续故障 · 备用发现启用' : 'NKN 优先 · DHT 待命') : ready ? '备用通路可用' : '孤立——没有找到任何节点');
   text('dht-animation-state', badge);
-  text('dht-discovery-state', ready ? '持续发现邻居' : '节点发现已暂停');
-  text('dht-second-state', !status.dht_enabled && known ? 'DHT 已关闭' : ready ? '已启用' : badge);
+  text('dht-discovery-state', policyKnown ? (fallback ? '正在获取签名设备记录' : '保持邻居 · 暂停主动查询') : ready ? '持续发现邻居' : '节点发现已暂停');
+  text('dht-second-state', !status.dht_enabled && known ? 'DHT 已关闭' : policyKnown ? (fallback ? '仅发现与连接协调 · 不传用户数据' : '持续故障 60 秒后启用') : ready ? '已启用' : badge);
   document.getElementById('dht-signal-note').hidden = !ready;
   document.getElementById('nkn-path-state').closest('.net-row').classList.toggle('is-off', !nknActive);
   for (const id of ['nkn-dht-state', 'dht-discovery-state', 'dht-second-state']) {

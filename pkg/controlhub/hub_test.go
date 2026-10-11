@@ -22,7 +22,7 @@ func TestSecondaryWorksBeforeNKNAndFallbackRemainsAvailable(t *testing.T) {
 	defer cancel()
 	wire := signaling.NewSwitch()
 	a, b := wire.Attach("a"), wire.Attach("b")
-	h := New(ctx, a, nil)
+	h := NewWithPolicy(ctx, a, nil, Policy{})
 	defer h.Close()
 	if err := h.Send(ctx, "b", protocol.Envelope{FromDeviceID: "a"}); err != nil {
 		t.Fatal(err)
