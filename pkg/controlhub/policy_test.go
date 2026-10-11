@@ -115,3 +115,26 @@ func TestNoNKNWaitsBeforeDHTAndInterruptedRecoveryResetsGrace(t *testing.T) {
 		t.Fatal("interrupted recovery was counted as stable")
 	}
 }
+
+func TestHealthDetectionDoesNotRestartOutageClock(t *testing.T) {
+	now := time.Now()
+	p := &observedTransport{health: nknclient.ConnectionStatus{State: "connected", LastSuccess: now}}
+	h := New(context.Background(), &observedTransport{}, nil)
+	defer h.Close()
+	h.now = func() time.Time { return now }
+	if err := h.Attach(p, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if h.DiscoveryFallbackActive() {
+		t.Fatal("healthy transport used backup")
+	}
+	now = now.Add(50 * time.Second)
+	p.health.State = "reconnecting"
+	if h.DiscoveryFallbackActive() {
+		t.Fatal("outage grace was skipped")
+	}
+	now = now.Add(10 * time.Second)
+	if !h.DiscoveryFallbackActive() {
+		t.Fatal("health detection restarted the outage clock beyond recovery lease")
+	}
+}

@@ -52,8 +52,18 @@ func (h *Hub) DiscoveryFallbackActive() bool {
 	healthy = healthy && h.sendFailureSince.IsZero()
 	if !healthy {
 		h.recoveredSince = time.Time{}
-		if h.unavailableSince.IsZero() {
-			h.unavailableSince = now
+		// Health checks already take time to detect an outage. Count from the
+		// last confirmed NKN delivery, not another full minute after detection;
+		// fallback must fit inside the mesh's finite 90-second recovery lease.
+		since := now
+		if !lastSuccess.IsZero() && lastSuccess.Before(since) {
+			since = lastSuccess
+		}
+		if !h.sendFailureSince.IsZero() && h.sendFailureSince.Before(since) {
+			since = h.sendFailureSince
+		}
+		if h.unavailableSince.IsZero() || since.Before(h.unavailableSince) {
+			h.unavailableSince = since
 		}
 		if now.Sub(h.unavailableSince) >= h.policy.FailoverAfter {
 			h.fallback = true
