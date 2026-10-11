@@ -7,9 +7,9 @@
 从仓库根目录运行（fnpack 使用飞牛官方工具）：
 
 ```sh
-make release VERSION=v0.2.15-preview.1
-sh packaging/fnos/build.sh amd64 v0.2.15-preview.1 "$PWD/dist/nknguard-linux-amd64" dist
-sh packaging/fnos/build.sh arm64 v0.2.15-preview.1 "$PWD/dist/nknguard-linux-arm64" dist
+make release VERSION=v0.2.18-preview.2
+sh packaging/fnos/build.sh amd64 v0.2.18-preview.2 "$PWD/dist/nknguard-linux-amd64" dist
+sh packaging/fnos/build.sh arm64 v0.2.18-preview.2 "$PWD/dist/nknguard-linux-arm64" dist
 ```
 
 模板中的 `platform` 会分别设置为 `x86` 和 `arm`，每个 FPK 只包含对应二进制。构建目录不包含配置、密钥或安装过程中生成的资料。
@@ -25,3 +25,9 @@ sh packaging/fnos/build.sh arm64 v0.2.15-preview.1 "$PWD/dist/nknguard-linux-arm
 默认日志仅保留在内存。停止、升级与卸载会清理程序拥有的隧道和防火墙规则；飞牛负责删除应用的 target、配置和数据目录。应用中心是否保留数据请以卸载界面的选择为准。
 
 当前 FPK 已实现两种架构构建，仍需要在各机型的应用中心完成实机验收。现有 ARM64 测试 NAS 使用独立服务，以保留大盘已有数据。
+
+## 0.2.18-preview.2 安装修复
+
+修复 ARM64 和 x86_64 包的空安装向导。飞牛 1.2.0302 拒绝已有但不足 10 字节的向导文件，并提示应用包不符合系统要求；新版显示有效的只读说明，管理账号仍在首次打开网页时设置。修复 x86 包错误地只允许 ARM64 的安装脚本。
+
+构建前后校验向导、平台、版本、ELF 架构、脚本换行与权限，以及 app.tgz 校验值。回归测试：`python3 packaging/fnos/test-packaging.py`。参考：[飞牛用户向导文档](https://developer.fnnas.com/docs/core-concepts/wizard/)。

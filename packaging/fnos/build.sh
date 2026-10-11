@@ -19,7 +19,8 @@ output=$(CDPATH= cd -- "$output" && pwd)
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT INT TERM
 cp -R "$root/packaging/fnos/." "$stage/"
-rm -f "$stage/build.sh" "$stage/README.md"
+rm -f "$stage/build.sh" "$stage/README.md" "$stage/verify-package.py" "$stage/test-packaging.py"
+rm -rf "$stage/__pycache__"
 mkdir -p "$stage/app/bin"
 cp "$root/LICENSE" "$root/NOTICE" "$stage/app/"
 cp "$binary" "$stage/app/bin/nknguard"
@@ -28,6 +29,8 @@ sed -i "s/^platform[[:space:]]*=.*/platform = $platform/;s/^version[[:space:]]*=
 # A valid ELF alone is insufficient: fnOS dispatches installation by manifest.
 grep -qx "platform = $platform" "$stage/manifest"
 grep -qx "version = ${version#v}" "$stage/manifest"
+python3 "$root/packaging/fnos/verify-package.py" "$stage" "$arch" "${version#v}"
 # fnpack writes appname.fpk in the current working directory.
 (cd "$output" && "${FNPACK:-fnpack}" build --directory "$stage")
 mv "$output/nknguard.fpk" "$output/NKNGuard-fnOS-$arch-${version#v}.fpk"
+python3 "$root/packaging/fnos/verify-package.py" "$output/NKNGuard-fnOS-$arch-${version#v}.fpk" "$arch" "${version#v}"

@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "stepTitle": "安装 NKNGuard",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "NKNGuard 为手机和电脑提供到 NAS 的加密连接。安装后请按网页向导设置管理用户名和密码，再添加设备。服务需要 WireGuard 和网络管理权限；请勿与正在运行的独立版 NKNGuard 同时启动。"
+      }
+    ]
+  }
+]

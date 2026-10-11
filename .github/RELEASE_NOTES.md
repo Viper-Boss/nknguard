@@ -1,24 +1,27 @@
 ## 本版更新
 
+- 修复 ARM64 与 x86_64 飞牛 FPK 的空安装向导，解决 1.2.0302 显示应用包不符合系统要求。
+- 修正 x86 安装脚本的架构检查；发布前自动验证 FPK 向导、二进制架构、权限、版本和校验值。
+
 - NKN 优先交换连接信息，持续故障 60 秒后启用 DHT 备用发现，恢复稳定 15 秒后切回。
 - DHT 保持邻居和内存中的签名记录，不承载用户数据；继续执行授权和防重放校验。
 - NAS 面板显示 DHT 待命或备用发现状态。修复赞赏地址加载，去掉收款图片外框，加入统计刷新按钮并对齐总览卡片。
 - 后台允许绑定明确的私网地址，保留登录与 Host / Origin 校验。
 
-## NKNGuard 0.2.17 预览版
+## NKNGuard 0.2.18 预览版
 
 ### 下载
 
 | 安装包 | 用途 |
 | --- | --- |
-| `NKNGuard-Android-0.2.18-preview.1.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
-| `NKNGuard-Setup-0.2.18-preview.1.exe` | Windows 10/11 x86_64 安装器 |
+| `NKNGuard-Android-0.2.18-preview.2.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
+| `NKNGuard-Setup-0.2.18-preview.2.exe` | Windows 10/11 x86_64 安装器 |
 | `NKNGuard-Windows-x86_64-preview.zip` | Windows 便携客户端，仍需官方 WireGuard |
-| `NKNGuard-fnOS-amd64-0.2.18-preview.1.fpk` | 飞牛 x86_64 应用中心安装包 |
-| `NKNGuard-fnOS-arm64-0.2.18-preview.1.fpk` | 飞牛 ARM64 应用中心安装包 |
+| `NKNGuard-fnOS-amd64-0.2.18-preview.2.fpk` | 飞牛 x86_64 应用中心安装包 |
+| `NKNGuard-fnOS-arm64-0.2.18-preview.2.fpk` | 飞牛 ARM64 应用中心安装包 |
 | `nknguard-linux-amd64` / `nknguard-linux-arm64` | Linux / NAS 独立服务程序 |
-| `NKNGuard-NAS-Update-linux-<架构>-0.2.18-preview.1.zip` | 独立服务：面板上传更新包 |
-| `NKNGuard-NAS-Update-fnos-<架构>-0.2.18-preview.1.zip` | FPK 安装：面板上传更新包 |
+| `NKNGuard-NAS-Update-linux-<架构>-0.2.18-preview.2.zip` | 独立服务：面板上传更新包 |
+| `NKNGuard-NAS-Update-fnos-<架构>-0.2.18-preview.2.zip` | FPK 安装：面板上传更新包 |
 | `release.json` / `release.json.sig` / `SHA256SUMS` | 发布签名目录与文件校验值 |
 
 ### 本次更新

@@ -7,7 +7,21 @@ fail() {
 }
 
 [ "$(id -u)" -eq 0 ] || fail 'NKNGuard 需要 root 权限管理 WireGuard；此 fnOS 不允许特权应用。'
-[ "$(uname -m)" = aarch64 ] || fail '此安装包只支持 ARM64/aarch64 飞牛设备。'
+package_root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+manifest_file=
+for root in "$package_root" "${TRIM_PKGINST_TEMP_DIR:-}" "${TRIM_TEMP_TPKFILE:-}" "${TRIM_PKGMETA:-}"; do
+  if [ -n "$root" ] && [ -f "$root/manifest" ]; then
+    manifest_file="$root/manifest"
+    break
+  fi
+done
+[ -n "$manifest_file" ] || fail '无法读取安装包架构信息，请重新下载完整安装包。'
+platform=$(awk -F= '$1 ~ /^[[:space:]]*platform[[:space:]]*$/ { gsub(/[[:space:]]/, "", $2); print $2 }' "$manifest_file")
+machine=$(uname -m)
+case "$platform:$machine" in
+  arm:aarch64|x86:x86_64) ;;
+  *) fail "安装包架构（$platform）与设备（$machine）不一致，请下载对应的 ARM64 或 x86_64 包。" ;;
+esac
 command -v wg >/dev/null 2>&1 || fail '缺少 wireguard-tools (wg)。'
 command -v ip >/dev/null 2>&1 || fail '缺少 iproute2 (ip)。'
 if ip link show nkg0 >/dev/null 2>&1; then
