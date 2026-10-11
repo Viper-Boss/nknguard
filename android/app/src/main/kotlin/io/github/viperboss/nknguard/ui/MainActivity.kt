@@ -521,7 +521,11 @@ class MainActivity : Activity(), NkgApp.Listener {
             row("自动尝试直连", if (status.optBoolean("direct_attempting")) "正在探测；失败后恢复中继" else if (seconds > 0) "约 ${seconds} 秒后再次尝试" else "等待 NAS 最新地址，后台自动重试")
             row("切换说明", "直连与中继共用同一个 NAS 虚拟 IP。探测时可能短暂停顿，失败后恢复现有中继。")
         }
-        if (connected) row("DHT 发现", if (!status.optBoolean("dht_enabled")) "未启用" else "已启用 · 本机连接 ${status.optInt("dht_peers")} 个节点")
+        if (connected) row("DHT 备用发现", when {
+            !status.optBoolean("dht_enabled") -> "未启用"
+            status.optBoolean("dht_fallback_active") -> "备用发现已启用 · ${status.optInt("dht_peers")} 个邻居"
+            else -> "NKN 优先 · 待命 · ${status.optInt("dht_peers")} 个邻居"
+        })
         val nasIP = status.optString("nas_virtual_ip")
         if (nasIP.isNotEmpty()) {
             row("NAS 虚拟 IP（点按复制）", nasIP, copyable = true)
