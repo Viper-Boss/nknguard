@@ -296,8 +296,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("config: wireguard.interface must not be empty")
 	}
 	address, err := netip.ParseAddrPort(c.Dashboard.Listen)
-	if err != nil || !address.Addr().IsLoopback() {
-		return fmt.Errorf("config: dashboard.listen must be a loopback IP and port, got %q", c.Dashboard.Listen)
+	if err != nil || address.Port() == 0 || !(address.Addr().IsLoopback() || address.Addr().IsPrivate()) {
+		return fmt.Errorf("config: dashboard.listen must be a specific loopback or private IP and nonzero port, got %q", c.Dashboard.Listen)
 	}
 	if err := c.ACL.Validate(); err != nil {
 		return err

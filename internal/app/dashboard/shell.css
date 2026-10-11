@@ -91,7 +91,12 @@ button:disabled { cursor: default; opacity: .45; }
 .panel { background: var(--surface); border-color: var(--line); border-radius: 14px; padding: 22px; box-shadow: none; }
 .panel h3 { color: #d6e3ef; font-size: 14px; font-weight: 600; }
 .panel-head { margin-bottom: 19px; gap: 15px; }
-.content-grid { gap: 12px; margin-top: 14px; }
+.content-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; align-items: stretch; }
+.content-grid > .panel { min-width: 0; display: flex; flex-direction: column; }
+.content-grid .panel-head { min-height: 48px; }
+.device-panel .device-list { min-height: 113px; display: flex; flex-direction: column; justify-content: center; }
+.connection-panel .route-footer { margin-top: auto; }
+@media (max-width: 760px) { .content-grid { grid-template-columns: minmax(0, 1fr); } }
 .text-button { color: #79c4b9; font-size: 11px; font-weight: 500; }
 .device-list { gap: 8px; }
 .device-item, .pending-item, .approved-item { border-color: #ffffff09; background: #ffffff02; border-radius: 10px; padding: 12px; }
@@ -198,3 +203,4 @@ td b { color: #d1dfec; font-weight: 500; }
 .logout-button:disabled { opacity: .5; cursor: wait; }
 
 .icon-sprite{position:absolute;overflow:hidden}
+.net-usage-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;color:#91a9bf;font-size:12px}.net-usage-actions .secondary-button{flex-shrink:0;padding:8px 14px}

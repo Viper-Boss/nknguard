@@ -146,6 +146,19 @@ func TestDashboardLoginOriginAndHostProtection(t *testing.T) {
 	}
 }
 
+func TestDashboardPrivateListenHostIsExact(t *testing.T) {
+	for _, host := range []string{"192.168.120.190:7878"} {
+		if !validDashboardHost(host, "192.168.120.190:7878") {
+			t.Fatal("configured LAN host rejected")
+		}
+	}
+	for _, host := range []string{"192.168.120.191:7878", "attacker.example:7878", "127.0.0.1:7878", "192.168.120.190:80"} {
+		if validDashboardHost(host, "192.168.120.190:7878") {
+			t.Fatalf("unexpected host accepted: %s", host)
+		}
+	}
+}
+
 func TestDashboardSessionExpiryRotationAndBound(t *testing.T) {
 	node := loginTestNode(t)
 	sessions := newDashboardSessions()

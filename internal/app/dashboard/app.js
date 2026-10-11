@@ -200,29 +200,26 @@ function renderUsage(status) {
   currentUsage = status;
   window.dispatchEvent(new CustomEvent('nknguard-usage', {detail: status}));
   const counts = status.counts || {};
-  setText('usage-day', countText(counts.day));
-  setText('usage-month', countText(counts.month));
-  setText('usage-quarter', countText(counts.quarter));
-  let note;
-  if (!status.enabled) note = '本机未参与统计。人数仍可查看。';
-  else if (status.last_check_in) note = `本机已参与统计 · 上次签到 ${new Date(status.last_check_in).toLocaleString()}`;
-  else note = '本机已参与统计 · 等待首次签到（写入区块约需 1 分钟）';
-  if (counts.error) note += ` · 部分数据读取失败：${counts.error}`;
-  else if (status.last_error) note += ` · 签到失败，稍后重试：${status.last_error}`;
-  setText('usage-note', note);
+  const missing = ['day','month','quarter'].filter(key => typeof counts[key] !== 'number').length;
+  byId('network-usage-message').textContent = missing ? `${missing} 项暂未读取成功，可稍后刷新` : '统计已更新';
 }
 
 async function refreshUsage(force) {
+  const button = byId('refresh-usage');
+  if (button.disabled) return;
+  button.disabled = true;
+  byId('network-usage-message').textContent = '正在读取统计…';
   try {
     const response = await dashboardFetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     renderUsage(await response.json());
   } catch (error) {
-    currentUsage = null;
-    window.dispatchEvent(new CustomEvent('nknguard-usage', {detail: {}}));
-    setText('usage-note', '读取使用人数失败');
+    byId('network-usage-message').textContent = currentUsage ? '刷新失败，保留上次结果，请稍后重试' : '暂时无法读取，请稍后刷新';
+  } finally {
+    button.disabled = false;
   }
 }
+byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
 
 async function postAction(route) {
   const response = await dashboardFetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
@@ -313,7 +310,7 @@ document.querySelectorAll('.nav-item').forEach(button => button.addEventListener
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => changeView(button.dataset.go)));
 byId('refresh').addEventListener('click', refresh);
 byId('refresh-logs').addEventListener('click', refreshLogs);
-byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
+
 byId('password-form').addEventListener('submit', changePassword);
 byId('new-invite').addEventListener('click', newInvite);
 byId('copy-invite').addEventListener('click', () => {

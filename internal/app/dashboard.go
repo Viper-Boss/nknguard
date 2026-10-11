@@ -21,9 +21,9 @@ import (
 //go:embed dashboard/*
 var dashboardAssets embed.FS
 
-// ServeDashboard exposes a local-only fnOS control panel. A remote browser can
-// reach it through an SSH port forward. A reverse proxy must preserve the
-// loopback Host and matching Origin; arbitrary forwarded headers are untrusted.
+// ServeDashboard exposes the control panel on its configured loopback or
+// specific private address. Proxies must preserve the allowed Host and matching
+// Origin; arbitrary forwarded headers are untrusted.
 func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	listener, err := net.Listen("tcp", d.Config.Dashboard.Listen)
 	if err != nil {
@@ -190,9 +190,8 @@ func tooManyAttempts(w http.ResponseWriter, retry time.Duration) {
 	http.Error(w, "too many wrong passwords; try again in "+strconv.Itoa(seconds)+" s", http.StatusTooManyRequests)
 }
 
-// Wrong-password throttling. The panel only listens on loopback, so every
-// client (SSH forward, fnOS reverse proxy) shares one address and the limit is
-// global: after loginFreeFailures consecutive wrong passwords each further
+// Wrong-password throttling is global across direct clients and forwarded
+// connections: after loginFreeFailures consecutive wrong passwords each further
 // attempt is refused for a delay that doubles up to loginMaxDelay. A correct
 // password resets the count. Checks are serialized so parallel guesses cannot
 // slip past the count.
@@ -284,9 +283,16 @@ func validDashboardHost(hostPort, listen string) bool {
 	if err != nil {
 		return false
 	}
-	_, listenPort, err := net.SplitHostPort(listen)
+	listenHost, listenPort, err := net.SplitHostPort(listen)
 	if err != nil || port != listenPort {
 		return false
 	}
-	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+	listenIP := net.ParseIP(listenHost)
+	if listenIP == nil {
+		return false
+	}
+	if listenIP.IsLoopback() {
+		return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+	}
+	return listenIP.IsPrivate() && listenIP.Equal(net.ParseIP(host))
 }

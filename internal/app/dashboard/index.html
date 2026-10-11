@@ -9,14 +9,13 @@
   <link rel="stylesheet" href="/pairing.css">
   <link rel="stylesheet" href="/identity.css">
   <link rel="stylesheet" href="/security.css">
-  <link rel="stylesheet" href="/usage.css">
   <link rel="stylesheet" href="/network-animation.css">
   <link rel="stylesheet" href="/shell.css">
-  <link rel="stylesheet" href="/support.css">
   <link rel="stylesheet" href="/nat-gauge.css">
+  <link rel="stylesheet" href="/support.css">
   <script src="/session.js" defer></script>
-  <script src="/nat-gauge.js" defer></script>
   <script src="/support.js" defer></script>
+  <script src="/nat-gauge.js" defer></script>
   <script src="/updates.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/network-animation.js" type="module"></script>
@@ -141,7 +140,8 @@
         </div>
       </dl>
 
-      <p class="net-card__note">共享 Topic 中的近期活跃身份数。统计窗口以订阅与续期策略为准，不代表实时在线数。</p>
+      <div class="net-usage-actions"><span id="network-usage-message" role="status">正在读取统计…</span><button class="secondary-button" id="refresh-usage">刷新统计</button></div>
+      <p class="net-card__note">共享 Topic 中的近期活跃身份数。统计窗口以订阅与续期策略为准，不代表实时在线数。横杠表示该项暂未读取成功。</p>
     </div>
   </article>
 <article class="net-card mesh-card" data-state="offline">
@@ -210,7 +210,6 @@
   </article>
   </div>
 </section>
-        <section class="panel usage-panel" aria-label="NKNGuard 使用人数"><div class="panel-head"><div><h3>NKNGuard 使用人数</h3><p>最近一段时间内运行过 NKNGuard 的设备数，来自 NKN 链上的匿名订阅</p></div><button class="secondary-button" id="refresh-usage">刷新</button></div><div class="usage-grid"><div><small>24 小时</small><strong id="usage-day">—</strong></div><div><small>30 天</small><strong id="usage-month">—</strong></div><div><small>90 天</small><strong id="usage-quarter">—</strong></div></div><p class="usage-note" id="usage-note">正在读取…</p></section>
         <div class="content-grid"><section class="panel device-panel"><div class="panel-head"><div><h3>最近设备</h3><p>在线路径由真实 WireGuard 握手确认</p></div><button class="text-button" data-go="devices">查看全部 →</button></div><div id="recent-devices" class="device-list"><div class="empty">正在查找设备…</div></div></section><section class="panel connection-panel"><div class="panel-head"><div><h3>连接方式</h3><p>直连优先，失败后走 NKN</p></div><span class="connection-symbol">⌁</span></div><div class="route-visual"><div class="route-end"><span>⌂</span><small>这台 NAS</small></div><div class="route-lines"><div class="route-line direct"><span class="route-dot"></span><b>WireGuard 直连</b></div><div class="route-line relay"><span class="route-dot"></span><b>NKN 加密中继</b></div></div><div class="route-end client"><span>▣</span><small>你的设备</small></div></div><div class="route-footer"><span><i class="legend direct-color"></i>直连 <b id="route-direct">0</b></span><span><i class="legend relay-color"></i>中继 <b id="route-relay">0</b></span><span><i class="legend idle-color"></i>等待 <b id="route-idle">0</b></span></div></section></div>
         <div class="info-strip"><span>✧</span><p><strong>连接提示</strong> 手机或电脑连接时会同时尝试上次可用路径和最新信标信息。停止使用后，客户端可主动断开；NAS 会继续在线等待下次连接。</p></div>
       </section>

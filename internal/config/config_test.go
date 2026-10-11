@@ -7,6 +7,23 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/acl"
 )
 
+func TestDashboardSpecificPrivateAddress(t *testing.T) {
+	for _, listen := range []string{"127.0.0.1:7878", "192.168.120.190:7878", "[fd00::1]:7878"} {
+		cfg := Default()
+		cfg.Dashboard.Listen = listen
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("%s: %v", listen, err)
+		}
+	}
+	for _, listen := range []string{"0.0.0.0:7878", "[::]:7878", "8.8.8.8:7878", "192.168.120.190:0"} {
+		cfg := Default()
+		cfg.Dashboard.Listen = listen
+		if cfg.Validate() == nil {
+			t.Fatalf("unexpected listen accepted: %s", listen)
+		}
+	}
+}
+
 const specExample = `version: 1
 
 device:
