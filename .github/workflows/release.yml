@@ -35,10 +35,13 @@ jobs:
       - name: build
         run: |
           make release VERSION="$TAG"
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
+          sh packaging/fnos/build-runtime.sh "$PWD/dist/fnos-runtime"
           curl -fL --retry 3 https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 -o "$RUNNER_TEMP/fnpack"
           chmod +x "$RUNNER_TEMP/fnpack"
-          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh amd64 "$TAG" "$PWD/dist/nknguard-linux-amd64" dist
-          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh arm64 "$TAG" "$PWD/dist/nknguard-linux-arm64" dist
+          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh amd64 "$TAG" "$PWD/dist/nknguard-linux-amd64" dist "$PWD/dist/fnos-runtime/amd64"
+          FNPACK="$RUNNER_TEMP/fnpack" sh packaging/fnos/build.sh arm64 "$TAG" "$PWD/dist/nknguard-linux-arm64" dist "$PWD/dist/fnos-runtime/arm64"
       - uses: actions/upload-artifact@v4
         with:
           name: linux

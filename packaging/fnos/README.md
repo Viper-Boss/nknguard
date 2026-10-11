@@ -1,15 +1,17 @@
 # 飞牛 FPK 安装包
 
-分别发布 x86_64（`amd64`）和 ARM64（`arm64`），不要跨架构安装。需要 `wg`、`ip`、应用中心可用的存储空间和 root 权限。首次打开网页向导由用户设置管理用户名和密码，原有身份与配置在升级时保留。
+分别发布 x86_64（`amd64`）和 ARM64（`arm64`），不要跨架构安装。安装包内置对应架构的 `wg` 与 `wireguard-go`，无需预装 wireguard-tools。需要系统 `ip`、应用中心可用的存储空间和 root 权限。首次打开网页向导由用户设置管理用户名和密码，原有身份与配置在升级时保留。
 
 ## 构建
 
 从仓库根目录运行（fnpack 使用飞牛官方工具）：
 
 ```sh
-make release VERSION=v0.2.18-preview.2
-sh packaging/fnos/build.sh amd64 v0.2.18-preview.2 "$PWD/dist/nknguard-linux-amd64" dist
-sh packaging/fnos/build.sh arm64 v0.2.18-preview.2 "$PWD/dist/nknguard-linux-arm64" dist
+make release VERSION=v0.2.18-preview.3
+# 构建机需 gcc、aarch64-linux-gnu-gcc 与 qemu-aarch64
+sh packaging/fnos/build-runtime.sh "$PWD/dist/fnos-runtime"
+sh packaging/fnos/build.sh amd64 v0.2.18-preview.3 "$PWD/dist/nknguard-linux-amd64" dist "$PWD/dist/fnos-runtime/amd64"
+sh packaging/fnos/build.sh arm64 v0.2.18-preview.3 "$PWD/dist/nknguard-linux-arm64" dist "$PWD/dist/fnos-runtime/arm64"
 ```
 
 模板中的 `platform` 会分别设置为 `x86` 和 `arm`，每个 FPK 只包含对应二进制。构建目录不包含配置、密钥或安装过程中生成的资料。
@@ -31,3 +33,7 @@ sh packaging/fnos/build.sh arm64 v0.2.18-preview.2 "$PWD/dist/nknguard-linux-arm
 修复 ARM64 和 x86_64 包的空安装向导。飞牛 1.2.0302 拒绝已有但不足 10 字节的向导文件，并提示应用包不符合系统要求；新版显示有效的只读说明，管理账号仍在首次打开网页时设置。修复 x86 包错误地只允许 ARM64 的安装脚本。
 
 构建前后校验向导、平台、版本、ELF 架构、脚本换行与权限，以及 app.tgz 校验值。回归测试：`python3 packaging/fnos/test-packaging.py`。参考：[飞牛用户向导文档](https://developer.fnnas.com/docs/core-concepts/wizard/)。
+
+## 0.2.18-preview.3 依赖与图标修复
+
+内置静态编译的 WireGuard 工具及用户态备用实现，在应用目录运行，不写入系统工具目录。安装、启动、停止和升级统一使用应用工具路径，并补全系统管理工具路径。发布构建实际执行 x86 工具及 ARM64 模拟运行测试，校验两种架构和静态链接；FPK 内附第三方许可与 wg 源码。安装页与应用图标使用 NKNGuard 的蓝绿色 N 标识。

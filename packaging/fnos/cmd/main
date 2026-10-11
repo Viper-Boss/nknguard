@@ -2,6 +2,8 @@
 set -eu
 
 bin="${TRIM_APPDEST:?}/bin/nknguard"
+PATH="$TRIM_APPDEST/bin:$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
 cfg="${TRIM_PKGETC:?}/config.yaml"
 data="${TRIM_PKGVAR:?}"
 pidfile="$data/daemon.pid"

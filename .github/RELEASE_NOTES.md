@@ -1,5 +1,8 @@
 ## 本版更新
 
+- 飞牛包内置对应架构的 wg 和 wireguard-go，修复缺少 wireguard-tools 导致无法安装；统一安装与运行工具路径，安装时无需下载依赖。
+- 替换飞牛模板图标为 NKNGuard 蓝绿色 N 标识。发布前执行 x86 / ARM64 工具运行测试、静态链接及架构校验。
+
 - 修复 ARM64 与 x86_64 飞牛 FPK 的空安装向导，解决 1.2.0302 显示应用包不符合系统要求。
 - 修正 x86 安装脚本的架构检查；发布前自动验证 FPK 向导、二进制架构、权限、版本和校验值。
 
@@ -14,14 +17,14 @@
 
 | 安装包 | 用途 |
 | --- | --- |
-| `NKNGuard-Android-0.2.18-preview.2.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
-| `NKNGuard-Setup-0.2.18-preview.2.exe` | Windows 10/11 x86_64 安装器 |
+| `NKNGuard-Android-0.2.18-preview.3.apk` | Android 8.0+，保持维护者原签名，可覆盖升级既有 debug 客户端 |
+| `NKNGuard-Setup-0.2.18-preview.3.exe` | Windows 10/11 x86_64 安装器 |
 | `NKNGuard-Windows-x86_64-preview.zip` | Windows 便携客户端，仍需官方 WireGuard |
-| `NKNGuard-fnOS-amd64-0.2.18-preview.2.fpk` | 飞牛 x86_64 应用中心安装包 |
-| `NKNGuard-fnOS-arm64-0.2.18-preview.2.fpk` | 飞牛 ARM64 应用中心安装包 |
+| `NKNGuard-fnOS-amd64-0.2.18-preview.3.fpk` | 飞牛 x86_64 应用中心安装包 |
+| `NKNGuard-fnOS-arm64-0.2.18-preview.3.fpk` | 飞牛 ARM64 应用中心安装包 |
 | `nknguard-linux-amd64` / `nknguard-linux-arm64` | Linux / NAS 独立服务程序 |
-| `NKNGuard-NAS-Update-linux-<架构>-0.2.18-preview.2.zip` | 独立服务：面板上传更新包 |
-| `NKNGuard-NAS-Update-fnos-<架构>-0.2.18-preview.2.zip` | FPK 安装：面板上传更新包 |
+| `NKNGuard-NAS-Update-linux-<架构>-0.2.18-preview.3.zip` | 独立服务：面板上传更新包 |
+| `NKNGuard-NAS-Update-fnos-<架构>-0.2.18-preview.3.zip` | FPK 安装：面板上传更新包 |
 | `release.json` / `release.json.sig` / `SHA256SUMS` | 发布签名目录与文件校验值 |
 
 ### 本次更新

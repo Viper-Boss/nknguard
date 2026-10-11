@@ -29,3 +29,9 @@ Their licenses apply to those modules. Check each dependency's LICENSE at
 the version you build against before distributing binaries.
 
 The default (untagged) build also uses go-qrcode for the local dashboard.
+
+fnOS packages also ship separate upstream WireGuard executables:
+  - wireguard-tools 1.0.20260223 (GPL-2.0), https://git.zx2c4.com/wireguard-tools/
+  - wireguard-go (MIT), pinned by go.mod, https://git.zx2c4.com/wireguard-go/
+Their licenses are in app/share/licenses. The complete wireguard-tools source
+and its build script are included in app/share/sources in each FPK.

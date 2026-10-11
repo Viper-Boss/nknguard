@@ -8,6 +8,9 @@ fail() {
 
 [ "$(id -u)" -eq 0 ] || fail '安装回调没有 root 权限，无法初始化 WireGuard 服务。'
 bin="${TRIM_APPDEST:?}/bin/nknguard"
+PATH="$TRIM_APPDEST/bin:$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+"$TRIM_APPDEST/bin/wg" --version >/dev/null 2>&1 || fail '应用内 WireGuard 工具无法运行，请重新下载对应架构的安装包。'
 cfg="${TRIM_PKGETC:?}/config.yaml"
 data="${TRIM_PKGVAR:?}"
 [ -x "$bin" ] || fail '应用包内缺少对应架构的 NKNGuard 可执行文件。'

@@ -5,6 +5,7 @@ arch=${1:?usage: build.sh amd64|arm64 VERSION BINARY [OUTPUT_DIR]}
 version=${2:?}
 binary=${3:?}
 output=${4:-dist}
+runtime=${5:?bundled runtime directory is required}
 case "$arch" in amd64) platform=x86;; arm64) platform=arm;; *) exit 2;; esac
 magic=$(od -An -tx1 -N6 "$binary" | tr -d ' \n')
 machine=$(od -An -tx1 -j18 -N2 "$binary" | tr -d ' \n')
@@ -19,12 +20,13 @@ output=$(CDPATH= cd -- "$output" && pwd)
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT INT TERM
 cp -R "$root/packaging/fnos/." "$stage/"
-rm -f "$stage/build.sh" "$stage/README.md" "$stage/verify-package.py" "$stage/test-packaging.py"
+rm -f "$stage/build.sh" "$stage/build-runtime.sh" "$stage/README.md" "$stage/verify-package.py" "$stage/test-packaging.py"
 rm -rf "$stage/__pycache__"
 mkdir -p "$stage/app/bin"
 cp "$root/LICENSE" "$root/NOTICE" "$stage/app/"
 cp "$binary" "$stage/app/bin/nknguard"
-chmod 755 "$stage/app/bin/nknguard" "$stage"/cmd/*
+cp -R "$runtime/." "$stage/app/"
+chmod 755 "$stage/app/bin/"* "$stage"/cmd/*
 sed -i "s/^platform[[:space:]]*=.*/platform = $platform/;s/^version[[:space:]]*=.*/version = ${version#v}/" "$stage/manifest"
 # A valid ELF alone is insufficient: fnOS dispatches installation by manifest.
 grep -qx "platform = $platform" "$stage/manifest"
