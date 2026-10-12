@@ -47,6 +47,7 @@ type Transport struct {
 	wg         sync.WaitGroup
 	health     healthState
 	healthOnce sync.Once
+	bootstrap  *bootstrapState
 }
 
 // New wraps a connected client and starts the receive pump.
@@ -141,6 +142,9 @@ func (t *Transport) pump() {
 				continue
 			}
 			if t.health.accept(nknclient.NormaliseAddress(message.Src), message.Data, time.Now()) {
+				continue
+			}
+			if t.acceptBootstrap(nknclient.NormaliseAddress(message.Src), message.Data) {
 				continue
 			}
 			envelope, err := protocol.Unmarshal(message.Data)

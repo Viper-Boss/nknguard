@@ -7,11 +7,11 @@
 从仓库根目录运行（fnpack 使用飞牛官方工具）：
 
 ```sh
-make release VERSION=v0.2.18-preview.4
+make release VERSION=v0.2.19
 # 构建机需 gcc、aarch64-linux-gnu-gcc 与 qemu-aarch64
 sh packaging/fnos/build-runtime.sh "$PWD/dist/fnos-runtime"
-sh packaging/fnos/build.sh amd64 v0.2.18-preview.4 "$PWD/dist/nknguard-linux-amd64" dist "$PWD/dist/fnos-runtime/amd64"
-sh packaging/fnos/build.sh arm64 v0.2.18-preview.4 "$PWD/dist/nknguard-linux-arm64" dist "$PWD/dist/fnos-runtime/arm64"
+sh packaging/fnos/build.sh amd64 v0.2.19 "$PWD/dist/nknguard-linux-amd64" dist "$PWD/dist/fnos-runtime/amd64"
+sh packaging/fnos/build.sh arm64 v0.2.19 "$PWD/dist/nknguard-linux-arm64" dist "$PWD/dist/fnos-runtime/arm64"
 ```
 
 模板中的 `platform` 会分别设置为 `x86` 和 `arm`，每个 FPK 只包含对应二进制。构建目录不包含配置、密钥或安装过程中生成的资料。
@@ -41,3 +41,7 @@ sh packaging/fnos/build.sh arm64 v0.2.18-preview.4 "$PWD/dist/nknguard-linux-arm
 ## 0.2.18-preview.4 桌面与访问修复
 
 补齐 `desktop_uidir`、桌面入口配置和两种尺寸图标。启动使用 `--dashboard-listen auto-lan:7878`，在运行时覆盖旧版的本机监听地址，不改写已有配置和密钥。保留网页登录与 Host / Origin 校验。参考：[飞牛应用入口文档](https://developer.fnnas.com/docs/core-concepts/app-entry/)。
+
+## 0.2.19 自动准备更新
+
+运行后自动检查正式发布并下载本架构签名更新包，验签后可在系统更新页面点击“立即更新”。安装仍交给飞牛应用中心，保留账号和配对。也可继续手动上传 FPK 覆盖升级。

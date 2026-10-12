@@ -68,10 +68,8 @@ type Config struct {
 		DHT            bool     `json:"dht"`
 		BootstrapPeers []string `json:"bootstrap_peers,omitempty"`
 		LANDiscovery   bool     `json:"lan_discovery"`
-		// NKNTopic makes the node findable through an NKN pub/sub topic
-		// derived from the join secret. It is on by default because it is
-		// the only zero-configuration way for two nodes on different networks
-		// to meet; see pkg/rendezvous/nkntopic for what it exposes.
+		// NKNTopic enables the public DHT bootstrap topic. It exposes an NKN
+		// address and public libp2p endpoints, never private membership records.
 		NKNTopic bool `json:"nkn_topic"`
 		// StaticPeers are NKN addresses introduced to directly. Two nodes
 		// that list each other need no DHT and no topic at all.

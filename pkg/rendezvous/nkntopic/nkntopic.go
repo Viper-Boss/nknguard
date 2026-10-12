@@ -17,6 +17,7 @@ package nkntopic
 
 import (
 	"context"
+	random "math/rand/v2"
 	"sync"
 	"time"
 
@@ -47,6 +48,7 @@ type Source struct {
 	lastAttempt time.Time
 	lastList    time.Time
 	cached      []string
+	attempts    int
 }
 
 // New returns a topic rendezvous.
@@ -55,17 +57,37 @@ func New(client *nkn.MultiClient, topic string, seedRPC []string) *Source {
 }
 
 // Announce subscribes (or renews) when due.
-func (s *Source) Announce(context.Context) error {
+func (s *Source) Announce(ctx context.Context) error {
 	s.mu.Lock()
 	now := time.Now()
 	due := s.lastSub.IsZero() || now.Sub(s.lastSub) >= RenewEvery
-	retrying := !s.lastAttempt.IsZero() && now.Sub(s.lastAttempt) < RetryEvery && s.lastSub.Before(s.lastAttempt)
+	retry := RetryEvery
+	if s.attempts >= 3 {
+		retry = time.Hour
+	}
+	retrying := !s.lastAttempt.IsZero() && now.Sub(s.lastAttempt) < retry && s.lastSub.Before(s.lastAttempt)
 	if !due || retrying {
 		s.mu.Unlock()
 		return nil
 	}
 	s.lastAttempt = now
 	s.mu.Unlock()
+	config := &nkn.RPCConfig{RPCTimeout: 10000, RPCConcurrency: 2, SeedRPCServerAddr: nkn.NewStringArray(s.seedRPC...)}
+	height, err := nkn.GetHeightContext(ctx, config)
+	if err != nil {
+		return err
+	}
+	subscription, err := nkn.GetSubscriptionContext(ctx, s.topic, nknclient.NormaliseAddress(s.client.Address()), config)
+	if err != nil {
+		return err
+	}
+	if subscription != nil && subscription.ExpiresAt > height+DurationBlocks/2 {
+		s.mu.Lock()
+		s.lastSub = time.Now()
+		s.attempts = 0
+		s.mu.Unlock()
+		return nil
+	}
 
 	// Fee nil = zero fee; the subscription costs nothing beyond the on-chain
 	// record itself, as in NasSimHub's nknpeer tool.
@@ -73,7 +95,9 @@ func (s *Source) Announce(context.Context) error {
 		return err
 	}
 	s.mu.Lock()
-	s.lastSub = time.Now()
+	// A submitted zero-fee transaction can be dropped. Mark success only
+	// after its expiry is visible on chain at the next bounded check.
+	s.attempts++
 	s.mu.Unlock()
 	return nil
 }
@@ -114,6 +138,48 @@ func (s *Source) Addresses(context.Context) ([]string, error) {
 	s.lastList = time.Now()
 	s.mu.Unlock()
 	return addresses, nil
+}
+
+// SampleAddresses caps public-topic RPC results and rotates the page so the
+// first subscribers do not become permanent central bootstrap servers.
+func (s *Source) SampleAddresses(ctx context.Context, limit int) ([]string, error) {
+	if limit < 1 || limit > 64 {
+		limit = 64
+	}
+	cfg := &nkn.RPCConfig{RPCTimeout: 10000, RPCConcurrency: 2, SeedRPCServerAddr: nkn.NewStringArray(s.seedRPC...)}
+	count, err := nkn.GetSubscribersCountContext(ctx, s.topic, nil, cfg)
+	if err != nil {
+		return nil, err
+	}
+	offset := 0
+	if count > limit {
+		offset = random.IntN(count - limit + 1)
+	}
+	result, err := nkn.GetSubscribersContext(ctx, s.topic, offset, limit, false, false, nil, cfg)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	seen := map[string]bool{}
+	if result != nil {
+		if result.Subscribers != nil {
+			for a := range result.Subscribers.Map() {
+				if !seen[a] && len(out) < limit {
+					seen[a] = true
+					out = append(out, a)
+				}
+			}
+		}
+		if result.SubscribersInTxPool != nil {
+			for a := range result.SubscribersInTxPool.Map() {
+				if !seen[a] && len(out) < limit {
+					seen[a] = true
+					out = append(out, a)
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // Close unsubscribes best-effort. A failure is harmless: the subscription

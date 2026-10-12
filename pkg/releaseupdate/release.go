@@ -1,5 +1,5 @@
 // Package releaseupdate reads the maintainer-signed GitHub release catalogue.
-// Checking is explicit; it never installs a downloaded executable.
+// Automatic checks can prepare downloads; installation is always explicit.
 package releaseupdate
 
 import (
@@ -44,6 +44,7 @@ type Result struct {
 	Available   bool      `json:"available"`
 	ReleaseURL  string    `json:"release_url"`
 	DownloadURL string    `json:"download_url,omitempty"`
+	BundleURL   string    `json:"bundle_url,omitempty"`
 	Asset       *Asset    `json:"asset,omitempty"`
 	CheckedAt   time.Time `json:"checked_at"`
 }
@@ -125,7 +126,7 @@ func allowedURL(u *url.URL) bool {
 	return strings.HasPrefix(u.Path, "/"+Repository+"/releases/")
 }
 
-// Check includes preview releases because this project currently ships previews.
+// Check selects only published releases marked stable on GitHub.
 // Unsigned older releases are shown only as a release page, never executable downloads.
 func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 	r := Result{Current: current, ReleaseURL: ReleaseURL, CheckedAt: time.Now().UTC()}
@@ -134,9 +135,10 @@ func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 		return r, err
 	}
 	var releases []struct {
-		Tag    string `json:"tag_name"`
-		Draft  bool   `json:"draft"`
-		Assets []struct {
+		Tag        string `json:"tag_name"`
+		Prerelease bool   `json:"prerelease"`
+		Draft      bool   `json:"draft"`
+		Assets     []struct {
 			Name   string `json:"name"`
 			URL    string `json:"browser_download_url"`
 			APIURL string `json:"url"`
@@ -146,11 +148,11 @@ func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 		return r, err
 	}
 	for _, release := range releases {
-		if release.Draft || !semver.IsValid(version(release.Tag)) || (r.Latest != "" && !Newer(release.Tag, r.Latest)) {
+		if release.Draft || release.Prerelease || !semver.IsValid(version(release.Tag)) || (r.Latest != "" && !Newer(release.Tag, r.Latest)) {
 			continue
 		}
 		r.Latest, r.ReleaseURL = release.Tag, ReleaseURL+"/tag/"+release.Tag
-		r.Asset, r.DownloadURL = nil, ""
+		r.Asset, r.DownloadURL, r.BundleURL = nil, "", ""
 		locations := map[string]string{}
 		for _, a := range release.Assets {
 			locations[a.Name] = a.URL
@@ -179,6 +181,7 @@ func Check(ctx context.Context, current, kind, arch string) (Result, error) {
 			if a.Kind == kind && a.Arch == arch && locations[a.Name] != "" {
 				asset := a
 				r.Asset, r.DownloadURL = &asset, locations[a.Name]
+				r.BundleURL = locations["NKNGuard-NAS-Update-"+kind+"-"+arch+"-"+strings.TrimPrefix(release.Tag, "v")+".zip"]
 				break
 			}
 		}

@@ -15,7 +15,6 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/nknclient"
 	"github.com/Viper-Boss/nknguard/pkg/relay/nknrelay"
 	"github.com/Viper-Boss/nknguard/pkg/rendezvous"
-	"github.com/Viper-Boss/nknguard/pkg/rendezvous/nkntopic"
 	"github.com/Viper-Boss/nknguard/pkg/signaling/nknsignal"
 )
 
@@ -51,9 +50,8 @@ func openNKN(ctx context.Context, cfg config.Config, keystore *identity.Keystore
 	transport := nknsignal.New(client)
 	transport.StartHealthMonitor()
 	sources := rendezvous.Multi{rendezvous.Static(cfg.Discovery.StaticPeers)}
-	if cfg.Discovery.NKNTopic {
-		sources = append(sources, nkntopic.New(client, key.Rendezvous(), nknclient.SeedRPCList(cfg.NKN.SeedRPC)))
-	}
+	// Paired devices rendezvous through the approved NAS address. Public DHT
+	// bootstrap is started separately, never by exposing private mesh records.
 	plane := &ControlPlane{
 		Signaling:  transport,
 		Rendezvous: sources,

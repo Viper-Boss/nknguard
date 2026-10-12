@@ -3,6 +3,7 @@ package mobile
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/netip"
 	"sync"
 	"time"
@@ -313,6 +314,11 @@ func (s *session) run(ctx context.Context, device interface{ DeviceID() string }
 			_ = plane.Close()
 			s.setPhase(PhaseError, err.Error())
 			return
+		}
+		if bootstrap, ok := plane.Signaling.(interface {
+			StartDHTBootstrap(context.Context, any, []string, *slog.Logger)
+		}); ok {
+			bootstrap.StartDHTBootstrap(ctx, controller.Discovery, seedRPC, a.Logger)
 		}
 		s.runController(ctx, plane, controller, controllerDone)
 		return

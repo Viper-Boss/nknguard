@@ -36,7 +36,7 @@ func (d *Daemon) ServeDashboard(ctx context.Context) (io.Closer, error) {
 	}
 	logins := newLoginThrottle()
 	mux := http.NewServeMux()
-	d.registerUpdates(mux)
+	d.registerUpdates(mux, ctx)
 	mux.HandleFunc("GET /api/support", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, supportAddresses)
 	})

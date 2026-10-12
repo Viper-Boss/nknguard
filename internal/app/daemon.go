@@ -288,6 +288,13 @@ func runDaemon(ctx context.Context, cfg config.Config, logOut io.Writer, newMana
 	if err := hub.Attach(plane.Signaling, plane.Relay, plane.Rendezvous); err != nil {
 		return err
 	}
+	if cfg.Discovery.NKNTopic {
+		if bootstrap, ok := plane.Signaling.(interface {
+			StartDHTBootstrap(context.Context, any, []string, *slog.Logger)
+		}); ok {
+			bootstrap.StartDHTBootstrap(runCtx, controller.Discovery, cfg.NKN.SeedRPC, logger)
+		}
+	}
 	// Records loaded before the transport existed must teach it their addresses.
 	for _, record := range controller.Records() {
 		plane.Signaling.SetPeerAddress(record.DeviceID, record.NKNAddress)

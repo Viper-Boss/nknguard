@@ -64,6 +64,7 @@ var allowedProtocols = []string{
 	"/ipfs/ping/1.0.0",
 	ProtocolPrefix + "/kad/1.0.0",
 	string(RecordProtocol),
+	string(PrivateRecordProtocol),
 	string(SignalProtocol),
 }
 
@@ -78,8 +79,9 @@ type Options struct {
 	MapPorts   bool
 	// Rendezvous is membership.Key.Rendezvous(): the providers key. Derived
 	// from the join secret, so a network id alone does not enumerate members.
-	Rendezvous string
-	Logger     *slog.Logger
+	Rendezvous    string
+	RecordAllowed func(discovery.PeerRecord) bool
+	Logger        *slog.Logger
 	// Android supplies underlying addresses because net.Interfaces is restricted.
 	InterfaceAddresses func() ([]net.Addr, error)
 }
@@ -93,12 +95,14 @@ type Backend struct {
 	mdns   io.Closer
 	cancel context.CancelFunc
 
-	mu       sync.RWMutex
-	own      []byte
-	bindings map[string]peer.ID
-	dialing  map[peer.ID]bool
-	inbound  chan signaling.Inbound
-	slots    chan struct{}
+	mu          sync.RWMutex
+	own         []byte
+	bindings    map[string]peer.ID
+	publicPeers map[peer.ID]bool
+	publicHints map[peer.ID]bootstrapHint
+	dialing     map[peer.ID]bool
+	inbound     chan signaling.Inbound
+	slots       chan struct{}
 }
 
 // Open starts the host.
@@ -139,8 +143,9 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 	}
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	backend := &Backend{opts: opts, host: created, kad: kad, key: cid.NewCidV1(cid.Raw, hash), cancel: cancel,
-		bindings: make(map[string]peer.ID), dialing: make(map[peer.ID]bool), inbound: make(chan signaling.Inbound, 128), slots: make(chan struct{}, 16)}
+		bindings: make(map[string]peer.ID), publicPeers: make(map[peer.ID]bool), publicHints: make(map[peer.ID]bootstrapHint), dialing: make(map[peer.ID]bool), inbound: make(chan signaling.Inbound, 128), slots: make(chan struct{}, 16)}
 	created.SetStreamHandler(RecordProtocol, backend.serveRecord)
+	created.SetStreamHandler(PrivateRecordProtocol, backend.servePrivateRecord)
 	created.SetStreamHandler(SignalProtocol, backend.serveSignal)
 	prune(created, opts.Logger)
 
@@ -153,6 +158,7 @@ func Open(ctx context.Context, opts Options) (*Backend, error) {
 		}
 	}
 	_ = kad.Bootstrap(runCtx)
+	go backend.restoreBootstrapHints(runCtx)
 	for _, address := range opts.BootstrapPeers {
 		if info, err := parse(address); err == nil {
 			go func(info peer.AddrInfo) {
@@ -342,7 +348,29 @@ func prune(h host.Host, logger *slog.Logger) {
 }
 
 func (b *Backend) serveRecord(stream network.Stream) {
+	select {
+	case b.slots <- struct{}{}:
+	default:
+		_ = stream.Reset()
+		return
+	}
+	defer func() { <-b.slots }()
 	defer stream.Close()
+	if b.opts.RecordAllowed != nil {
+		b.mu.RLock()
+		allowed := false
+		for _, id := range b.bindings {
+			if id == stream.Conn().RemotePeer() {
+				allowed = true
+				break
+			}
+		}
+		b.mu.RUnlock()
+		if !allowed {
+			_ = stream.Reset()
+			return
+		}
+	}
 	_ = stream.SetDeadline(time.Now().Add(10 * time.Second))
 	b.mu.RLock()
 	own := b.own
@@ -409,15 +437,43 @@ func (b *Backend) fetch(ctx context.Context, info peer.AddrInfo) (discovery.Peer
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	stream, err := b.host.NewStream(fetchCtx, info.ID, RecordProtocol)
+	stream, err := b.host.NewStream(fetchCtx, info.ID, PrivateRecordProtocol)
+	private := err == nil
+	if err != nil {
+		stream, err = b.host.NewStream(fetchCtx, info.ID, RecordProtocol)
+	}
 	if err != nil {
 		return discovery.PeerRecord{}, err
 	}
 	defer stream.Close()
 	_ = stream.SetDeadline(time.Now().Add(10 * time.Second))
-	raw, err := io.ReadAll(io.LimitReader(stream, discovery.MaxRecordBytes+1))
+	if private {
+		b.mu.RLock()
+		own := append([]byte(nil), b.own...)
+		b.mu.RUnlock()
+		if len(own) == 0 {
+			return discovery.PeerRecord{}, errors.New("no local discovery record")
+		}
+		own, err = b.sealPrivate(own, b.host.ID(), info.ID, "request")
+		if err != nil {
+			return discovery.PeerRecord{}, err
+		}
+		if _, err = stream.Write(own); err != nil {
+			return discovery.PeerRecord{}, err
+		}
+		if err = stream.CloseWrite(); err != nil {
+			return discovery.PeerRecord{}, err
+		}
+	}
+	raw, err := io.ReadAll(io.LimitReader(stream, discovery.MaxRecordBytes+65))
 	if err != nil {
 		return discovery.PeerRecord{}, err
+	}
+	if private {
+		raw, err = b.openPrivate(raw, info.ID, b.host.ID(), "response")
+		if err != nil {
+			return discovery.PeerRecord{}, err
+		}
 	}
 	return discovery.UnmarshalRecord(raw)
 }
