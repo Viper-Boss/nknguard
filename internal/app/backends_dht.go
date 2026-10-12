@@ -20,12 +20,13 @@ func init() { discoveryFactory = openDHT; portMapperFactory = nat.NewRouterCandi
 
 func openDHT(ctx context.Context, cfg config.Config, key *membership.Key, logger *slog.Logger) (discovery.Discovery, error) {
 	return dht.Open(ctx, dht.Options{
-		StateDir:       filepath.Join(cfg.Paths.StateDir, "dht"),
-		BootstrapPeers: cfg.Discovery.BootstrapPeers,
-		LANDiscovery:   cfg.Discovery.LANDiscovery,
-		Rendezvous:     key.Rendezvous(),
-		Logger:         logger,
-		MapPorts:       cfg.NAT.PortMapping,
+		StateDir:         filepath.Join(cfg.Paths.StateDir, "dht"),
+		BootstrapPeers:   cfg.Discovery.BootstrapPeers,
+		LANDiscovery:     cfg.Discovery.LANDiscovery,
+		Rendezvous:       key.Rendezvous(),
+		Logger:           logger,
+		MapPorts:         cfg.NAT.PortMapping,
+		PrivateRecordKey: key.DiscoveryEncryptionKey(),
 		RecordAllowed: func(record discovery.PeerRecord) bool {
 			if record.Verify(key.NetworkID(), time.Now()) != nil || key.Verify(record.DeviceID, record.RootPublicKey, record.MembershipProof) != nil {
 				return false

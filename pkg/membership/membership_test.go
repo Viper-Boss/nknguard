@@ -1,6 +1,23 @@
 package membership
 
-import "testing"
+import (
+	"bytes"
+	"crypto/sha256"
+	"testing"
+)
+
+func TestPrivateDiscoveryKeySeparation(t *testing.T) {
+	network, _ := NewNetworkID()
+	secret, _ := NewJoinSecret()
+	other, _ := NewJoinSecret()
+	a, _ := Derive(network, secret)
+	b, _ := Derive(network, secret)
+	outsider, _ := Derive(network, other)
+	public := sha256.Sum256([]byte("NKNGuard-private-record-v2:" + a.Rendezvous()))
+	if len(a.DiscoveryEncryptionKey()) != 32 || !bytes.Equal(a.DiscoveryEncryptionKey(), b.DiscoveryEncryptionKey()) || bytes.Equal(a.DiscoveryEncryptionKey(), outsider.DiscoveryEncryptionKey()) || bytes.Equal(a.DiscoveryEncryptionKey(), public[:]) {
+		t.Fatal("discovery encryption key is not private and separated")
+	}
+}
 
 func TestProofBindsDeviceAndSecret(t *testing.T) {
 	network, _ := NewNetworkID()

@@ -121,6 +121,14 @@ func expand(secret []byte, networkID, label string) []byte {
 // NetworkID is the network this key belongs to.
 func (k *Key) NetworkID() string { return k.networkID }
 
+// DiscoveryEncryptionKey stays private even if a legacy rendezvous topic name
+// was published on chain. Never derive encryption from that public topic name.
+func (k *Key) DiscoveryEncryptionKey() []byte {
+	mac := hmac.New(sha256.New, k.proof)
+	mac.Write([]byte("nknguard/v2/discovery-record-encryption"))
+	return mac.Sum(nil)
+}
+
 // Proof produces the membership proof for one device.
 func (k *Key) Proof(deviceID string, rootPublicKey []byte) []byte {
 	mac := hmac.New(sha256.New, k.proof)

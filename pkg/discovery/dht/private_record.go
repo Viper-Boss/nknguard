@@ -19,11 +19,18 @@ import (
 const PrivateRecordProtocol = protocol.ID("/nknguard/record/2.0.0")
 
 // An untrusted public routing neighbor must not see the private record we
-// submit to authenticate a lookup. The rendezvous preimage is secret; the DHT
-// only knows its CID hash. Bind both peers and direction as AEAD associated data.
+// submit to authenticate a lookup. Production keys derive from the private
+// membership key, never a legacy public topic. Bind both peers and direction.
 func (b *Backend) privateRecordCipher() (cipher.AEAD, error) {
 	key := sha256.Sum256([]byte("NKNGuard-private-record-v2:" + b.opts.Rendezvous))
-	block, err := aes.NewCipher(key[:])
+	secret := b.opts.PrivateRecordKey
+	if len(secret) == 0 {
+		if b.opts.RecordAllowed != nil {
+			return nil, errors.New("private record encryption key required")
+		}
+		secret = key[:]
+	}
+	block, err := aes.NewCipher(secret)
 	if err != nil {
 		return nil, err
 	}

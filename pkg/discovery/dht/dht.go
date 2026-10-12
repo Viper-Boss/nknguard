@@ -79,9 +79,10 @@ type Options struct {
 	MapPorts   bool
 	// Rendezvous is membership.Key.Rendezvous(): the providers key. Derived
 	// from the join secret, so a network id alone does not enumerate members.
-	Rendezvous    string
-	RecordAllowed func(discovery.PeerRecord) bool
-	Logger        *slog.Logger
+	Rendezvous       string
+	RecordAllowed    func(discovery.PeerRecord) bool
+	PrivateRecordKey []byte
+	Logger           *slog.Logger
 	// Android supplies underlying addresses because net.Interfaces is restricted.
 	InterfaceAddresses func() ([]net.Addr, error)
 }

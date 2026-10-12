@@ -7,6 +7,7 @@ import (
 	"github.com/Viper-Boss/nknguard/pkg/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,12 +15,13 @@ import (
 func TestPublicNeighborDoesNotGainPrivateRecordAccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	a, err := Open(ctx, Options{StateDir: t.TempDir(), Rendezvous: "private"})
+	secret := []byte(strings.Repeat("x", 32))
+	a, err := Open(ctx, Options{StateDir: t.TempDir(), Rendezvous: "private", PrivateRecordKey: secret})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := Open(ctx, Options{StateDir: t.TempDir(), Rendezvous: "private", RecordAllowed: func(r discovery.PeerRecord) bool { return r.NetworkID == "approved" }})
+	b, err := Open(ctx, Options{StateDir: t.TempDir(), Rendezvous: "private", PrivateRecordKey: secret, RecordAllowed: func(r discovery.PeerRecord) bool { return r.NetworkID == "approved" }})
 	if err != nil {
 		t.Fatal(err)
 	}
