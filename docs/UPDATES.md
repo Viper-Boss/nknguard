@@ -27,7 +27,7 @@ NAS 更新只支持现有 `nknguard.service` 独立服务与标准应用中心�
 
 ## Windows
 
-在 **应用更新 → 检查更新** 查看新版本并打开发布页，下载 Windows 安装器。在托盘菜单中退出 NKNGuard 后启动安装器，可覆盖升级。配对状态保存在用户资料目录，不会因覆盖安装被重建。Windows 的 VPN 仍需官方 WireGuard for Windows。
+在 **应用更新 → 检查更新** 查看新版本并打开发布页，下载 Windows 安装器。在托盘菜单中退出 NKNGuard 后启动安装器，可覆盖升级。配对状态保存在用户资料目录，不会因覆盖安装被重建。0.2.20 起 Windows 安装器随附官方 WireGuard，缺少时请求管理员授权并离线安装；便携包请完整解压、保留 deps 目录，使用客户端“安装 WireGuard”按钮。已有依赖不会被强制替换，卸载 NKNGuard 也不卸载共享的 WireGuard。
 
 ## 维护者发布流程
 

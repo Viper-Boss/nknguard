@@ -21,8 +21,7 @@ NKN 获取最新信标；直连未成功时回退到 NKN 中继。窗口显示�
 ## 准备
 
 1. 在 NAS 上按 [配对指南](PAIRING.md) 安装并启动 NKNGuard，打开其本地管理面板。
-2. 在 Windows 10/11 上安装[官方 WireGuard for Windows](https://www.wireguard.com/install/)。
-   客户端调用安装目录中的 `wireguard.exe`、`wg.exe` 管理隧道。
+2. 推荐使用 NKNGuard 安装器：缺少依赖时会请求管理员授权安装随附的官方 WireGuard。便携版请完整解压并保留 deps 目录，可在客户端点击“安装 WireGuard”。也可自行安装[官方 WireGuard for Windows](https://www.wireguard.com/install/)。
 3. 从 [Releases](https://github.com/Viper-Boss/nknguard/releases) 下载并解压
    `NKNGuard-Windows-preview.zip`，运行其中的 `NKNGuard-Windows.exe`。首次建立连接时 Windows
    会请求管理员授权。
@@ -85,6 +84,6 @@ go build -tags "nknsdk libp2pdht" -trimpath -ldflags "-H=windowsgui -X main.guiB
 
 ## 测试情况
 
-界面代码已通过 Windows 交叉编译和单元测试，并在 Wine 中运行检查过布局（上面的截图即来自 Wine，
-数据为演示数据）。真实 Windows 上的托盘、UAC 授权、WireGuard 隧道，以及实际 fnOS 与多种 NAT 下的
-端到端验证仍待完成；请先在非关键设备上试用，并通过 [安全报告](../SECURITY.md) 反馈漏洞。
+0.2.20 已通过 Windows 原生全量回归、安装/覆盖升级/卸载验收、长 Unicode 路径管道通信，以及普通用户界面到管理员后台的跨 UAC 通信测试。真实官方 WireGuard 隧道与用户态对端完成加密 UDP 双向回显；模拟丢失首次配对请求和首次批准消息后可恢复配对。上方旧截图来自 Wine 演示数据。
+
+尚未覆盖所有 Windows 版本、安全软件与运营商组合，也未完成新 Windows 用户到生产 NAS 的首次配对、直连和强制中继全链路验收。遇到问题请保留版本与诊断信息。

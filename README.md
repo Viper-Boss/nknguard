@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | 🗄️ **NAS / Linux**（ARM64，飞牛 ARM 机型） | `nknguard-linux-arm64` | 需要 root 与 `wireguard-tools`，见[安装 NAS 端](#1-安装-nas-端) |
 | 🗄️ **NAS / Linux**（x86_64） | `nknguard-linux-amd64` | 同上 |
-| 🪟 **Windows 10/11** | `NKNGuard-Windows-x86_64-preview.zip` | 原生桌面程序，带托盘图标；需要先安装 [WireGuard for Windows](https://www.wireguard.com/install/) |
+| 🪟 **Windows 10/11** | `NKNGuard-Windows-x86_64-preview.zip` | 原生桌面程序，带托盘图标；0.2.20 起随附官方 WireGuard，缺失时可直接安装（便携版保留 deps 目录） |
 | 🤖 **Android 8.0+** | `NKNGuard-Android-preview.apk` | 维护者交付的 APK 使用持续保留的签名证书，可覆盖安装；原始 CI 包签名可能不同 |
 
 **更新：** NAS 在“系统更新”检查版本并上传对应架构的签名更新包；Android 支持检查、下载和导入本地 APK；Windows 在“应用更新”检查并打开发布页。更新说明见[升级指南](docs/UPDATES.md)。飞牛应用中心需要可用数据卷，安装包构建不代表所有机型已完成实机验收。
@@ -234,7 +234,7 @@ nkn:
 - **中继很慢。** 走 NKN 会话，吞吐远低于直连，只是兜底。
 - **内核 WireGuard 独占 UDP 端口**，公网端口根据探测 socket 推断（假设 NAT 保持端口不变）。大多数家用路由器成立，部分不成立，见 [NAT 穿透](docs/NAT_TRAVERSAL.md)。
 - **成员证明仍基于共享密钥。** NAS 按批准名单执行单设备撤销；若共享密钥或设备私钥泄露，需要重建网络凭证，自动轮换尚未实现。
-- **客户端是预览版。** Windows 版为原生窗口，需先安装 WireGuard for Windows。 仅 IPv4 覆盖网络；Android 可保存多台 NAS 的独立配对，一次连接一台，暂未加入开机自启。
+- **客户端是预览版。** Windows 版为原生窗口，安装器会自动补齐缺失的官方 WireGuard；便携版可在客户端安装随附依赖。 仅 IPv4 覆盖网络；Android 可保存多台 NAS 的独立配对，一次连接一台，暂未加入开机自启。
 - **使用人数统计是公开的。** 每台运行设备每天自动在三个公开 NKN 主题上登记一个匿名公钥，提交时 NKN 节点能看到连接 IP；任何人都能向这些主题提交订阅，人数仅供参考。
 - **不匿名。** WireGuard 端点会向对端暴露 IP，NKN 地址可被长期关联，STUN 服务器能看到你的公网地址。
 - **国内 seed 是社区节点**，地址可能变化，失效时会自动回退官方节点。
