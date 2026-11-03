@@ -22,18 +22,19 @@ import (
 )
 
 type clientWindow struct {
-	mu            sync.Mutex
-	globals       globals
-	pairing       bool
-	connecting    bool
-	disconnecting bool
-	launchDone    chan struct{}
-	background    windows.Handle
-	connectSince  time.Time
-	message       string
-	pairCode      string
-	nasAddress    string
-	errorMessage  string
+	installingDependency bool
+	mu                   sync.Mutex
+	globals              globals
+	pairing              bool
+	connecting           bool
+	disconnecting        bool
+	launchDone           chan struct{}
+	background           windows.Handle
+	connectSince         time.Time
+	message              string
+	pairCode             string
+	nasAddress           string
+	errorMessage         string
 	// usage is the anonymous usage-statistics reporter; nil if unavailable.
 	usage *usagestats.Reporter
 }
@@ -48,11 +49,12 @@ func (w *clientWindow) snapshot() map[string]any {
 	w.mu.Lock()
 	pairing, connecting, connectSince, message, pairCode, nasAddress, errorMessage :=
 		w.pairing, w.connecting, w.connectSince, w.message, w.pairCode, w.nasAddress, w.errorMessage
+	installingDependency := w.installingDependency
 	disconnecting := w.disconnecting
 	w.mu.Unlock()
 	cfg, _, err := loadConfig(w.globals)
 	result := map[string]any{
-		"paired": false, "connected": false, "pairing": pairing,
+		"installing_dependency": installingDependency, "paired": false, "connected": false, "pairing": pairing,
 		"connecting": connecting, "message": message,
 		"disconnecting": disconnecting,
 		"pair_code":     pairCode, "nas_address": nasAddress,

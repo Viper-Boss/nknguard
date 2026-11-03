@@ -30,7 +30,7 @@ func runElevated(executable, configPath string) (windows.Handle, error) {
 }
 
 func runElevatedCommand(executable, configPath, command string) (windows.Handle, error) {
-	if command != "up" && command != "cleanup" {
+	if command != "up" && command != "cleanup" && command != "install-wireguard" {
 		return 0, fmt.Errorf("不支持的后台操作")
 	}
 	verb, _ := syscall.UTF16PtrFromString("runas")

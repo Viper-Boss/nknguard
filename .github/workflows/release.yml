@@ -70,6 +70,9 @@ jobs:
         shell: bash
         working-directory: cmd/nknguard
         run: go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon winres/icon.png --product-name NKNGuard --file-description "NKNGuard Windows client" --original-filename NKNGuard-Windows.exe --copyright "(c) 2026 NKNGuard Authors, AGPL-3.0-only"
+      - name: verify official WireGuard dependency
+        shell: pwsh
+        run: packaging/windows/prepare-dependencies.ps1
       - name: build
         shell: bash
         run: |
@@ -79,6 +82,8 @@ jobs:
             -o NKNGuard-Windows.exe ./cmd/nknguard
           mkdir -p pkg
           cp NKNGuard-Windows.exe LICENSE NOTICE pkg/
+          mkdir -p pkg/deps
+          cp packaging/windows/deps/*.msi pkg/deps/
           cd pkg && 7z a ../NKNGuard-Windows-x86_64-preview.zip .
       - name: installer
         shell: pwsh

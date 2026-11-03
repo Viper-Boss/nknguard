@@ -50,6 +50,9 @@ jobs:
       - name: native Windows GUI launch
         shell: pwsh
         run: packaging/windows/smoke-ui.ps1
+      - name: verify official WireGuard dependency
+        shell: pwsh
+        run: packaging/windows/prepare-dependencies.ps1
       - name: build Windows installer
         shell: pwsh
         run: |

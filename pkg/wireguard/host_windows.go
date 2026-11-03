@@ -127,6 +127,9 @@ func (m *WindowsManager) EnsureInterface(ctx context.Context, cfg InterfaceConfi
 		return err
 	}
 	if _, err := m.runner.Run(ctx, wg, "show", m.name, "dump"); err == nil {
+		if err := m.waitForTunnel(ctx, wg); err != nil {
+			return err
+		}
 		if _, err := m.runner.Run(ctx, "sc.exe", "config", "WireGuardTunnel$"+m.name, "start=", "demand"); err != nil {
 			return err
 		}
@@ -179,12 +182,24 @@ func (m *WindowsManager) EnsureInterface(ctx context.Context, cfg InterfaceConfi
 		_ = os.Remove(m.confPath())
 		return fmt.Errorf("wireguard: make tunnel on-demand: %w", err)
 	}
+	if err := m.waitForTunnel(ctx, wg); err != nil {
+		return err
+	}
+	m.current, m.applied = cfg, true
+	return nil
+}
+
+// The IPC interface may exist before the driver has bound its UDP socket.
+// A successful wg process alone is not proof that candidates can be gathered.
+func (m *WindowsManager) waitForTunnel(ctx context.Context, wg string) error {
 	readyUntil := time.NewTimer(10 * time.Second)
 	defer readyUntil.Stop()
 	for {
-		if _, err := m.runner.Run(ctx, wg, "show", m.name, "dump"); err == nil {
-			m.current, m.applied = cfg, true
-			return nil
+		if out, err := m.runner.Run(ctx, wg, "show", m.name, "dump"); err == nil {
+			status := parseDump(out, time.Now())
+			if status.ListenPort > 0 && status.PublicKey != "" {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():

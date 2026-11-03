@@ -266,7 +266,7 @@ func (u *clientUI) create() error {
 		}
 	})
 	u.copyIP = u.newButton("复制 NAS IP", false, 120, func() { u.copyText(u.nasIP.Text()) })
-	u.installWG = u.newButton("安装 WireGuard", false, 140, func() { openURL("https://www.wireguard.com/install/") })
+	u.installWG = u.newButton("安装 WireGuard", false, 140, func() { u.w.installDependency() })
 	export := u.newButton("导出诊断", false, 108, u.exportDiagnostics)
 	checkUpdate := u.newButton("检查更新", false, 108, u.checkUpdate)
 
@@ -839,7 +839,7 @@ func (u *clientUI) render(state map[string]any) {
 	_, ipErr := nasWebURL(stateText(state, "nas_ip"))
 	u.openNAS.SetEnabled(ready && ipErr == nil)
 	u.copyIP.SetEnabled(ready && ipErr == nil)
-	u.installWG.SetEnabled(stateFlag(state, "tools_missing"))
+	u.installWG.SetEnabled(stateFlag(state, "tools_missing") && !stateFlag(state, "installing_dependency"))
 	u.connect.SetEnabled(canConnect)
 	u.disconnect.SetEnabled((connected || connecting || cleanupFailed) && !disconnecting)
 	if connecting {

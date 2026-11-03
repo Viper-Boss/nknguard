@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Viper-Boss/nknguard/pkg/signaling"
 	"io"
+	"time"
 
 	"github.com/Viper-Boss/nknguard/internal/config"
 	"github.com/Viper-Boss/nknguard/pkg/membership"
@@ -47,22 +49,42 @@ func pairDeviceNKN(ctx context.Context, cfg config.Config, invitation string, pr
 	}
 	transport := nknsignal.New(client)
 	defer transport.Close()
-	request := protocol.PairRequest{Token: invite.Token, Name: cfg.Device.Name, NKNAddress: transport.LocalAddress(), WireGuardPublicKey: wgKey}
-	envelope, err := protocol.Seal(node.Device, invite.NetworkID, invite.NASID, protocol.TypePairRequest, request)
-	if err != nil {
-		return PairResult{}, err
+	return pairExchange(ctx, node, invite, cfg.Device.Name, wgKey, transport, progress, 3*time.Second)
+}
+
+func pairExchange(ctx context.Context, node *Node, invite PairInvite, name, wgKey string, transport signaling.Transport, progress io.Writer, retry time.Duration) (PairResult, error) {
+	deadline := time.Now().Add(3 * time.Minute)
+	if invite.ExpiresAt.Before(deadline) {
+		deadline = invite.ExpiresAt
 	}
-	if err := transport.SendAddress(ctx, invite.NASAddress, envelope); err != nil {
-		return PairResult{}, err
-	}
-	fmt.Fprintf(progress, "请在 NAS 面板核对并批准：设备 %s，验证码 %s\n", node.Device.DeviceID(), PairCode(invite.Token, node.Device.DeviceID(), wgKey))
-	waitCtx, cancel := context.WithDeadline(ctx, invite.ExpiresAt)
+	waitCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
+	request := protocol.PairRequest{Token: invite.Token, Name: name, NKNAddress: transport.LocalAddress(), WireGuardPublicKey: wgKey}
+	attempts := 0
+	send := func() {
+		if attempts >= 60 || waitCtx.Err() != nil {
+			return
+		}
+		attempts++
+		envelope, err := protocol.Seal(node.Device, invite.NetworkID, invite.NASID, protocol.TypePairRequest, request)
+		if err != nil {
+			return
+		}
+		bounded, done := context.WithTimeout(waitCtx, 2*time.Second)
+		defer done()
+		_ = transport.SendAddress(bounded, invite.NASAddress, envelope)
+	}
+	send()
+	fmt.Fprintf(progress, "请在 NAS 面板核对并批准：设备 %s，验证码 %s\n", node.Device.DeviceID(), PairCode(invite.Token, node.Device.DeviceID(), wgKey))
+	ticker := time.NewTicker(retry)
+	defer ticker.Stop()
 	acceptor := &protocol.Acceptor{NetworkID: invite.NetworkID, LocalDeviceID: node.Device.DeviceID(), Replay: protocol.NewReplayCache(0, 0)}
 	for {
 		select {
 		case <-waitCtx.Done():
 			return PairResult{}, fmt.Errorf("pairing: approval not received: %w", waitCtx.Err())
+		case <-ticker.C:
+			send()
 		case inbound, ok := <-transport.Receive():
 			if !ok {
 				return PairResult{}, errors.New("pairing: NKN connection closed")
@@ -88,6 +110,7 @@ func pairDeviceNKN(ctx context.Context, cfg config.Config, invitation string, pr
 				return PairResult{}, err
 			}
 			current.Members = []string{invite.NASID}
+			current.MemberAddresses = map[string]string{invite.NASID: invite.NASAddress}
 			if err := node.State.SaveMembership(current); err != nil {
 				return PairResult{}, err
 			}

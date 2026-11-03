@@ -84,7 +84,13 @@ type pendingRequest struct {
 }
 
 // Pairing owns short-lived invitations and pending approvals for one NAS.
+type recentPairApproval struct {
+	entry    pendingRequest
+	lastSent time.Time
+}
+
 type Pairing struct {
+	recent    map[string]recentPairApproval
 	mu        sync.Mutex
 	invite    PairInvite
 	pending   map[string]pendingRequest
@@ -186,6 +192,48 @@ func (p *Pairing) HandleRequest(ctx context.Context, envelope protocol.Envelope)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	now := time.Now()
+	for id, old := range p.recent {
+		if now.After(old.entry.ExpiresAt) {
+			delete(p.recent, id)
+		}
+	}
+	if old, ok := p.recent[envelope.FromDeviceID]; ok {
+		if p.transport == nil {
+			return ErrPairingOffline
+		}
+		if old.entry.request != request {
+			return errors.New("pairing: retry does not match approved request")
+		}
+		if now.Sub(old.lastSent) < 2*time.Second {
+			return nil
+		}
+		current, err := p.node.State.LoadMembership()
+		if err != nil {
+			return err
+		}
+		allowed := false
+		for _, id := range current.Members {
+			if id == envelope.FromDeviceID {
+				allowed = true
+			}
+		}
+		if !allowed || current.MemberAddresses[envelope.FromDeviceID] != request.NKNAddress {
+			return errors.New("pairing: approval no longer valid")
+		}
+		secret, err := p.node.JoinSecret()
+		if err != nil {
+			return err
+		}
+		approval := protocol.PairApproval{JoinSecret: secret, NASID: p.node.Device.DeviceID(), NASAddress: p.transport.LocalAddress(), InviteToken: request.Token}
+		reply, err := protocol.Seal(p.node.Device, current.NetworkID, envelope.FromDeviceID, protocol.TypePairApproval, approval)
+		if err != nil {
+			return err
+		}
+		old.lastSent = now
+		p.recent[envelope.FromDeviceID] = old
+		return p.transport.SendAddress(ctx, request.NKNAddress, reply)
+	}
 	if time.Now().After(p.invite.ExpiresAt) || p.invite.Token == "" || subtle.ConstantTimeCompare([]byte(request.Token), []byte(p.invite.Token)) != 1 {
 		return errors.New("pairing: invitation expired or invalid")
 	}
@@ -260,6 +308,24 @@ func (p *Pairing) Approve(ctx context.Context, deviceID string) error {
 		rollbackErr := p.revokeLocked(ctx, deviceID)
 		return errors.Join(fmt.Errorf("pairing: approval not delivered, try again: %w", err), rollbackErr)
 	}
+	if p.recent == nil {
+		p.recent = make(map[string]recentPairApproval)
+	}
+	if len(p.recent) >= 8 {
+		var oldest string
+		var at time.Time
+		for id, v := range p.recent {
+			if oldest == "" || v.lastSent.Before(at) {
+				oldest = id
+				at = v.lastSent
+			}
+		}
+		delete(p.recent, oldest)
+	}
+	if cap := time.Now().Add(3 * time.Minute); entry.ExpiresAt.After(cap) {
+		entry.ExpiresAt = cap
+	}
+	p.recent[deviceID] = recentPairApproval{entry: entry, lastSent: time.Now()}
 	delete(p.pending, deviceID)
 	p.invite = PairInvite{}
 	p.mesh.RememberApprovedAddress(deviceID, entry.NKNAddress)
@@ -273,6 +339,7 @@ func (p *Pairing) Revoke(ctx context.Context, deviceID string) error {
 }
 
 func (p *Pairing) revokeLocked(ctx context.Context, deviceID string) error {
+	delete(p.recent, deviceID)
 	if !p.owner() {
 		return errors.New("pairing: only the NAS owner can revoke devices")
 	}

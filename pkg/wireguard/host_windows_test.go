@@ -49,9 +49,10 @@ func TestWindowsDownWithoutToolsRequiresVerifiedAbsence(t *testing.T) {
 }
 
 type windowsRunner struct {
-	installed bool
-	secured   bool
-	confPath  string
+	installed    bool
+	secured      bool
+	confPath     string
+	unreadyDumps int
 }
 
 func (r *windowsRunner) Look(name string) (string, error) { return name, nil }
@@ -79,11 +80,32 @@ func (r *windowsRunner) Run(_ context.Context, name string, args ...string) (str
 		if !r.installed {
 			return "", errors.New("not running")
 		}
+		if r.unreadyDumps > 0 {
+			r.unreadyDumps--
+			return "private\tpublic\t0\toff\n", nil
+		}
 		return "private\tpublic\t51820\toff\n", nil
 	case name == "wg" && len(args) >= 2 && args[0] == "set":
 		return "", nil
 	}
 	return "", errors.New("unexpected command")
+}
+
+func TestWindowsInterfaceWaitsForBoundUDPPort(t *testing.T) {
+	dir := t.TempDir()
+	runner := &windowsRunner{unreadyDumps: 2}
+	manager := &WindowsManager{store: identity.NewKeystore(filepath.Join(dir, "keys")), runner: runner, name: "nknguard", dir: filepath.Join(dir, "tunnels")}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := manager.EnsureInterface(ctx, InterfaceConfig{Address: "10.88.12.2/16"}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.unreadyDumps != 0 {
+		t.Fatal("interface was declared ready before its UDP socket was bound")
+	}
+	if got := manager.Status(ctx).ListenPort; got == 0 {
+		t.Fatal("ready interface has no listen port")
+	}
 }
 
 func TestWindowsManagerTunnelLifecycle(t *testing.T) {

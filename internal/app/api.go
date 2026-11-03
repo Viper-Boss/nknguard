@@ -42,18 +42,9 @@ func (d *Daemon) ServeAPI(ctx context.Context) (io.Closer, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
-	// A stale socket from a crashed daemon would make Listen fail. Only a
-	// socket is removed — never a regular file someone put at that path.
-	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSocket != 0 {
-		_ = os.Remove(path)
-	}
-	listener, err := net.Listen("unix", path)
+	listener, err := listenLocalAPI(path)
 	if err != nil {
 		return nil, fmt.Errorf("local API: %w", err)
-	}
-	if err := os.Chmod(path, SocketMode); err != nil {
-		_ = listener.Close()
-		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Status(r.Context())) })
@@ -98,7 +89,7 @@ func (d *Daemon) ServeAPI(ctx context.Context) (io.Closer, error) {
 	return closerFunc(func() error {
 		closeOnce.Do(func() {
 			closeErr = server.Close()
-			_ = os.Remove(path)
+			removeLocalAPI(path)
 			_ = lock.Close()
 		})
 		return closeErr
@@ -127,8 +118,7 @@ var ErrDaemonNotRunning = errors.New("the nknguard daemon is not running (start 
 // NewClient returns a client for the socket at path.
 func NewClient(path string) *Client {
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var dialer net.Dialer
-		return dialer.DialContext(ctx, "unix", path)
+		return dialLocalAPI(ctx, path)
 	}}
 	return &Client{http: &http.Client{Transport: transport, Timeout: 30 * time.Second}}
 }

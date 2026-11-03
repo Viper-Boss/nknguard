@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.16-preview.1"
+  #define AppVersion "0.2.20"
 #endif
 #ifndef BinaryPath
   #define BinaryPath "..\..\NKNGuard-Windows.exe"
@@ -34,6 +34,9 @@ Source: "{#BinaryPath}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.txt"; DestDir: "{app}"
 Source: "..\..\LICENSE"; DestDir: "{app}"
 
+Source: "deps\wireguard-amd64-1.1.1.msi"; DestDir: "{app}\deps"; Flags: ignoreversion
+Source: "deps\wireguard-amd64-1.1.1.msi"; Flags: dontcopy
+
 [Icons]
 Name: "{group}\NKNGuard"; Filename: "{app}\NKNGuard-Windows.exe"
 Name: "{group}\Uninstall NKNGuard"; Filename: "{uninstallexe}"
@@ -42,6 +45,34 @@ Name: "{group}\Uninstall NKNGuard"; Filename: "{uninstallexe}"
 Filename: "{app}\NKNGuard-Windows.exe"; Description: "Launch NKNGuard"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function WireGuardPresent(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{commonpf64}\WireGuard\wireguard.exe')) and
+    FileExists(ExpandConstant('{commonpf64}\WireGuard\wg.exe'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var ExitCode: Integer; PackagePath: String;
+begin
+  Result := '';
+  if WireGuardPresent() then exit;
+  ExtractTemporaryFile('wireguard-amd64-1.1.1.msi');
+  PackagePath := ExpandConstant('{tmp}\wireguard-amd64-1.1.1.msi');
+  if CompareText(GetSHA256OfFile(PackagePath), '7bfed60ad61b785c914b38b61555a975488e1d3ec472dbfb2fcdf498fca75242') <> 0 then begin
+    Result := 'WireGuard package integrity check failed.'; exit;
+  end;
+  WizardForm.StatusLabel.Caption := '正在安装官方 WireGuard，请允许管理员授权…';
+  if not ShellExec('runas', ExpandConstant('{sys}\msiexec.exe'),
+    '/i "' + PackagePath + '" /qn /norestart', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then begin
+    Result := 'WireGuard 安装未获授权。请允许管理员授权后重试。'; exit;
+  end;
+  if (ExitCode <> 0) and (ExitCode <> 3010) then begin
+    Result := 'WireGuard 安装失败，错误代码：' + IntToStr(ExitCode); exit;
+  end;
+  if ExitCode = 3010 then NeedsRestart := True;
+  if not WireGuardPresent() then Result := 'WireGuard 安装未完成，请重启 Windows 后重试。';
+end;
+
 function InitializeUninstall(): Boolean;
 var
   ExitCode: Integer;
