@@ -4,12 +4,14 @@ go 1.25.7
 
 // Bounded cross-subclient bootstrap for asymmetric node reachability.
 replace github.com/nknorg/nkn-sdk-go => ./third_party/nkn-sdk-go
+
 replace github.com/nknorg/ncp-go => ./third_party/ncp-go
 
 // The nknsdk and libp2pdht build tags enable the NKN and private DHT
 // adapters. The local dashboard uses go-qrcode in every build.
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/ipfs/go-cid v0.6.2
 	github.com/libp2p/go-libp2p v0.49.0
 	github.com/libp2p/go-libp2p-kad-dht v0.42.2
@@ -27,6 +29,7 @@ require (
 	golang.org/x/term v0.45.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 )
+
 
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect
