@@ -25,8 +25,8 @@ android {
         applicationId = "io.github.viperboss.nknguard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.2.20"
+        versionCode = 24
+        versionName = "0.2.21"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }

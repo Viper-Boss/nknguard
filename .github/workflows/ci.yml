@@ -61,7 +61,7 @@ jobs:
             choco install innosetup --yes --no-progress
             if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
           }
-          & $compiler packaging/windows/nknguard.iss
+          & $compiler '/DAppVersion=0.2.20' packaging/windows/nknguard.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
       - name: smoke test install upgrade and uninstall
         shell: pwsh
