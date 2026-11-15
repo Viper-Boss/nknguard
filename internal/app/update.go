@@ -23,6 +23,16 @@ func (d *Daemon) registerUpdates(mux *http.ServeMux, contexts ...context.Context
 	var installStarted time.Time
 	var result *releaseupdate.Result
 	kind := updateKind()
+	if raw, err := os.ReadFile(filepath.Join(d.Config.Paths.StateDir, "update-result.json")); err == nil && len(raw) < 4096 {
+		var previous struct {
+			State string    `json:"state"`
+			Time  time.Time `json:"time"`
+		}
+		if json.Unmarshal(raw, &previous) == nil && activeUpdateJob(previous.State, previous.Time) {
+			installing = true
+			installStarted = previous.Time
+		}
+	}
 	serviceCtx := context.Background()
 	if len(contexts) > 0 {
 		serviceCtx = contexts[0]
@@ -112,18 +122,33 @@ func (d *Daemon) registerUpdates(mux *http.ServeMux, contexts ...context.Context
 		if raw, err := os.ReadFile(filepath.Join(d.Config.Paths.StateDir, "update-result.json")); err == nil && len(raw) < 4096 {
 			_ = json.Unmarshal(raw, &state)
 		}
+		if installing && time.Since(installStarted) > 20*time.Minute {
+			installing = false
+			prefetch.download = updateDownload{State: "failed", Message: "升级结果尚未确认，请先检查飞牛应用中心任务与当前运行版本，勿重复提交。"}
+			state = map[string]any{"state": "failed", "message": prefetch.download.Message}
+		}
 		if state != nil && installing {
 			stamp, _ := state["time"].(string)
 			finished, _ := time.Parse(time.RFC3339Nano, stamp)
 			if finished.After(installStarted) && (state["state"] == "failed" || state["state"] == "complete") {
 				installing = false
 				if prefetch.download.State == "installing" {
-					prefetch.download.State = "current"
+					prefetch.download.State = "complete"
+					prefetch.download.Version = ""
 					if state["state"] == "failed" {
 						prefetch.download.State = "failed"
 					}
 					prefetch.download.Message, _ = state["message"].(string)
+					if state["state"] == "complete" {
+						prefetch.download.Message = "更新任务已结束；当前运行版本 " + Version + "。"
+					}
 				}
+			}
+		}
+		if state != nil && state["state"] == "complete" && prefetch.download.State == "idle" {
+			target, _ := state["version"].(string)
+			if target != "" && sameUpdateVersion(target, Version) {
+				prefetch.download = updateDownload{State: "complete", Version: Version, Message: "当前已运行更新后的版本。"}
 			}
 		}
 		writeJSON(w, map[string]any{"current": Version, "arch": runtime.GOARCH, "kind": kind, "supported": updateSupported(d.Config), "release_url": releaseupdate.ReleaseURL, "result": result, "job": state, "download": prefetch.download, "auto_download": prefetch.auto, "installing": installing})
@@ -230,4 +255,9 @@ func (d *Daemon) registerUpdates(mux *http.ServeMux, contexts ...context.Context
 		launched = true
 		writeJSON(w, map[string]any{"ok": true, "version": next, "message": "更新已开始，请稍后刷新；配置和配对会保留。"})
 	})
+}
+
+func activeUpdateJob(state string, stamp time.Time) bool {
+	age := time.Since(stamp)
+	return (state == "installing" || state == "verifying") && age >= 0 && age < 15*time.Minute
 }

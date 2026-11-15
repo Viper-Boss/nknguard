@@ -38,8 +38,8 @@ func updateSupported(cfg config.Config) bool {
 		return false
 	}
 	if updateKind() == "fnos" {
-		_, err := exec.LookPath("appcenter-cli")
-		return err == nil
+		info, err := os.Stat(fnosCenterSocket)
+		return err == nil && info.Mode()&os.ModeSocket != 0
 	}
 	_, err := os.Stat("/etc/systemd/system/nknguard.service")
 	return err == nil
@@ -90,8 +90,9 @@ func ApplyUpdate(cfg config.Config, dir string) (resultErr error) {
 	}
 	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	statePath := filepath.Join(cfg.Paths.StateDir, "update-result.json")
+	var next, taskID string
 	writeState := func(state, message string) {
-		raw, _ := json.Marshal(map[string]any{"state": state, "message": message, "time": time.Now().UTC()})
+		raw, _ := json.Marshal(map[string]any{"state": state, "message": message, "time": time.Now().UTC(), "version": next, "task_id": taskID})
 		tmp := statePath + ".tmp"
 		if os.WriteFile(tmp, raw, 0o600) == nil {
 			_ = os.Rename(tmp, statePath)
@@ -108,7 +109,7 @@ func ApplyUpdate(cfg config.Config, dir string) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	_, next, err := releaseupdate.StageBundle(filepath.Join(realDir, "incoming.zip"), staged, Version, updateKind(), runtime.GOARCH)
+	_, next, err = releaseupdate.StageBundle(filepath.Join(realDir, "incoming.zip"), staged, Version, updateKind(), runtime.GOARCH)
 	if err != nil {
 		return err
 	}
@@ -118,13 +119,18 @@ func ApplyUpdate(cfg config.Config, dir string) (resultErr error) {
 		if err := os.Rename(payload, fpk); err != nil {
 			return err
 		}
-		writeState("installing", "正在通过飞牛应用中心升级")
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		writeState("installing", "正在通过飞牛应用中心升级并核验版本")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		if err := exec.CommandContext(ctx, "appcenter-cli", "install-fpk", fpk).Run(); err != nil {
-			return fmt.Errorf("fnOS upgrade failed: %w", err)
+		client := newFnosUpgradeClient(fnosCenterSocket, cfg.Paths.Socket)
+		defer client.http.CloseIdleConnections()
+		if err := client.upgrade(ctx, fpk, next, func(id string) {
+			taskID = id
+			writeState("installing", "正在等待飞牛升级任务与服务就绪")
+		}); err != nil {
+			return err
 		}
-		writeState("complete", "飞牛应用中心升级完成，请刷新面板")
+		writeState("complete", "已更新到 "+next+"，安装版本与运行版本均已确认")
 		return nil
 	}
 	exe, err := os.Executable()

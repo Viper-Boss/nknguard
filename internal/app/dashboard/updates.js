@@ -10,23 +10,24 @@
  }
  async function info(){
   const response=await dashboardFetch('/api/updates');if(!response.ok)throw new Error('无法读取更新状态');
-  const data=await response.json(),download=data.download||{},state=download.state||'idle';
+  const data=await response.json(),download=data.download||{},state=data.installing?'installing':download.state||'idle';
   node('update-version').textContent=`${data.current} · ${data.arch==='arm64'?'ARM64':data.arch==='amd64'?'x86_64':data.arch}`;
   busy=['checking','downloading','verifying','installing'].includes(state)||data.installing;
-  const labels={idle:'等待检查',checking:'正在检查',current:'已是最新',downloading:'正在下载',verifying:'正在验证',ready:'已准备好',failed:'可以重试',installing:'正在更新'};
+  const labels={idle:'等待检查',checking:'正在检查',current:'已是最新',complete:'更新完成',downloading:'正在下载',verifying:'正在验证',ready:'已准备好',failed:'可以重试',installing:'正在更新'};
   node('download-state').textContent=labels[state]||'等待检查';
   node('download-state').className='pill '+(state==='ready'?'good':'neutral');
-  node('download-version').textContent=download.version?`新版本 ${download.version}`:'更新准备';
-  node('download-message').textContent=download.message||'后台下载完成后，可直接点击更新。';
+  node('download-version').textContent=['current','complete'].includes(state)?`当前版本 ${data.current}`:(download.version||data.job?.version)?`${state==='installing'?'正在安装':'新版本'} ${download.version||data.job?.version}`:'更新准备';
+  node('download-message').textContent=state==='current'?`当前运行 ${data.current}，已是最新正式版。`:state==='complete'?`已更新并运行 ${data.current}。`:state==='installing'?(data.job?.message||'正在升级并等待服务就绪…'):download.message||'后台下载完成后，可直接点击更新。';
   const progress=node('update-progress');progress.hidden=state!=='downloading';
   if(download.total>0)progress.value=Math.min(100,100*download.bytes/download.total);else progress.removeAttribute('value');
   if(state==='downloading'&&download.bytes)node('download-message').textContent=`已下载 ${(download.bytes/1048576).toFixed(1)} MB${download.total>0?' / '+(download.total/1048576).toFixed(1)+' MB':''}`;
   node('apply-update').disabled=!data.supported||state!=='ready'||data.installing;
-  node('download-update').disabled=!data.supported||busy||state==='ready';
+  node('download-update').disabled=!data.supported||busy||state==='ready'||state==='current';
+  node('apply-update').hidden=['current','complete'].includes(state);node('download-update').hidden=['current','complete'].includes(state);
   node('check-update').disabled=busy;
   node('auto-download').checked=data.auto_download!==false;
   for(const id of ['update-file','choose-update','upload-update'])node(id).disabled=!data.supported||busy;
-  if(!data.supported)message('当前安装方式请通过安装管理器更新。');else if(data.job)message(data.job.message);
+  if(!data.supported)message('当前安装方式请通过安装管理器更新。');else if(data.job){const job=data.job;message(job.state==='complete'?`上次更新任务已完成，当前运行版本 ${data.current}。`:job.message||'');}
   return data;
  }
  node('auto-download').addEventListener('change',async()=>{try{await action('preferences',{auto_download:node('auto-download').checked});}catch(error){message(error.message);await info();}});

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.21"
+  #define AppVersion "0.2.22"
 #endif
 #ifndef BinaryPath
   #define BinaryPath "..\..\NKNGuard-Windows.exe"
