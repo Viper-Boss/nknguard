@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/identity.css">
   <link rel="stylesheet" href="/security.css">
   <link rel="stylesheet" href="/network-animation.css">
+  <link rel="stylesheet" href="/usage.css">
   <link rel="stylesheet" href="/shell.css">
   <link rel="stylesheet" href="/nat-gauge.css">
   <link rel="stylesheet" href="/support.css">
@@ -21,13 +22,14 @@
   <script src="/network-animation.js" type="module"></script>
 </head>
 <body>
-  <svg aria-hidden="true" width="0" height="0" class="icon-sprite"><defs><symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol><symbol id="icon-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8m-4-5v5"/></symbol><symbol id="icon-pair" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3"/><path d="M8 8h3v3H8zm5 5h3v3h-3zm-5 1h2m4-6h2"/></symbol><symbol id="icon-paths" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h7a4 4 0 0 1 0 8h-4a2 2 0 0 0 0 4h7"/></symbol><symbol id="icon-logs" viewBox="0 0 24 24"><path d="M8 3h7l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6M8 13h8m-8 4h6"/></symbol><symbol id="icon-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></symbol><symbol id="icon-direct" viewBox="0 0 24 24"><path d="M5 19 19 5M8 5h11v11"/></symbol><symbol id="icon-relay" viewBox="0 0 24 24"><path d="M3 7h17m-5-5 5 5-5 5M21 17H4m5-5-5 5 5 5"/></symbol><symbol id="icon-network" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol><symbol id="icon-server" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01m5-11h5m-5 11h5"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol></defs></svg>
+  <svg aria-hidden="true" width="0" height="0" class="icon-sprite"><defs><symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol><symbol id="icon-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8m-4-5v5"/></symbol><symbol id="icon-pair" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3"/><path d="M8 8h3v3H8zm5 5h3v3h-3zm-5 1h2m4-6h2"/></symbol><symbol id="icon-paths" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h7a4 4 0 0 1 0 8h-4a2 2 0 0 0 0 4h7"/></symbol><symbol id="icon-logs" viewBox="0 0 24 24"><path d="M8 3h7l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6M8 13h8m-8 4h6"/></symbol><symbol id="icon-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></symbol><symbol id="icon-direct" viewBox="0 0 24 24"><path d="M5 19 19 5M8 5h11v11"/></symbol><symbol id="icon-relay" viewBox="0 0 24 24"><path d="M3 7h17m-5-5 5 5-5 5M21 17H4m5-5-5 5 5 5"/></symbol><symbol id="icon-network" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol><symbol id="icon-server" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01m5-11h5m-5 11h5"/></symbol><symbol id="icon-usage" viewBox="0 0 24 24"><path d="M5 20V10m7 10V4m7 16v-7"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol></defs></svg>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18V6l14 12V6M3 12h4m10 0h4"/></svg></div><div><strong>NKNGuard</strong><small>你的私人连接空间</small></div></div>
       <div class="side-label">控制台</div>
       <nav aria-label="主导航">
         <button class="nav-item active" data-view="overview"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-dashboard"/></svg></span> 总览</button>
+        <button class="nav-item" data-view="usage"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-usage"/></svg></span> 在线统计</button>
         <button class="nav-item" data-view="devices"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-devices"/></svg></span> 设备</button>
         <button class="nav-item" data-view="pairing"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-pair"/></svg></span> 配对与授权</button>
         <button class="nav-item" data-view="paths"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-paths"/></svg></span> 链路</button>
@@ -212,6 +214,22 @@
 </section>
         <div class="content-grid"><section class="panel device-panel"><div class="panel-head"><div><h3>最近设备</h3><p>在线路径由真实 WireGuard 握手确认</p></div><button class="text-button" data-go="devices">查看全部 →</button></div><div id="recent-devices" class="device-list"><div class="empty">正在查找设备…</div></div></section><section class="panel connection-panel"><div class="panel-head"><div><h3>连接方式</h3><p>直连优先，失败后走 NKN</p></div><span class="connection-symbol">⌁</span></div><div class="route-visual"><div class="route-end"><span>⌂</span><small>这台 NAS</small></div><div class="route-lines"><div class="route-line direct"><span class="route-dot"></span><b>WireGuard 直连</b></div><div class="route-line relay"><span class="route-dot"></span><b>NKN 加密中继</b></div></div><div class="route-end client"><span>▣</span><small>你的设备</small></div></div><div class="route-footer"><span><i class="legend direct-color"></i>直连 <b id="route-direct">0</b></span><span><i class="legend relay-color"></i>中继 <b id="route-relay">0</b></span><span><i class="legend idle-color"></i>等待 <b id="route-idle">0</b></span></div></section></div>
         <div class="info-strip"><span>✧</span><p><strong>连接提示</strong> 手机或电脑连接时会同时尝试上次可用路径和最新信标信息。停止使用后，客户端可主动断开；NAS 会继续在线等待下次连接。</p></div>
+      </section>
+
+      <section id="usage" class="view">
+        <div class="section-head"><div><h2>在线统计</h2><p>只统计近期运行过 NKNGuard 的设备数，与当前 NKN 连接状态无关</p></div><span class="pill neutral" id="usage-pill"><i></i>正在读取</span></div>
+        <section class="panel usage-panel">
+          <div class="panel-head"><div><h3>NKNGuard 使用人数</h3><p>来自 NKN 链上公开订阅的匿名计数，不是本机已连接设备数</p></div><button class="secondary-button" id="usage-refresh">刷新统计</button></div>
+          <div class="usage-grid">
+            <div><small>24 小时活跃</small><strong id="usage-day">—</strong></div>
+            <div><small>30 天活跃</small><strong id="usage-month">—</strong></div>
+            <div><small>90 天活跃</small><strong id="usage-quarter">—</strong></div>
+          </div>
+          <p class="usage-note">统计的是安装设备在窗口内是否签到，不是实时在线人数，也不代表 NKN 已连接。停止使用后会自然到期移出；横杠表示该项暂未读取成功。</p>
+          <p class="usage-note" id="usage-message" role="status">正在读取统计…</p>
+          <p class="usage-note">数据更新：<span id="usage-fetched-at">—</span> · 本机最近签到：<span id="usage-last-check-in">—</span></p>
+        </section>
+        <section class="panel usage-settings"><h3>隐私与统计</h3><p>自动参与匿名使用人数统计，每天向 NKN 链提交最多 3 个零手续费订阅。使用独立派生的统计公钥，不上传设备名、配对、文件或流量信息。NKN 节点仍能看到连接 IP。</p></section>
       </section>
 
       <section id="devices" class="view"><div class="section-head"><div><h2>设备</h2><p>已验证身份的对端设备和当前连接路径</p></div><span class="pill neutral" id="devices-count">0 台设备</span></div><section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>设备</th><th>虚拟 IP</th><th>链路</th><th>最近握手</th><th>操作</th></tr></thead><tbody id="device-table"><tr><td colspan="5" class="empty">正在读取设备…</td></tr></tbody></table></div></section></section>

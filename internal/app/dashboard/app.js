@@ -41,9 +41,10 @@ function toast(message) {
 function changeView(name) {
   document.querySelectorAll('.view').forEach(element => element.classList.toggle('active', element.id === name));
   document.querySelectorAll('.nav-item').forEach(element => element.classList.toggle('active', element.dataset.view === name));
-  setText('page-title', ({overview:'连接总览',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志',security:'安全设置',updates:'系统更新',support:'赞赏作者'})[name]);
+  setText('page-title', ({overview:'连接总览',usage:'在线统计',devices:'设备列表',pairing:'配对与授权',paths:'链路状态',logs:'运行日志',security:'安全设置',updates:'系统更新',support:'赞赏作者'})[name]);
   if (name === 'logs') refreshLogs();
   if (name === 'pairing') refreshPairState();
+  if (name === 'usage') refreshUsage(false);
 }
 
 function formatHandshake(value) {
@@ -195,31 +196,52 @@ async function changePassword(event) {
 }
 
 const countText = value => (typeof value === 'number' ? value.toLocaleString('zh-CN') : '—');
+const usageTime = value => {
+  if (!value || value.startsWith('0001-')) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN');
+};
 
 function renderUsage(status) {
   currentUsage = status;
   window.dispatchEvent(new CustomEvent('nknguard-usage', {detail: status}));
   const counts = status.counts || {};
   const missing = ['day','month','quarter'].filter(key => typeof counts[key] !== 'number').length;
-  byId('network-usage-message').textContent = missing ? `${missing} 项暂未读取成功，可稍后刷新` : '统计已更新';
+  const message = missing ? `${missing} 项暂未读取成功，可稍后刷新` : '统计已更新';
+  byId('network-usage-message').textContent = message;
+  byId('usage-message').textContent = message;
+  setText('usage-day', countText(counts.day));
+  setText('usage-month', countText(counts.month));
+  setText('usage-quarter', countText(counts.quarter));
+  setText('usage-fetched-at', usageTime(counts.fetched_at));
+  setText('usage-last-check-in', usageTime(status.last_check_in));
+  const pill = byId('usage-pill');
+  pill.className = `pill ${missing === 3 ? 'bad' : missing ? 'warn' : 'good'}`;
+  pill.replaceChildren();
+  const dot = document.createElement('i');
+  pill.append(dot, document.createTextNode(missing === 3 ? '统计不可用' : missing ? '部分未读取' : '统计已更新'));
 }
 
 async function refreshUsage(force) {
-  const button = byId('refresh-usage');
-  if (button.disabled) return;
-  button.disabled = true;
+  const buttons = [byId('refresh-usage'), byId('usage-refresh')];
+  if (buttons.some(button => button.disabled)) return;
+  buttons.forEach(button => { button.disabled = true; });
   byId('network-usage-message').textContent = '正在读取统计…';
+  byId('usage-message').textContent = '正在读取统计…';
   try {
     const response = await dashboardFetch(`/api/usage${force ? '?refresh=1' : ''}`, {cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     renderUsage(await response.json());
   } catch (error) {
-    byId('network-usage-message').textContent = currentUsage ? '刷新失败，保留上次结果，请稍后重试' : '暂时无法读取，请稍后刷新';
+    const message = currentUsage ? '刷新失败，保留上次结果，请稍后重试' : '暂时无法读取，请稍后刷新';
+    byId('network-usage-message').textContent = message;
+    byId('usage-message').textContent = message;
   } finally {
-    button.disabled = false;
+    buttons.forEach(button => { button.disabled = false; });
   }
 }
 byId('refresh-usage').addEventListener('click', () => refreshUsage(true));
+byId('usage-refresh').addEventListener('click', () => refreshUsage(true));
 
 async function postAction(route) {
   const response = await dashboardFetch(route, {method:'POST',headers:{'X-NKNGuard-UI':'1'}});
